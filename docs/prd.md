@@ -53,6 +53,7 @@ DocMesh 프로젝트는 문서를 적재하고, 관련 컨텍스트를 검색한
 - SQLAlchemy ORM + SQLite 기반 문서/청크 메타데이터 persistence
 - 문서 자산 저장 (`memory`, `local`)
 - 문서별 청크 조회
+- ingestion 파이프라인 진행 상태 기록/조회
 - 문서 삭제 및 연관 데이터 정리
 
 ### 4.2 제외 범위 (Out of Scope)
@@ -164,6 +165,10 @@ DocMesh 프로젝트는 문서를 적재하고, 관련 컨텍스트를 검색한
 4. Embedding
 5. Chunk persistence
 6. Vector Store 저장
+
+시스템은 각 문서에 대해 위 단계의 진행 상태를 조회할 수 있도록 ingestion progress 데이터를 저장해야 한다.
+각 진행 상태 row는 ingestion 실행 단위를 구분하는 `job_id`를 포함해야 한다.
+각 단계는 최소 `running`, `completed`, `failed` 상태를 표현할 수 있어야 한다.
 
 #### PRD-FR-8. Chunking
 - 시스템은 문서를 청크 단위로 분할할 수 있어야 한다.
@@ -291,6 +296,7 @@ class RAGCore:
     def list_documents(self, token: str | None = None) -> list[DocumentRecord]: ...
     def get_document(self, doc_id: str, *, token: str | None = None) -> DocumentRecord | None: ...
     def list_document_chunks(self, doc_id: str, *, token: str | None = None) -> list[ChunkRecord]: ...
+    def list_ingestion_progress(self, doc_id: str, *, token: str | None = None, job_id: str | None = None) -> list[IngestionProgressRecord]: ...
     def delete_document(self, doc_id: str, *, token: str | None = None) -> bool: ...
 ```
 
@@ -341,8 +347,10 @@ class RAGCore:
 ### 9.4 MetadataStore
 책임:
 - SQLAlchemy ORM 기반 문서/청크 저장
+- ingestion progress 저장
 - 문서 조회 / 목록 조회
 - 문서별 청크 조회
+- 문서별 ingestion progress 조회
 - 문서 삭제
 - 재시작 복원용 chunk + embedding 로드
 
@@ -376,7 +384,23 @@ metadata_json
 embedding
 ```
 
-### 10.3 public records
+### 10.3 ingestion_progress
+
+필수 필드:
+
+```text
+progress_id (PK)
+job_id
+doc_id (FK -> documents.doc_id)
+user_id
+source
+step_name
+step_order
+status
+created_at
+```
+
+### 10.4 public records
 
 외부 반환 모델:
 
@@ -434,6 +458,7 @@ metadata
 - SQLAlchemy ORM + SQLite 기반 문서/청크 메타데이터 저장
 - 재시작 시 retrieval 복원
 - 문서별 청크 조회
+- ingestion progress 조회
 - 문서 삭제 및 연관 데이터 정리
 
 ### 12.2 이후 확장 로드맵
@@ -466,16 +491,19 @@ metadata
 2. token이 없거나 공백이면 `single-user` 스코프로 동작한다.
 3. 문서를 문자열, 파일 스트림, 파일 경로 형태로 적재할 수 있다.
 4. 적재된 문서는 청킹 및 임베딩 과정을 거쳐 vector store와 chunk persistence에 반영된다.
-5. 문서 메타데이터에는 `doc_id`, `user_id`, `source`, `created_at`, `storage_path`가 포함된다.
-6. 청크 메타데이터에는 `chunk_id`, `doc_id`, `user_id`, `content`, `metadata`, `embedding` 정보가 저장된다.
-7. 질의 시 query embedding을 생성하고 top-k 검색을 수행할 수 있다.
-8. 검색 결과는 반드시 해당 user scope로 제한된다.
-9. 시스템은 검색된 컨텍스트를 포함한 프롬프트로 응답을 생성할 수 있다.
-10. 프로세스 재시작 이후에도 문서/청크 메타데이터가 유지된다.
-11. 프로세스 재시작 이후에도 저장된 청크/임베딩을 통해 retrieval이 복원된다.
-12. 사용자는 특정 문서의 chunk 목록을 조회할 수 있다.
-13. 사용자는 특정 문서를 삭제할 수 있으며, 삭제 시 메타데이터/청크/문서 자산/메모리 인덱스가 함께 정리된다.
-14. 내부 구조는 ingestion / retrieval / generation / metadata 책임으로 분리되어 향후 서비스화가 가능하다.
+5. 시스템은 문서별 ingestion 파이프라인 진행 상태를 조회할 수 있다.
+6. ingestion progress row는 `job_id`를 포함하고, 단계 상태로 `running`, `completed`, `failed`를 기록할 수 있다.
+7. 문서 메타데이터에는 `doc_id`, `user_id`, `source`, `created_at`, `storage_path`가 포함된다.
+8. 청크 메타데이터에는 `chunk_id`, `doc_id`, `user_id`, `content`, `metadata`, `embedding` 정보가 저장된다.
+9. 질의 시 query embedding을 생성하고 top-k 검색을 수행할 수 있다.
+10. 검색 결과는 반드시 해당 user scope로 제한된다.
+11. 시스템은 검색된 컨텍스트를 포함한 프롬프트로 응답을 생성할 수 있다.
+12. 프로세스 재시작 이후에도 문서/청크 메타데이터가 유지된다.
+13. 프로세스 재시작 이후에도 저장된 청크/임베딩을 통해 retrieval이 복원된다.
+14. 사용자는 특정 문서의 chunk 목록을 조회할 수 있다.
+15. 사용자는 특정 문서의 ingestion progress를 조회할 수 있다.
+16. 사용자는 특정 문서를 삭제할 수 있으며, 삭제 시 메타데이터/청크/문서 자산/메모리 인덱스가 함께 정리된다.
+17. 내부 구조는 ingestion / retrieval / generation / metadata 책임으로 분리되어 향후 서비스화가 가능하다.
 
 ---
 

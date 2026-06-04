@@ -200,10 +200,12 @@ def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Pat
     assert hasattr(core.metadata_store, "engine")
     assert hasattr(core.metadata_store, "DocumentModel")
     assert hasattr(core.metadata_store, "ChunkModel")
+    assert hasattr(core.metadata_store, "IngestionProgressModel")
 
     inspector = inspect(core.metadata_store.engine)
     assert "documents" in inspector.get_table_names()
     assert "chunks" in inspector.get_table_names()
+    assert "ingestion_progress" in inspector.get_table_names()
 
     with core.metadata_store.session() as session:
         row = session.get(core.metadata_store.DocumentModel, result.doc_id)
@@ -213,6 +215,100 @@ def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Pat
     assert row.user_id == "token-a"
     assert row.source == "sqlite.txt"
     assert row.storage_path == stored.storage_path
+
+
+def test_ingestion_progress_rows_are_persisted_in_pipeline_order(tmp_path: Path) -> None:
+    core = create_core(tmp_path)
+
+    result = core.ingest_text(
+        token="token-a",
+        text="alpha one. beta two. gamma three. delta four. epsilon five.",
+        source="pipeline.txt",
+    )
+
+    progress_rows = core.list_ingestion_progress(result.doc_id, token="token-a", job_id=result.job_id)
+    completed_rows = [row for row in progress_rows if row.status == "completed"]
+
+    assert [row.step_name for row in completed_rows] == [
+        "load",
+        "preprocess",
+        "chunking",
+        "embedding",
+        "chunk_persistence",
+        "vector_store",
+    ]
+    assert all(row.doc_id == result.doc_id for row in progress_rows)
+    assert all(row.user_id == "token-a" for row in progress_rows)
+    assert len({row.job_id for row in progress_rows}) == 1
+
+
+
+def test_ingestion_progress_records_running_and_completed_statuses_per_job(tmp_path: Path) -> None:
+    core = create_core(tmp_path)
+
+    result = core.ingest_text(
+        token="token-a",
+        text="alpha progress state tracking",
+        source="stateful.txt",
+    )
+
+    progress_rows = core.list_ingestion_progress(result.doc_id, token="token-a")
+
+    assert any(row.status == "running" for row in progress_rows)
+    assert any(row.status == "completed" for row in progress_rows)
+    assert {row.job_id for row in progress_rows}
+
+
+
+def test_ingestion_progress_records_failed_step_when_ingest_errors(tmp_path: Path) -> None:
+    core = create_core(tmp_path)
+
+    try:
+        core.ingest_text(token="token-a", text="   ", source="blank.txt")
+    except ValueError as exc:
+        assert str(exc) == "Document must contain non-empty text"
+    else:
+        raise AssertionError("Expected ValueError for blank document ingestion")
+
+    failed_docs = core.list_documents(token="token-a")
+    assert len(failed_docs) == 1
+    failed_doc = failed_docs[0]
+    progress_rows = core.list_ingestion_progress(failed_doc.doc_id, token="token-a")
+    terminal_rows = [row for row in progress_rows if row.status != "running"]
+
+    assert [row.step_name for row in terminal_rows] == ["load", "preprocess", "chunking"]
+    assert [row.status for row in terminal_rows] == ["completed", "completed", "failed"]
+    assert len({row.job_id for row in progress_rows}) == 1
+
+
+
+def test_ingestion_progress_can_be_grouped_by_job_id_for_same_document(tmp_path: Path) -> None:
+    core = create_core(tmp_path)
+    first = core.ingest_text(token="token-a", text="alpha first ingest", source="same.txt")
+    second = core.ingest_text(token="token-a", text="alpha second ingest", source="same.txt")
+
+    first_rows = core.list_ingestion_progress(first.doc_id, token="token-a", job_id=first.job_id)
+    second_rows = core.list_ingestion_progress(second.doc_id, token="token-a", job_id=second.job_id)
+
+    assert first.job_id != second.job_id
+    assert first_rows
+    assert second_rows
+    assert all(row.job_id == first.job_id for row in first_rows)
+    assert all(row.job_id == second.job_id for row in second_rows)
+
+
+
+def test_ingestion_progress_is_limited_to_current_token_scope(tmp_path: Path) -> None:
+    core = create_core(tmp_path)
+    token_a_result = core.ingest_text(token="token-a", text="alpha scoped pipeline", source="a.txt")
+    core.ingest_text(token="token-b", text="beta scoped pipeline", source="b.txt")
+
+    visible = core.list_ingestion_progress(token_a_result.doc_id, token="token-a")
+    hidden = core.list_ingestion_progress(token_a_result.doc_id, token="token-b")
+
+    assert visible
+    assert all(row.doc_id == token_a_result.doc_id for row in visible)
+    assert hidden == []
 
 
 def test_chunk_rows_are_persisted_and_rehydrated_across_restarts(tmp_path: Path) -> None:
@@ -293,12 +389,14 @@ def test_delete_document_removes_metadata_chunks_asset_and_query_visibility(tmp_
     assert stored.storage_path is not None
     stored_path = Path(stored.storage_path)
     assert stored_path.exists()
+    assert core.list_ingestion_progress(target.doc_id, token="token-a")
 
     deleted = core.delete_document(target.doc_id, token="token-a")
 
     assert deleted is True
     assert core.get_document(target.doc_id, token="token-a") is None
     assert core.list_document_chunks(target.doc_id, token="token-a") == []
+    assert core.list_ingestion_progress(target.doc_id, token="token-a") == []
     assert not stored_path.exists()
     assert [doc.doc_id for doc in core.list_documents(token="token-a")] == [survivor.doc_id]
 

@@ -1,6 +1,7 @@
 from rag_system_core.core import (
     ChunkRecord,
     DocumentRecord,
+    IngestionProgressRecord,
     IngestResult,
     QueryResult,
     RAGCore,
@@ -9,6 +10,7 @@ from rag_system_core.core import (
 __all__ = [
     "ChunkRecord",
     "DocumentRecord",
+    "IngestionProgressRecord",
     "IngestResult",
     "QueryResult",
     "RAGCore",

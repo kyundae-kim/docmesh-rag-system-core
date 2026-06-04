@@ -8,6 +8,7 @@
 - token 기반 사용자 격리가 유지되는지 검증
 - 문서 적재 API가 명시적으로 분리되어 있는지 검증
 - 문서/청크 persistence가 재시작 이후에도 유지되는지 검증
+- ingestion progress persistence와 조회가 올바르게 동작하는지 검증
 - 문서 관리 API(문서 조회, 청크 조회, 삭제)가 올바르게 동작하는지 검증
 - retrieval/generation 흐름이 컨텍스트 기반으로 동작하는지 검증
 
@@ -54,6 +55,7 @@
 - `list_documents(...)`
 - `get_document(...)`
 - `list_document_chunks(...)`
+- `list_ingestion_progress(...)`
 - `delete_document(...)`
 
 ---
@@ -89,16 +91,24 @@
 - 재초기화 후에도 문서 메타데이터가 조회되어야 한다.
 - 재초기화 후에도 chunk/embedding을 통해 query가 가능해야 한다.
 
-### 5.6 문서 단위 관리
+### 5.6 ingestion progress
+- 문서 적재 후 파이프라인 단계별 progress row가 저장되어야 한다.
+- progress row는 `load -> preprocess -> chunking -> embedding -> chunk_persistence -> vector_store` 순서를 유지해야 한다.
+- progress row는 ingestion 실행 단위를 구분하는 `job_id`를 포함해야 한다.
+- progress 상태는 최소 `running`, `completed`, `failed`를 표현해야 한다.
+- progress 조회도 현재 token scope로 제한되어야 한다.
+
+### 5.7 문서 단위 관리
 - 특정 `doc_id`의 chunk만 조회할 수 있어야 한다.
 - 문서 삭제 시 다음이 함께 정리되어야 한다.
   - document metadata
   - chunk metadata
+  - ingestion progress metadata
   - stored asset
   - in-memory vector store entry
 - 삭제된 문서의 chunk는 query 결과에 포함되지 않아야 한다.
 
-### 5.7 프롬프트 생성
+### 5.8 프롬프트 생성
 - 생성 프롬프트에 아래 섹션이 포함되어야 한다.
   - `[System Prompt]`
   - `[Retrieved Context]`
@@ -118,6 +128,11 @@
 - `test_ingest_file_stream_requires_explicit_source`
 - `test_query_filters_results_by_token_derived_user_id`
 - `test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table`
+- `test_ingestion_progress_rows_are_persisted_in_pipeline_order`
+- `test_ingestion_progress_records_running_and_completed_statuses_per_job`
+- `test_ingestion_progress_records_failed_step_when_ingest_errors`
+- `test_ingestion_progress_can_be_grouped_by_job_id_for_same_document`
+- `test_ingestion_progress_is_limited_to_current_token_scope`
 - `test_chunk_rows_are_persisted_and_rehydrated_across_restarts`
 - `test_list_document_chunks_returns_only_requested_document_chunks`
 - `test_get_document_is_limited_to_current_token_scope`

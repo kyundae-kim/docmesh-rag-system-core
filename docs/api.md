@@ -41,6 +41,7 @@ ChunkRecord(
 
 ```python
 IngestResult(
+    job_id: str,
     doc_id: str,
     user_id: str,
     source: str,
@@ -49,7 +50,23 @@ IngestResult(
 )
 ```
 
-### 2.4 `QueryResult`
+### 2.4 `IngestionProgressRecord`
+
+```python
+IngestionProgressRecord(
+    progress_id: str,
+    job_id: str,
+    doc_id: str,
+    user_id: str,
+    source: str,
+    step_name: str,
+    step_order: int,
+    status: str,
+    created_at: str,
+)
+```
+
+### 2.5 `QueryResult`
 
 ```python
 QueryResult(
@@ -112,6 +129,7 @@ ingest_text(*, text: str, source: str, token: str | None = None) -> IngestResult
 
 #### 동작
 - token을 user scope로 해석한다.
+- `job_id`가 부여된 ingestion 실행 결과를 반환한다.
 - 텍스트를 전처리/청킹/임베딩한다.
 - 문서 자산을 저장한다.
 - 문서/청크 메타데이터를 persistence에 기록한다.
@@ -261,7 +279,34 @@ list_document_chunks(doc_id: str, *, token: str | None = None) -> list[ChunkReco
 
 ---
 
-### 4.8 `delete_document`
+### 4.8 `list_ingestion_progress`
+
+특정 문서의 ingestion 파이프라인 진행 상태를 현재 user scope 기준으로 반환한다.
+
+```python
+progress_rows = core.list_ingestion_progress(doc_id, token="user-token-a")
+```
+
+#### 시그니처
+
+```python
+list_ingestion_progress(
+    doc_id: str,
+    *,
+    token: str | None = None,
+    job_id: str | None = None,
+) -> list[IngestionProgressRecord]
+```
+
+#### 동작
+- 지정한 `doc_id`와 현재 user scope가 모두 일치하는 진행 상태 row만 반환한다.
+- `job_id`를 주면 특정 ingestion 실행 단위만 필터링할 수 있다.
+- 정렬은 pipeline 순서(`step_order`) 기준이다.
+- 현재 구현은 단계별 상태 전이를 `running`, `completed`, `failed`로 기록한다.
+
+---
+
+### 4.9 `delete_document`
 
 특정 문서를 현재 user scope에서 삭제한다.
 
@@ -282,6 +327,7 @@ delete_document(doc_id: str, *, token: str | None = None) -> bool
 #### 삭제 범위
 - document metadata row
 - chunk metadata rows
+- ingestion progress rows
 - stored asset file or memory object
 - in-memory vector store entries
 
@@ -314,6 +360,7 @@ delete_document(doc_id: str, *, token: str | None = None) -> bool
 - 주요 테이블:
   - `documents`
   - `chunks`
+  - `ingestion_progress`
 
 ### 6.2 Document storage
 - `memory`: `memory://...` logical path 사용
@@ -364,6 +411,11 @@ response = core.query(
 )
 
 chunks = core.list_document_chunks(text_result.doc_id, token="user-a")
+progress_rows = core.list_ingestion_progress(
+    text_result.doc_id,
+    token="user-a",
+    job_id=text_result.job_id,
+)
 deleted = core.delete_document(stream_result.doc_id, token="user-a")
 ```
 
