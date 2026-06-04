@@ -79,7 +79,7 @@ def test_ingest_text_stores_string_input_as_managed_asset(tmp_path: Path) -> Non
 
     result = core.ingest_text(token="token-a", text="alpha asset text", source="asset.txt")
 
-    stored = core.get_document(result.doc_id)
+    stored = core.get_document(result.doc_id, token="token-a")
     assert stored is not None
     assert stored.storage_path is not None
     stored_path = Path(stored.storage_path)
@@ -92,7 +92,7 @@ def test_ingest_text_memory_storage_uses_logical_asset_path(tmp_path: Path) -> N
 
     result = core.ingest_text(token="token-a", text="alpha memory asset", source="memory.txt")
 
-    stored = core.get_document(result.doc_id)
+    stored = core.get_document(result.doc_id, token="token-a")
     assert stored is not None
     assert stored.storage_path is not None
     assert stored.storage_path.startswith("memory://")
@@ -105,7 +105,7 @@ def test_ingest_file_stream_copies_input_stream_into_managed_storage(tmp_path: P
 
     result = core.ingest_file_stream(token="token-a", file_stream=stream, source="source.txt")
 
-    stored = core.get_document(result.doc_id)
+    stored = core.get_document(result.doc_id, token="token-a")
     assert stored is not None
     assert stored.storage_path is not None
     stored_path = Path(stored.storage_path)
@@ -132,7 +132,7 @@ def test_ingest_file_path_reads_existing_file_via_dedicated_api(tmp_path: Path) 
 
     result = core.ingest_file_path(token="token-a", file_path=source_file)
 
-    stored = core.get_document(result.doc_id)
+    stored = core.get_document(result.doc_id, token="token-a")
     assert stored is not None
     assert stored.source == "existing.txt"
     assert stored.storage_path is not None
@@ -194,7 +194,7 @@ def test_query_prompt_includes_system_query_and_context(tmp_path: Path) -> None:
 def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Path) -> None:
     core = create_core(tmp_path)
     result = core.ingest_text(token="token-a", text="alpha sqlite", source="sqlite.txt")
-    stored = core.get_document(result.doc_id)
+    stored = core.get_document(result.doc_id, token="token-a")
     assert stored is not None
 
     assert hasattr(core.metadata_store, "engine")
@@ -263,6 +263,19 @@ def test_list_document_chunks_returns_only_requested_document_chunks(tmp_path: P
     assert all(chunk.doc_id != second.doc_id for chunk in chunks)
 
 
+def test_get_document_is_limited_to_current_token_scope(tmp_path: Path) -> None:
+    core = create_core(tmp_path)
+    token_a_result = core.ingest_text(token="token-a", text="alpha scoped document", source="a.txt")
+    core.ingest_text(token="token-b", text="beta scoped document", source="b.txt")
+
+    visible = core.get_document(token_a_result.doc_id, token="token-a")
+    hidden = core.get_document(token_a_result.doc_id, token="token-b")
+
+    assert visible is not None
+    assert visible.doc_id == token_a_result.doc_id
+    assert hidden is None
+
+
 def test_delete_document_removes_metadata_chunks_asset_and_query_visibility(tmp_path: Path) -> None:
     core = create_core(tmp_path, storage_mode="local")
     target = core.ingest_text(
@@ -275,7 +288,7 @@ def test_delete_document_removes_metadata_chunks_asset_and_query_visibility(tmp_
         text="beta survivor document only.",
         source="survivor.txt",
     )
-    stored = core.get_document(target.doc_id)
+    stored = core.get_document(target.doc_id, token="token-a")
     assert stored is not None
     assert stored.storage_path is not None
     stored_path = Path(stored.storage_path)
@@ -284,7 +297,7 @@ def test_delete_document_removes_metadata_chunks_asset_and_query_visibility(tmp_
     deleted = core.delete_document(target.doc_id, token="token-a")
 
     assert deleted is True
-    assert core.get_document(target.doc_id) is None
+    assert core.get_document(target.doc_id, token="token-a") is None
     assert core.list_document_chunks(target.doc_id, token="token-a") == []
     assert not stored_path.exists()
     assert [doc.doc_id for doc in core.list_documents(token="token-a")] == [survivor.doc_id]
@@ -301,7 +314,7 @@ def test_metadata_persists_across_restarts(tmp_path: Path) -> None:
 
     documents = restarted.list_documents(token="token-a")
     assert [doc.doc_id for doc in documents] == [first.doc_id]
-    stored = restarted.get_document(first.doc_id)
+    stored = restarted.get_document(first.doc_id, token="token-a")
     assert stored is not None
     assert stored.user_id == "token-a"
     assert stored.source == "persist.txt"

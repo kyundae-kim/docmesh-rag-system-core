@@ -132,6 +132,12 @@ class MetadataStore:
             row = session.get(DocumentModel, doc_id)
         return document_record_from_model(row)
 
+    def get_document_for_user(self, *, doc_id: str, user_id: str) -> DocumentRecord | None:
+        statement = select(DocumentModel).where(DocumentModel.doc_id == doc_id, DocumentModel.user_id == user_id)
+        with self.session() as session:
+            row = session.scalars(statement).first()
+        return document_record_from_model(row)
+
     def list_documents(self, user_id: str) -> list[DocumentRecord]:
         statement = select(DocumentModel).where(DocumentModel.user_id == user_id).order_by(DocumentModel.created_at)
         with self.session() as session:
@@ -547,8 +553,9 @@ class RAGCore:
         resolved_user_id = resolve_user_id(token)
         return self.metadata_store.list_documents(resolved_user_id)
 
-    def get_document(self, doc_id: str) -> DocumentRecord | None:
-        return self.metadata_store.get_document(doc_id)
+    def get_document(self, doc_id: str, *, token: str | None = None) -> DocumentRecord | None:
+        resolved_user_id = resolve_user_id(token)
+        return self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=resolved_user_id)
 
     def list_document_chunks(self, doc_id: str, *, token: str | None = None) -> list[ChunkRecord]:
         resolved_user_id = resolve_user_id(token)

@@ -6,6 +6,11 @@ DocMesh 프로젝트의 RAG System core package
 
 이 패키지는 문서 적재, 검색, 답변 생성을 담당하는 RAG 코어입니다.
 
+관련 문서:
+- [PRD](docs/prd.md)
+- [API 문서](docs/api.md)
+- [테스트 문서](docs/test.md)
+
 현재 코어는 다음 원칙으로 동작합니다.
 - `token` 기반 사용자 스코프 분리
 - 코어 내부에서 인증 상태를 저장하지 않는 stateless 구조
