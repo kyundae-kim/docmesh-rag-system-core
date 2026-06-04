@@ -58,7 +58,7 @@ class GenerationClient:
 core = RAGCore(
     embedding_client=EmbeddingClient(),
     generation_client=GenerationClient(),
-    metadata_path=Path("./data/metadata.json"),
+    metadata_path=Path("./data/metadata.db"),
     document_storage_dir=Path("./data/documents"),
     storage_mode="local",
 )
@@ -118,7 +118,9 @@ print(single_user_response.answer)
   - `[System Prompt]`
   - `[Retrieved Context]`
   - `[User Query]`
-- 메타데이터 persistence 지원
+- SQLAlchemy ORM + SQLite 기반 문서/청크 메타데이터 persistence 지원
+- 재시작 시 저장된 청크/임베딩을 다시 로드해 retrieval 복원 가능
+- 문서별 청크 조회 및 문서 삭제 시 메타데이터/청크/자산 정리 지원
 - memory / local storage 모드 지원
 - 문서 자산 경로(`storage_path`) 기반 문서 관리
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
+from sqlalchemy import inspect
+
 from rag_system_core import RAGCore
 
 
@@ -42,7 +44,7 @@ def create_core(tmp_path: Path, *, storage_mode: str = "memory") -> RAGCore:
     return RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
-        metadata_path=tmp_path / "metadata.json",
+        metadata_path=tmp_path / "metadata.db",
         document_storage_dir=tmp_path / "documents",
         storage_mode=storage_mode,
         chunk_size=32,
@@ -187,6 +189,108 @@ def test_query_prompt_includes_system_query_and_context(tmp_path: Path) -> None:
     assert "[Retrieved Context]" in prompt
     assert "alpha context block" in prompt
     assert "[User Query]\nSummarize alpha" in prompt
+
+
+def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Path) -> None:
+    core = create_core(tmp_path)
+    result = core.ingest_text(token="token-a", text="alpha sqlite", source="sqlite.txt")
+    stored = core.get_document(result.doc_id)
+    assert stored is not None
+
+    assert hasattr(core.metadata_store, "engine")
+    assert hasattr(core.metadata_store, "DocumentModel")
+    assert hasattr(core.metadata_store, "ChunkModel")
+
+    inspector = inspect(core.metadata_store.engine)
+    assert "documents" in inspector.get_table_names()
+    assert "chunks" in inspector.get_table_names()
+
+    with core.metadata_store.session() as session:
+        row = session.get(core.metadata_store.DocumentModel, result.doc_id)
+
+    assert row is not None
+    assert row.doc_id == result.doc_id
+    assert row.user_id == "token-a"
+    assert row.source == "sqlite.txt"
+    assert row.storage_path == stored.storage_path
+
+
+def test_chunk_rows_are_persisted_and_rehydrated_across_restarts(tmp_path: Path) -> None:
+    core = create_core(tmp_path, storage_mode="local")
+    result = core.ingest_text(
+        token="token-a",
+        text="alpha one. beta two. gamma three. delta four. epsilon five.",
+        source="persist.txt",
+    )
+
+    with core.metadata_store.session() as session:
+        chunk_rows = (
+            session.query(core.metadata_store.ChunkModel)
+            .filter_by(doc_id=result.doc_id)
+            .order_by(core.metadata_store.ChunkModel.chunk_index)
+            .all()
+        )
+
+    assert len(chunk_rows) == result.chunk_count
+    assert all(row.user_id == "token-a" for row in chunk_rows)
+    assert all(row.embedding for row in chunk_rows)
+    assert all(row.content for row in chunk_rows)
+
+    restarted = create_core(tmp_path, storage_mode="local")
+    response = restarted.query(token="token-a", question="Where is alpha?", top_k=3)
+
+    assert response.context_chunks
+    assert any("alpha" in chunk.content.lower() for chunk in response.context_chunks)
+
+
+def test_list_document_chunks_returns_only_requested_document_chunks(tmp_path: Path) -> None:
+    core = create_core(tmp_path)
+    first = core.ingest_text(
+        token="token-a",
+        text="alpha one. beta two. gamma three. delta four. epsilon five.",
+        source="first.txt",
+    )
+    second = core.ingest_text(
+        token="token-a",
+        text="alpha separate document for second result set only.",
+        source="second.txt",
+    )
+
+    chunks = core.list_document_chunks(first.doc_id, token="token-a")
+
+    assert len(chunks) == first.chunk_count
+    assert all(chunk.doc_id == first.doc_id for chunk in chunks)
+    assert all(chunk.doc_id != second.doc_id for chunk in chunks)
+
+
+def test_delete_document_removes_metadata_chunks_asset_and_query_visibility(tmp_path: Path) -> None:
+    core = create_core(tmp_path, storage_mode="local")
+    target = core.ingest_text(
+        token="token-a",
+        text="alpha one. beta two. gamma three. delta four. epsilon five.",
+        source="target.txt",
+    )
+    survivor = core.ingest_text(
+        token="token-a",
+        text="beta survivor document only.",
+        source="survivor.txt",
+    )
+    stored = core.get_document(target.doc_id)
+    assert stored is not None
+    assert stored.storage_path is not None
+    stored_path = Path(stored.storage_path)
+    assert stored_path.exists()
+
+    deleted = core.delete_document(target.doc_id, token="token-a")
+
+    assert deleted is True
+    assert core.get_document(target.doc_id) is None
+    assert core.list_document_chunks(target.doc_id, token="token-a") == []
+    assert not stored_path.exists()
+    assert [doc.doc_id for doc in core.list_documents(token="token-a")] == [survivor.doc_id]
+
+    response = core.query(token="token-a", question="Where is alpha?", top_k=5)
+    assert all(chunk.doc_id != target.doc_id for chunk in response.context_chunks)
 
 
 def test_metadata_persists_across_restarts(tmp_path: Path) -> None:

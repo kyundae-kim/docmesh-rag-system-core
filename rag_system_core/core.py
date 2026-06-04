@@ -1,16 +1,45 @@
 from __future__ import annotations
 
-import json
 import math
 from io import BytesIO
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO, Protocol
 from uuid import uuid4
 
+from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine, select
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+
 
 DEFAULT_SINGLE_USER_ID = "single-user"
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class DocumentModel(Base):
+    __tablename__ = "documents"
+
+    doc_id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    storage_path: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class ChunkModel(Base):
+    __tablename__ = "chunks"
+
+    chunk_id: Mapped[str] = mapped_column(String, primary_key=True)
+    doc_id: Mapped[str] = mapped_column(ForeignKey("documents.doc_id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    metadata_json: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
+    embedding: Mapped[list[float]] = mapped_column(JSON, nullable=False)
 
 
 class EmbeddingClient(Protocol):
@@ -56,42 +85,101 @@ class QueryResult:
 
 
 class MetadataStore:
+    DocumentModel = DocumentModel
+    ChunkModel = ChunkModel
+
     def __init__(self, path: Path) -> None:
         self.path = path
-        self._documents: dict[str, DocumentRecord] = {}
-        self._load()
-
-    def _load(self) -> None:
-        if not self.path.exists():
-            return
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
-        self._documents = {
-            item["doc_id"]: DocumentRecord(**item)
-            for item in raw.get("documents", [])
-        }
-
-    def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "documents": [asdict(record) for record in self._documents.values()],
-        }
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        self.engine: Engine = create_engine(f"sqlite+pysqlite:///{self.path}")
+        self.session = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self._initialize()
+
+    def _initialize(self) -> None:
+        Base.metadata.create_all(self.engine)
 
     def add_document(self, document: DocumentRecord) -> None:
-        self._documents[document.doc_id] = document
-        self._save()
+        model = DocumentModel(
+            doc_id=document.doc_id,
+            user_id=document.user_id,
+            source=document.source,
+            created_at=document.created_at,
+            storage_path=document.storage_path,
+        )
+        with self.session() as session:
+            session.merge(model)
+            session.commit()
+
+    def add_chunks(self, chunks: list[ChunkRecord], embeddings: list[list[float]]) -> None:
+        models = [
+            ChunkModel(
+                chunk_id=chunk.chunk_id,
+                doc_id=chunk.doc_id,
+                user_id=chunk.user_id,
+                chunk_index=index,
+                content=chunk.content,
+                metadata_json=chunk.metadata,
+                embedding=embedding,
+            )
+            for index, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=True))
+        ]
+        with self.session() as session:
+            session.add_all(models)
+            session.commit()
 
     def get_document(self, doc_id: str) -> DocumentRecord | None:
-        return self._documents.get(doc_id)
+        with self.session() as session:
+            row = session.get(DocumentModel, doc_id)
+        return document_record_from_model(row)
 
     def list_documents(self, user_id: str) -> list[DocumentRecord]:
-        return sorted(
-            (doc for doc in self._documents.values() if doc.user_id == user_id),
-            key=lambda doc: doc.created_at,
+        statement = select(DocumentModel).where(DocumentModel.user_id == user_id).order_by(DocumentModel.created_at)
+        with self.session() as session:
+            rows = session.scalars(statement).all()
+        documents: list[DocumentRecord] = []
+        for row in rows:
+            record = document_record_from_model(row)
+            if record is not None:
+                documents.append(record)
+        return documents
+
+    def list_chunks(self, user_id: str | None = None) -> list[ChunkRecord]:
+        statement = select(ChunkModel).order_by(ChunkModel.user_id, ChunkModel.doc_id, ChunkModel.chunk_index)
+        if user_id is not None:
+            statement = statement.where(ChunkModel.user_id == user_id)
+        with self.session() as session:
+            rows = session.scalars(statement).all()
+        return [chunk_record_from_model(row) for row in rows]
+
+    def load_chunk_embeddings(self, user_id: str | None = None) -> list[tuple[ChunkRecord, list[float]]]:
+        statement = select(ChunkModel).order_by(ChunkModel.user_id, ChunkModel.doc_id, ChunkModel.chunk_index)
+        if user_id is not None:
+            statement = statement.where(ChunkModel.user_id == user_id)
+        with self.session() as session:
+            rows = session.scalars(statement).all()
+        return [(chunk_record_from_model(row), list(row.embedding)) for row in rows]
+
+    def list_document_chunks(self, *, doc_id: str, user_id: str) -> list[ChunkRecord]:
+        statement = (
+            select(ChunkModel)
+            .where(ChunkModel.doc_id == doc_id, ChunkModel.user_id == user_id)
+            .order_by(ChunkModel.chunk_index)
         )
+        with self.session() as session:
+            rows = session.scalars(statement).all()
+        return [chunk_record_from_model(row) for row in rows]
+
+    def delete_document(self, *, doc_id: str, user_id: str) -> DocumentRecord | None:
+        with self.session() as session:
+            document = session.get(DocumentModel, doc_id)
+            if document is None or document.user_id != user_id:
+                return None
+            chunk_rows = session.scalars(select(ChunkModel).where(ChunkModel.doc_id == doc_id)).all()
+            for chunk in chunk_rows:
+                session.delete(chunk)
+            session.delete(document)
+            session.commit()
+        return document_record_from_model(document)
 
 
 class DocumentStorage:
@@ -144,6 +232,16 @@ class DocumentStorage:
                 return path.read_text(encoding="utf-8")
         return None
 
+    def delete(self, document: DocumentRecord) -> None:
+        if not document.storage_path:
+            return
+        if document.storage_path.startswith("memory://"):
+            self._memory_documents.pop(document.storage_path, None)
+            return
+        path = Path(document.storage_path)
+        if path.exists():
+            path.unlink()
+
 
 class FixedWindowChunker:
     def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
@@ -188,6 +286,9 @@ class InMemoryVectorStore:
             reverse=True,
         )
         return [chunk for chunk, _ in ranked[:top_k]]
+
+    def delete_document(self, doc_id: str) -> None:
+        self._entries = [entry for entry in self._entries if entry[0].doc_id != doc_id]
 
 
 class IngestionService:
@@ -310,6 +411,7 @@ class IngestionService:
         return self.embedding_client.embed(chunks)
 
     def store(self, chunks: list[ChunkRecord], embeddings: list[list[float]]) -> None:
+        self.metadata_store.add_chunks(chunks, embeddings)
         self.vector_store.add(chunks, embeddings)
 
 
@@ -386,6 +488,15 @@ class RAGCore:
             vector_store=self.vector_store,
         )
         self.generator = GenerationService(generation_client)
+        self._restore_vector_store_from_metadata()
+
+    def _restore_vector_store_from_metadata(self) -> None:
+        persisted_entries = self.metadata_store.load_chunk_embeddings()
+        if not persisted_entries:
+            return
+        chunks = [chunk for chunk, _ in persisted_entries]
+        embeddings = [embedding for _, embedding in persisted_entries]
+        self.vector_store.add(chunks, embeddings)
 
     def ingest_text(self, *, text: str, source: str, token: str | None = None) -> IngestResult:
         resolved_user_id = resolve_user_id(token)
@@ -438,6 +549,41 @@ class RAGCore:
 
     def get_document(self, doc_id: str) -> DocumentRecord | None:
         return self.metadata_store.get_document(doc_id)
+
+    def list_document_chunks(self, doc_id: str, *, token: str | None = None) -> list[ChunkRecord]:
+        resolved_user_id = resolve_user_id(token)
+        return self.metadata_store.list_document_chunks(doc_id=doc_id, user_id=resolved_user_id)
+
+    def delete_document(self, doc_id: str, *, token: str | None = None) -> bool:
+        resolved_user_id = resolve_user_id(token)
+        document = self.metadata_store.delete_document(doc_id=doc_id, user_id=resolved_user_id)
+        if document is None:
+            return False
+        self.document_storage.delete(document)
+        self.vector_store.delete_document(doc_id)
+        return True
+
+
+def document_record_from_model(row: DocumentModel | None) -> DocumentRecord | None:
+    if row is None:
+        return None
+    return DocumentRecord(
+        doc_id=row.doc_id,
+        user_id=row.user_id,
+        source=row.source,
+        created_at=row.created_at,
+        storage_path=row.storage_path,
+    )
+
+
+def chunk_record_from_model(row: ChunkModel) -> ChunkRecord:
+    return ChunkRecord(
+        chunk_id=row.chunk_id,
+        doc_id=row.doc_id,
+        user_id=row.user_id,
+        content=row.content,
+        metadata=dict(row.metadata_json),
+    )
 
 
 def resolve_user_id(token: str | None) -> str:
