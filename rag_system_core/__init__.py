@@ -3,6 +3,8 @@ from rag_system_core.core import (
     DocumentRecord,
     IngestionProgressRecord,
     IngestResult,
+    OllamaEmbeddingClient,
+    OllamaSettings,
     QueryResult,
     RAGCore,
 )
@@ -12,6 +14,8 @@ __all__ = [
     "DocumentRecord",
     "IngestionProgressRecord",
     "IngestResult",
+    "OllamaEmbeddingClient",
+    "OllamaSettings",
     "QueryResult",
     "RAGCore",
 ]

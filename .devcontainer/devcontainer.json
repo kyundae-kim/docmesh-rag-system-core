@@ -2,7 +2,7 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/postgres
 {
 	"name": "Docmesh RAG System Core Dev Container",
-	"dockerComposeFile": "docker-compose.yml",
+	"dockerComposeFile": ["docker-compose.yml", "docker-compose.ollama.yml"],
 	"service": "app",
 	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 	"features": {

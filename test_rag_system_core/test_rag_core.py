@@ -5,7 +5,53 @@ from pathlib import Path
 
 from sqlalchemy import inspect
 
-from rag_system_core import RAGCore
+import rag_system_core.core as core_module
+from rag_system_core import OllamaEmbeddingClient, RAGCore
+
+
+def test_ollama_embedding_client_requires_model_when_not_configured(monkeypatch) -> None:
+    monkeypatch.delenv("OLLAMA_EMBED_MODEL", raising=False)
+
+    try:
+        OllamaEmbeddingClient(base_url="http://ollama", timeout=7.0)
+    except ValueError as exc:
+        assert str(exc) == "Ollama embed model must be provided either as 'model' or OLLAMA_EMBED_MODEL"
+    else:
+        raise AssertionError("Expected ValueError when no Ollama embed model is configured")
+
+
+def test_ollama_embedding_client_reads_configuration_from_environment(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *, host: str, timeout: float) -> None:
+            captured["host"] = host
+            captured["timeout"] = timeout
+
+        def embed(self, *, model: str, input: list[str]):
+            captured["model"] = model
+            captured["input"] = input
+            return {"embeddings": [[1.0, 0.0, 0.5]]}
+
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama")
+    monkeypatch.setenv("OLLAMA_EMBED_MODEL", "bge-m3")
+    monkeypatch.setenv("OLLAMA_TIMEOUT", "12.5")
+
+    original_client = core_module.ollama.Client
+    core_module.ollama.Client = FakeClient
+    try:
+        client = OllamaEmbeddingClient()
+        vectors = client.embed(["alpha"])
+    finally:
+        core_module.ollama.Client = original_client
+
+    assert vectors == [[1.0, 0.0, 0.5]]
+    assert captured == {
+        "host": "http://ollama",
+        "timeout": 12.5,
+        "model": "bge-m3",
+        "input": ["alpha"],
+    }
 
 
 class FakeEmbeddingClient:
@@ -50,6 +96,84 @@ def create_core(tmp_path: Path, *, storage_mode: str = "memory") -> RAGCore:
         chunk_size=32,
         chunk_overlap=4,
     )
+
+
+def test_ollama_embedding_client_uses_ollama_package_client() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *, host: str, timeout: float) -> None:
+            captured["host"] = host
+            captured["timeout"] = timeout
+
+        def embed(self, *, model: str, input: list[str]):
+            captured["model"] = model
+            captured["input"] = input
+            return {"embeddings": [[1.0, 0.0, 0.5], [0.0, 1.0, 0.5]]}
+
+    original_client = core_module.ollama.Client
+    core_module.ollama.Client = FakeClient
+    try:
+        client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+        vectors = client.embed(["alpha", "beta"])
+    finally:
+        core_module.ollama.Client = original_client
+
+    assert vectors == [[1.0, 0.0, 0.5], [0.0, 1.0, 0.5]]
+    assert captured == {
+        "host": "http://ollama",
+        "timeout": 7.0,
+        "model": "bge-m3",
+        "input": ["alpha", "beta"],
+    }
+
+
+def test_ollama_embedding_client_wraps_ollama_transport_errors() -> None:
+    class FakeClient:
+        def __init__(self, *, host: str, timeout: float) -> None:
+            del host, timeout
+
+        def embed(self, *, model: str, input: list[str]):
+            del model, input
+            raise ConnectionError("boom")
+
+    original_client = core_module.ollama.Client
+    core_module.ollama.Client = FakeClient
+    try:
+        client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+        try:
+            client.embed(["alpha"])
+        except RuntimeError as exc:
+            assert str(exc) == "Failed to fetch embeddings from Ollama"
+            assert isinstance(exc.__cause__, ConnectionError)
+        else:
+            raise AssertionError("Expected RuntimeError when Ollama embed call fails")
+    finally:
+        core_module.ollama.Client = original_client
+
+
+def test_ollama_embedding_client_rejects_malformed_embeddings_response() -> None:
+    class FakeClient:
+        def __init__(self, *, host: str, timeout: float) -> None:
+            del host, timeout
+
+        def embed(self, *, model: str, input: list[str]):
+            del model, input
+            return {}
+
+    original_client = core_module.ollama.Client
+    core_module.ollama.Client = FakeClient
+    try:
+        client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+        try:
+            client.embed(["alpha"])
+        except RuntimeError as exc:
+            assert str(exc) == "Ollama returned a malformed embeddings response"
+            assert isinstance(exc.__cause__, KeyError)
+        else:
+            raise AssertionError("Expected RuntimeError for malformed Ollama embeddings response")
+    finally:
+        core_module.ollama.Client = original_client
 
 
 def test_ingest_text_uses_token_as_user_scope(tmp_path: Path) -> None:

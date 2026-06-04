@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import BinaryIO, Protocol
 from uuid import uuid4
 
+import ollama
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -58,6 +60,52 @@ class IngestionProgressModel(Base):
 
 class EmbeddingClient(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+class OllamaSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="OLLAMA_",
+        env_file=".env",
+        extra="ignore",
+    )
+
+    base_url: str = "http://ollama:11434"
+    embed_model: str | None = None
+    timeout: float = 30.0
+
+
+class OllamaEmbeddingClient:
+    def __init__(
+        self,
+        *,
+        model: str | None = None,
+        base_url: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        settings = OllamaSettings()
+        resolved_model = model or settings.embed_model
+        if resolved_model is None or not resolved_model.strip():
+            raise ValueError("Ollama embed model must be provided either as 'model' or OLLAMA_EMBED_MODEL")
+        self.model = resolved_model
+        self.base_url = (base_url or settings.base_url).rstrip("/")
+        self.timeout = timeout if timeout is not None else settings.timeout
+        self._client = ollama.Client(host=self.base_url, timeout=self.timeout)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+
+        try:
+            response = self._client.embed(model=self.model, input=texts)
+        except Exception as exc:
+            raise RuntimeError("Failed to fetch embeddings from Ollama") from exc
+
+        try:
+            embeddings = response["embeddings"]
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError("Ollama returned a malformed embeddings response") from exc
+
+        return [[float(value) for value in vector] for vector in embeddings]
 
 
 class GenerationClient(Protocol):

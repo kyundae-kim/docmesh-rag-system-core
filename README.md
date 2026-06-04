@@ -47,12 +47,7 @@ DocMesh 프로젝트의 RAG System core package
 from io import BytesIO
 from pathlib import Path
 
-from rag_system_core import RAGCore
-
-
-class EmbeddingClient:
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        raise NotImplementedError
+from rag_system_core import OllamaEmbeddingClient, RAGCore
 
 
 class GenerationClient:
@@ -60,8 +55,12 @@ class GenerationClient:
         raise NotImplementedError
 
 
+# environment variables:
+# - OLLAMA_BASE_URL=http://ollama:11434
+# - OLLAMA_EMBED_MODEL=bge-m3
+# - OLLAMA_TIMEOUT=30
 core = RAGCore(
-    embedding_client=EmbeddingClient(),
+    embedding_client=OllamaEmbeddingClient(),
     generation_client=GenerationClient(),
     metadata_path=Path("./data/metadata.db"),
     document_storage_dir=Path("./data/documents"),
