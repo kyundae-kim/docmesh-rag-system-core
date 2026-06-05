@@ -34,8 +34,8 @@ DocMesh 프로젝트는 문서를 적재하고, 관련 컨텍스트를 검색한
 - 사용자는 텍스트, 파일 스트림, 파일 경로로 문서를 적재할 수 있다.
 - 사용자는 자신의 token 스코프에 속한 문서만 검색할 수 있다.
 - 시스템은 문서와 청크 메타데이터를 영속화할 수 있다.
-- 시스템은 재시작 후 저장된 청크/임베딩을 기반으로 retrieval을 복원할 수 있다.
-- 문서 삭제 시 메타데이터, 청크, 문서 자산, 메모리 내 검색 인덱스가 함께 정리된다.
+- 시스템은 재시작 후 저장된 청크/임베딩과 동일한 Milvus Lite 컬렉션을 기반으로 retrieval을 복원할 수 있다.
+- 문서 삭제 시 메타데이터, 청크, 문서 자산, Milvus Lite 검색 엔트리가 함께 정리된다.
 
 ---
 
@@ -46,7 +46,7 @@ DocMesh 프로젝트는 문서를 적재하고, 관련 컨텍스트를 검색한
 - Knowledge ingestion
 - 문서 전처리 및 고정 길이 청킹
 - 배치 임베딩 호출 구조
-- lightweight vector store 기반 검색
+- lightweight Milvus Lite vector store 기반 검색
 - LLM 기반 답변 생성
 - token 기반 사용자 식별
 - user_id 기반 멀티 유저 데이터 격리
@@ -85,7 +85,7 @@ DocMesh 프로젝트는 문서를 적재하고, 관련 컨텍스트를 검색한
 - 사용자는 문자열, 파일 스트림, 파일 경로 형태로 문서를 입력한다.
 - 시스템은 전처리, 청킹, 임베딩을 수행한다.
 - 시스템은 문서 자산과 문서/청크 메타데이터를 기록한다.
-- 시스템은 벡터 검색용 메모리 저장소에 청크를 적재한다.
+- 시스템은 벡터 검색용 Milvus Lite 저장소에 청크를 적재한다.
 
 #### 시나리오 2: 사용자별 질의응답
 - 사용자는 `token`으로 식별된다.
@@ -95,7 +95,7 @@ DocMesh 프로젝트는 문서를 적재하고, 관련 컨텍스트를 검색한
 
 #### 시나리오 3: 재시작 이후 검색 복원
 - 프로세스 재시작 이후에도 문서 및 청크 메타데이터는 유지되어야 한다.
-- 시스템은 저장된 청크/임베딩을 다시 읽어 in-memory vector store를 복원할 수 있어야 한다.
+- 시스템은 저장된 청크/임베딩 및 동일한 Milvus Lite 컬렉션을 다시 사용해 retrieval을 복원할 수 있어야 한다.
 
 #### 시나리오 4: 문서 단위 관리
 - 사용자는 특정 문서의 청크 목록을 조회할 수 있어야 한다.
@@ -191,8 +191,8 @@ DocMesh 프로젝트는 문서를 적재하고, 관련 컨텍스트를 검색한
 ### 6.5 Vector Storage 요구사항
 
 #### PRD-FR-11. 벡터 저장소
-- MVP는 in-memory vector store를 사용한다.
-- 향후 Milvus 등 외부 vector DB로 교체 가능한 구조여야 한다.
+- MVP는 Milvus Lite 기반 로컬 persistent vector store를 사용한다.
+- 향후 Milvus 서버/외부 vector DB로 교체 가능한 구조여야 한다.
 
 #### PRD-FR-12. 멀티테넌트 구조
 - 현재 구현은 청크 메타데이터와 검색 시 `user_id` 필터로 사용자 격리를 유지한다.
@@ -270,7 +270,7 @@ DocMesh 프로젝트는 문서를 적재하고, 관련 컨텍스트를 검색한
  └ GenerationService
 
 [Storage]
- ├ InMemoryVectorStore
+ ├ Milvus Lite Vector Store
  ├ MetadataStore (SQLAlchemy ORM + SQLite)
  └ DocumentStorage (memory | local)
 
@@ -352,7 +352,7 @@ class RAGCore:
 - 문서별 청크 조회
 - 문서별 ingestion progress 조회
 - 문서 삭제
-- 재시작 복원용 chunk + embedding 로드
+- 재시작 복원용 chunk 메타데이터 관리
 
 ---
 
@@ -375,13 +375,12 @@ storage_path
 필수 필드:
 
 ```text
-chunk_id (PK)
+chunk_id (PK, Milvus generated id mirrored into metadata store)
 doc_id (FK -> documents.doc_id)
 user_id
 chunk_index
 content
 metadata_json
-embedding
 ```
 
 ### 10.3 ingestion_progress
@@ -436,8 +435,8 @@ metadata
 - `memory` 문서 저장은 재시작 시 자산이 유지되지 않는다.
 - 대응: 메타데이터 및 청크 persistence는 SQLite에 유지
 
-### R4. in-memory vector store 한계
-- 현재 검색 저장소는 메모리 기반이므로 대규모 운영에 부적합하다.
+### R4. Milvus Lite 운영 한계
+- 현재 검색 저장소는 단일 파일 기반 Milvus Lite이므로 대규모 운영에 부적합하다.
 - 대응: 향후 외부 vector DB로 교체 가능한 구조 유지
 
 ### R5. 단일 클래스 구조의 확장 한계
@@ -453,7 +452,7 @@ metadata
 - 텍스트 / 파일 스트림 / 파일 경로 적재
 - 기본 전처리 및 고정 길이 청킹
 - 배치 임베딩 호출 구조
-- in-memory vector search
+- Milvus Lite vector search
 - 사용자별 질의응답
 - SQLAlchemy ORM + SQLite 기반 문서/청크 메타데이터 저장
 - 재시작 시 retrieval 복원

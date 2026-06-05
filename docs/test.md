@@ -25,7 +25,7 @@
 
 ### 2.2 제외 범위
 - 실제 Ollama 연동 테스트
-- 실제 외부 vector DB 연동 테스트
+- 원격 Milvus 서버 연동 테스트
 - 성능/부하 테스트
 - 외부 API 서버 계약 테스트
 
@@ -89,11 +89,11 @@
 
 ### 5.5 재시작 복원
 - 재초기화 후에도 문서 메타데이터가 조회되어야 한다.
-- 재초기화 후에도 chunk/embedding을 통해 query가 가능해야 한다.
+- 재초기화 후에도 Milvus Lite가 관리하는 embedding을 통해 query가 가능해야 한다.
 
 ### 5.6 ingestion progress
 - 문서 적재 후 파이프라인 단계별 progress row가 저장되어야 한다.
-- progress row는 `load -> preprocess -> chunking -> embedding -> chunk_persistence -> vector_store` 순서를 유지해야 한다.
+- progress row는 `load -> preprocess -> chunking -> embedding -> vector_store -> chunk_persistence` 순서를 유지해야 한다.
 - progress row는 ingestion 실행 단위를 구분하는 `job_id`를 포함해야 한다.
 - progress 상태는 최소 `running`, `completed`, `failed`를 표현해야 한다.
 - progress 조회도 현재 token scope로 제한되어야 한다.
@@ -105,7 +105,7 @@
   - chunk metadata
   - ingestion progress metadata
   - stored asset
-  - in-memory vector store entry
+  - Milvus Lite vector store entry
 - 삭제된 문서의 chunk는 query 결과에 포함되지 않아야 한다.
 
 ### 5.8 프롬프트 생성
@@ -128,6 +128,7 @@
 - `test_ingest_file_stream_requires_explicit_source`
 - `test_query_filters_results_by_token_derived_user_id`
 - `test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table`
+- `test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata`
 - `test_ingestion_progress_rows_are_persisted_in_pipeline_order`
 - `test_ingestion_progress_records_running_and_completed_statuses_per_job`
 - `test_ingestion_progress_records_failed_step_when_ingest_errors`

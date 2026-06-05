@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from io import BytesIO
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -9,6 +8,7 @@ from typing import BinaryIO, Protocol
 from uuid import uuid4
 
 import ollama
+from pymilvus import MilvusClient
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.engine import Engine
@@ -41,7 +41,6 @@ class ChunkModel(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(String, nullable=False)
     metadata_json: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
-    embedding: Mapped[list[float]] = mapped_column(JSON, nullable=False)
 
 
 class IngestionProgressModel(Base):
@@ -106,6 +105,18 @@ class OllamaEmbeddingClient:
             raise RuntimeError("Ollama returned a malformed embeddings response") from exc
 
         return [[float(value) for value in vector] for vector in embeddings]
+
+
+class MilvusSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="MILVUS_",
+        env_file=".env",
+        extra="ignore",
+    )
+
+    uri: str | None = None
+    collection_name: str = "rag_chunks"
+    timeout: float = 30.0
 
 
 class GenerationClient(Protocol):
@@ -187,7 +198,7 @@ class MetadataStore:
             session.merge(model)
             session.commit()
 
-    def add_chunks(self, chunks: list[ChunkRecord], embeddings: list[list[float]]) -> None:
+    def add_chunks(self, chunks: list[ChunkRecord]) -> None:
         models = [
             ChunkModel(
                 chunk_id=chunk.chunk_id,
@@ -196,9 +207,8 @@ class MetadataStore:
                 chunk_index=index,
                 content=chunk.content,
                 metadata_json=chunk.metadata,
-                embedding=embedding,
             )
-            for index, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=True))
+            for index, chunk in enumerate(chunks)
         ]
         with self.session() as session:
             session.add_all(models)
@@ -252,14 +262,6 @@ class MetadataStore:
         with self.session() as session:
             rows = session.scalars(statement).all()
         return [chunk_record_from_model(row) for row in rows]
-
-    def load_chunk_embeddings(self, user_id: str | None = None) -> list[tuple[ChunkRecord, list[float]]]:
-        statement = select(ChunkModel).order_by(ChunkModel.user_id, ChunkModel.doc_id, ChunkModel.chunk_index)
-        if user_id is not None:
-            statement = statement.where(ChunkModel.user_id == user_id)
-        with self.session() as session:
-            rows = session.scalars(statement).all()
-        return [(chunk_record_from_model(row), list(row.embedding)) for row in rows]
 
     def list_document_chunks(self, *, doc_id: str, user_id: str) -> list[ChunkRecord]:
         statement = (
@@ -393,25 +395,87 @@ class FixedWindowChunker:
         return [chunk for chunk in chunks if chunk]
 
 
-class InMemoryVectorStore:
-    def __init__(self) -> None:
-        self._entries: list[tuple[ChunkRecord, list[float]]] = []
+class VectorStore(Protocol):
+    def add(self, chunks: list[ChunkRecord], vectors: list[list[float]]) -> list[str]: ...
 
-    def add(self, chunks: list[ChunkRecord], vectors: list[list[float]]) -> None:
-        for chunk, vector in zip(chunks, vectors, strict=True):
-            self._entries.append((chunk, vector))
+    def search(self, *, user_id: str, query_vector: list[float], top_k: int) -> list[ChunkRecord]: ...
+
+    def delete_document(self, doc_id: str) -> None: ...
+
+    def delete_chunks(self, chunk_ids: list[str]) -> None: ...
+
+
+class MilvusLiteVectorStore:
+    def __init__(self, *, uri: str, collection_name: str, timeout: float = 30.0) -> None:
+        self.uri = uri
+        self.collection_name = collection_name
+        self.timeout = timeout
+        self._client = MilvusClient(uri=uri, timeout=timeout)
+
+    def add(self, chunks: list[ChunkRecord], vectors: list[list[float]]) -> list[str]:
+        if not chunks:
+            return []
+        if len(chunks) != len(vectors):
+            raise ValueError("chunks and vectors must have the same length")
+        self._ensure_collection(dimension=len(vectors[0]))
+        payload = [
+            {
+                "doc_id": chunk.doc_id,
+                "user_id": chunk.user_id,
+                "content": chunk.content,
+                "metadata": dict(chunk.metadata),
+                "embedding": [float(value) for value in vector],
+            }
+            for chunk, vector in zip(chunks, vectors, strict=True)
+        ]
+        result = self._client.insert(self.collection_name, payload, timeout=self.timeout)
+        return [str(value) for value in result.get("ids", [])]
 
     def search(self, *, user_id: str, query_vector: list[float], top_k: int) -> list[ChunkRecord]:
-        scoped_entries = [entry for entry in self._entries if entry[0].user_id == user_id]
-        ranked = sorted(
-            scoped_entries,
-            key=lambda entry: cosine_similarity(query_vector, entry[1]),
-            reverse=True,
+        if top_k <= 0 or not query_vector or not self._client.has_collection(self.collection_name):
+            return []
+        results = self._client.search(
+            self.collection_name,
+            data=[query_vector],
+            filter=f'user_id == "{escape_milvus_string(user_id)}"',
+            limit=top_k,
+            output_fields=["chunk_id", "doc_id", "user_id", "content", "metadata"],
+            timeout=self.timeout,
         )
-        return [chunk for chunk, _ in ranked[:top_k]]
+        hits = results[0] if results else []
+        return [chunk_record_from_milvus_hit(hit) for hit in hits]
 
     def delete_document(self, doc_id: str) -> None:
-        self._entries = [entry for entry in self._entries if entry[0].doc_id != doc_id]
+        if not self._client.has_collection(self.collection_name):
+            return
+        self._client.delete(
+            self.collection_name,
+            filter=f'doc_id == "{escape_milvus_string(doc_id)}"',
+            timeout=self.timeout,
+        )
+
+    def delete_chunks(self, chunk_ids: list[str]) -> None:
+        if not chunk_ids or not self._client.has_collection(self.collection_name):
+            return
+        self._client.delete(
+            self.collection_name,
+            ids=[int(chunk_id) for chunk_id in chunk_ids],
+            timeout=self.timeout,
+        )
+
+    def _ensure_collection(self, *, dimension: int) -> None:
+        if self._client.has_collection(self.collection_name):
+            return
+        self._client.create_collection(
+            collection_name=self.collection_name,
+            dimension=dimension,
+            primary_field_name="chunk_id",
+            id_type="int",
+            vector_field_name="embedding",
+            metric_type="COSINE",
+            auto_id=True,
+            timeout=self.timeout,
+        )
 
 
 class IngestionService:
@@ -420,8 +484,8 @@ class IngestionService:
         "preprocess",
         "chunking",
         "embedding",
-        "chunk_persistence",
         "vector_store",
+        "chunk_persistence",
     ]
 
     def __init__(
@@ -429,7 +493,7 @@ class IngestionService:
         *,
         chunker: FixedWindowChunker,
         embedding_client: EmbeddingClient,
-        vector_store: InMemoryVectorStore,
+        vector_store: VectorStore,
         metadata_store: MetadataStore,
         document_storage: DocumentStorage,
     ) -> None:
@@ -581,7 +645,7 @@ class IngestionService:
 
         chunk_records = [
             ChunkRecord(
-                chunk_id=str(uuid4()),
+                chunk_id="",
                 doc_id=doc_id,
                 user_id=user_id,
                 content=chunk,
@@ -627,13 +691,68 @@ class IngestionService:
             doc_id=doc_id,
             user_id=user_id,
             source=source,
+            step_name="vector_store",
+            status="running",
+            created_at=created_at,
+        )
+        try:
+            generated_chunk_ids = self.vector_store.add(chunk_records, embeddings)
+        except Exception:
+            self._record_progress_transition(
+                job_id=job_id,
+                doc_id=doc_id,
+                user_id=user_id,
+                source=source,
+                step_name="vector_store",
+                status="failed",
+                created_at=created_at,
+            )
+            raise
+        if len(generated_chunk_ids) != len(chunk_records):
+            self._record_progress_transition(
+                job_id=job_id,
+                doc_id=doc_id,
+                user_id=user_id,
+                source=source,
+                step_name="vector_store",
+                status="failed",
+                created_at=created_at,
+            )
+            raise RuntimeError("Milvus returned a mismatched number of chunk ids")
+        self._record_progress_transition(
+            job_id=job_id,
+            doc_id=doc_id,
+            user_id=user_id,
+            source=source,
+            step_name="vector_store",
+            status="completed",
+            created_at=created_at,
+        )
+
+        persisted_chunk_records = [
+            ChunkRecord(
+                chunk_id=chunk_id,
+                doc_id=chunk.doc_id,
+                user_id=chunk.user_id,
+                content=chunk.content,
+                metadata=dict(chunk.metadata),
+            )
+            for chunk, chunk_id in zip(chunk_records, generated_chunk_ids, strict=True)
+        ]
+
+        self._record_progress_transition(
+            job_id=job_id,
+            doc_id=doc_id,
+            user_id=user_id,
+            source=source,
             step_name="chunk_persistence",
             status="running",
             created_at=created_at,
         )
         try:
-            self.metadata_store.add_chunks(chunk_records, embeddings)
+            self.metadata_store.add_chunks(persisted_chunk_records)
         except Exception:
+            self.vector_store.delete_chunks(generated_chunk_ids)
             self._record_progress_transition(
                 job_id=job_id,
                 doc_id=doc_id,
@@ -650,38 +769,6 @@ class IngestionService:
             user_id=user_id,
             source=source,
             step_name="chunk_persistence",
-            status="completed",
-            created_at=created_at,
-        )
-
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="vector_store",
-            status="running",
-            created_at=created_at,
-        )
-        try:
-            self.vector_store.add(chunk_records, embeddings)
-        except Exception:
-            self._record_progress_transition(
-                job_id=job_id,
-                doc_id=doc_id,
-                user_id=user_id,
-                source=source,
-                step_name="vector_store",
-                status="failed",
-                created_at=created_at,
-            )
-            raise
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="vector_store",
             status="completed",
             created_at=created_at,
         )
@@ -732,12 +819,29 @@ class IngestionService:
         )
 
     def store(self, chunks: list[ChunkRecord], embeddings: list[list[float]]) -> None:
-        self.metadata_store.add_chunks(chunks, embeddings)
-        self.vector_store.add(chunks, embeddings)
+        generated_chunk_ids = self.vector_store.add(chunks, embeddings)
+        if len(generated_chunk_ids) != len(chunks):
+            self.vector_store.delete_chunks(generated_chunk_ids)
+            raise RuntimeError("Milvus returned a mismatched number of chunk ids")
+        persisted_chunk_records = [
+            ChunkRecord(
+                chunk_id=chunk_id,
+                doc_id=chunk.doc_id,
+                user_id=chunk.user_id,
+                content=chunk.content,
+                metadata=dict(chunk.metadata),
+            )
+            for chunk, chunk_id in zip(chunks, generated_chunk_ids, strict=True)
+        ]
+        try:
+            self.metadata_store.add_chunks(persisted_chunk_records)
+        except Exception:
+            self.vector_store.delete_chunks(generated_chunk_ids)
+            raise
 
 
 class RetrievalService:
-    def __init__(self, *, embedding_client: EmbeddingClient, vector_store: InMemoryVectorStore) -> None:
+    def __init__(self, *, embedding_client: EmbeddingClient, vector_store: VectorStore) -> None:
         self.embedding_client = embedding_client
         self.vector_store = vector_store
 
@@ -794,9 +898,16 @@ class RAGCore:
         chunk_overlap: int = 64,
     ) -> None:
         self.embedding_client = embedding_client
-        self.metadata_store = MetadataStore(Path(metadata_path))
+        metadata_path = Path(metadata_path)
+        self.metadata_store = MetadataStore(metadata_path)
         self.document_storage = DocumentStorage(storage_mode, Path(document_storage_dir))
-        self.vector_store = InMemoryVectorStore()
+        milvus_settings = MilvusSettings()
+        milvus_uri = milvus_settings.uri or str(metadata_path.with_suffix(".milvus.db"))
+        self.vector_store = MilvusLiteVectorStore(
+            uri=milvus_uri,
+            collection_name=milvus_settings.collection_name,
+            timeout=milvus_settings.timeout,
+        )
         self.ingestor = IngestionService(
             chunker=FixedWindowChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
             embedding_client=embedding_client,
@@ -809,15 +920,6 @@ class RAGCore:
             vector_store=self.vector_store,
         )
         self.generator = GenerationService(generation_client)
-        self._restore_vector_store_from_metadata()
-
-    def _restore_vector_store_from_metadata(self) -> None:
-        persisted_entries = self.metadata_store.load_chunk_embeddings()
-        if not persisted_entries:
-            return
-        chunks = [chunk for chunk, _ in persisted_entries]
-        embeddings = [embedding for _, embedding in persisted_entries]
-        self.vector_store.add(chunks, embeddings)
 
     def ingest_text(self, *, text: str, source: str, token: str | None = None) -> IngestResult:
         resolved_user_id = resolve_user_id(token)
@@ -888,11 +990,14 @@ class RAGCore:
 
     def delete_document(self, doc_id: str, *, token: str | None = None) -> bool:
         resolved_user_id = resolve_user_id(token)
-        document = self.metadata_store.delete_document(doc_id=doc_id, user_id=resolved_user_id)
+        document = self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=resolved_user_id)
         if document is None:
             return False
-        self.document_storage.delete(document)
         self.vector_store.delete_document(doc_id)
+        deleted_document = self.metadata_store.delete_document(doc_id=doc_id, user_id=resolved_user_id)
+        if deleted_document is None:
+            return False
+        self.document_storage.delete(deleted_document)
         return True
 
 
@@ -915,6 +1020,17 @@ def chunk_record_from_model(row: ChunkModel) -> ChunkRecord:
         user_id=row.user_id,
         content=row.content,
         metadata=dict(row.metadata_json),
+    )
+
+
+def chunk_record_from_milvus_hit(hit: dict) -> ChunkRecord:
+    entity = hit.get("entity", hit)
+    return ChunkRecord(
+        chunk_id=str(entity["chunk_id"]),
+        doc_id=str(entity["doc_id"]),
+        user_id=str(entity["user_id"]),
+        content=str(entity["content"]),
+        metadata=dict(entity.get("metadata") or {}),
     )
 
 
@@ -949,10 +1065,5 @@ def extract_doc_id_from_storage_path(storage_path: str) -> str:
     return name
 
 
-def cosine_similarity(left: list[float], right: list[float]) -> float:
-    numerator = sum(a * b for a, b in zip(left, right, strict=False))
-    left_norm = math.sqrt(sum(value * value for value in left))
-    right_norm = math.sqrt(sum(value * value for value in right))
-    if left_norm == 0 or right_norm == 0:
-        return 0.0
-    return numerator / (left_norm * right_norm)
+def escape_milvus_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')

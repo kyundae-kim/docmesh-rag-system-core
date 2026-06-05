@@ -329,7 +329,7 @@ delete_document(doc_id: str, *, token: str | None = None) -> bool
 - chunk metadata rows
 - ingestion progress rows
 - stored asset file or memory object
-- in-memory vector store entries
+- Milvus Lite vector store entries
 
 ---
 
@@ -367,8 +367,8 @@ delete_document(doc_id: str, *, token: str | None = None) -> bool
 - `local`: 실제 파일 저장 후 path 기록
 
 ### 6.3 Retrieval 복원
-- 프로세스 시작 시 `chunks` 테이블의 persisted chunk + embedding을 로드한다.
-- 이를 기반으로 in-memory vector store를 복원한다.
+- 프로세스 시작 시 동일한 Milvus Lite 컬렉션을 다시 열어 retrieval 가능 상태를 복원한다.
+- SQLite에는 청크 메타데이터만 유지하고, embedding 벡터는 Milvus Lite가 관리한다.
 
 ---
 
@@ -423,5 +423,5 @@ deleted = core.delete_document(stream_result.doc_id, token="user-a")
 
 ## 8. 알려진 현재 제약
 
-- vector store는 현재 in-memory 구현이다.
+- vector store는 현재 Milvus Lite 기반 로컬 영속 저장소 구현이다.
 - token과 user_id의 별도 매핑 저장소는 아직 없다. 현재는 token 문자열 자체를 scope로 사용한다.

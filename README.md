@@ -59,6 +59,9 @@ class GenerationClient:
 # - OLLAMA_BASE_URL=http://ollama:11434
 # - OLLAMA_EMBED_MODEL=bge-m3
 # - OLLAMA_TIMEOUT=30
+# - MILVUS_URI=./data/metadata.milvus.db
+# - MILVUS_COLLECTION_NAME=rag_chunks
+# - MILVUS_TIMEOUT=30
 core = RAGCore(
     embedding_client=OllamaEmbeddingClient(),
     generation_client=GenerationClient(),
