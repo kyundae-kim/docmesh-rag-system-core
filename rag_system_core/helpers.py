@@ -79,7 +79,7 @@ class OllamaEmbeddingClient:
 
 class MilvusSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="MILVUS_",
+        env_prefix="MILVUS__",
         env_file=".env",
         extra="ignore",
     )
