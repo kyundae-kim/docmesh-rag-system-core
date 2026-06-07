@@ -4,6 +4,9 @@
 	"name": "Docmesh RAG System Core Dev Container",
 	"dockerComposeFile": ["docker-compose.yml", "docker-compose.ollama.yml"],
 	"service": "app",
+	"mounts": [
+		"source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached"
+	],
 	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 	"features": {
 		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},

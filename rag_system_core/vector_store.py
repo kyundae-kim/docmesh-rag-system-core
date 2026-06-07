@@ -46,6 +46,7 @@ class MilvusLiteVectorStore:
     def search(self, *, user_id: str, query_vector: list[float], top_k: int) -> list[ChunkRecord]:
         if top_k <= 0 or not query_vector or not self._client.has_collection(self.collection_name):
             return []
+        self._client.load_collection(self.collection_name)
         results = self._client.search(
             self.collection_name,
             data=[query_vector],

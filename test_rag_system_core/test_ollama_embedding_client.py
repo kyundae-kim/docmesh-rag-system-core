@@ -23,11 +23,11 @@ class RecordingOllamaClient:
 
 
 def test_ollama_embedding_client_requires_model_when_not_configured(monkeypatch) -> None:
-    monkeypatch.delenv("OLLAMA_EMBED_MODEL", raising=False)
+    monkeypatch.delenv("OLLAMA_EMBED__MODEL", raising=False)
 
     with pytest.raises(
         ValueError,
-        match="Ollama embed model must be provided either as 'model' or OLLAMA_EMBED_MODEL",
+        match="Ollama embed model must be provided either as 'model' or OLLAMA_EMBED__MODEL",
     ):
         OllamaEmbeddingClient(base_url="http://ollama", timeout=7.0)
 
@@ -42,9 +42,11 @@ def test_ollama_embedding_client_reads_configuration_from_environment(monkeypatc
         def embed(self, *, model: str, input: list[str]):
             return self._delegate.embed(model=model, input=input)
 
-    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama")
-    monkeypatch.setenv("OLLAMA_EMBED_MODEL", "bge-m3")
-    monkeypatch.setenv("OLLAMA_TIMEOUT", "12.5")
+    monkeypatch.setenv("OLLAMA_EMBED__BASE_URL", "http://embed-ollama")
+    monkeypatch.setenv("OLLAMA_EMBED__MODEL", "bge-m3")
+    monkeypatch.setenv("OLLAMA_EMBED__TIMEOUT", "12.5")
+    monkeypatch.setenv("OLLAMA_GENERATE__BASE_URL", "https://generate-ollama")
+    monkeypatch.setenv("OLLAMA_GENERATE__TIMEOUT", "99.0")
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
 
     client = OllamaEmbeddingClient()
@@ -52,7 +54,7 @@ def test_ollama_embedding_client_reads_configuration_from_environment(monkeypatc
 
     assert vectors == [[1.0, 0.0, 0.5]]
     assert captured == {
-        "host": "http://ollama",
+        "host": "http://embed-ollama",
         "timeout": 12.5,
         "model": "bge-m3",
         "input": ["alpha"],

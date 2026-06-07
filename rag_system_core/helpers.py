@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO, Protocol
+from typing import Any, BinaryIO, Protocol
 
 import ollama
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,16 +15,32 @@ class EmbeddingClient(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
-class OllamaSettings(BaseSettings):
+class OllamaEmbedSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="OLLAMA_",
+        env_prefix="OLLAMA_EMBED__",
         env_file=".env",
         extra="ignore",
     )
 
     base_url: str = "http://ollama:11434"
-    embed_model: str | None = None
+    model: str | None = None
     timeout: float = 30.0
+
+
+class OllamaGenerateSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="OLLAMA_GENERATE__",
+        env_file=".env",
+        extra="ignore",
+    )
+
+    base_url: str = "https://ollama.com"
+    model: str = "gpt-oss:20b"
+    timeout: float = 30.0
+    api_key: str | None = None
+
+
+OllamaSettings = OllamaEmbedSettings
 
 
 class OllamaEmbeddingClient:
@@ -35,10 +51,10 @@ class OllamaEmbeddingClient:
         base_url: str | None = None,
         timeout: float | None = None,
     ) -> None:
-        settings = OllamaSettings()
-        resolved_model = model or settings.embed_model
+        settings = OllamaEmbedSettings()
+        resolved_model = model or settings.model
         if resolved_model is None or not resolved_model.strip():
-            raise ValueError("Ollama embed model must be provided either as 'model' or OLLAMA_EMBED_MODEL")
+            raise ValueError("Ollama embed model must be provided either as 'model' or OLLAMA_EMBED__MODEL")
         self.model = resolved_model
         self.base_url = (base_url or settings.base_url).rstrip("/")
         self.timeout = timeout if timeout is not None else settings.timeout
@@ -75,6 +91,45 @@ class MilvusSettings(BaseSettings):
 
 class GenerationClient(Protocol):
     def generate(self, prompt: str) -> str: ...
+
+
+class OllamaGenerationClient:
+    def __init__(
+        self,
+        *,
+        model: str | None = None,
+        base_url: str | None = None,
+        timeout: float | None = None,
+        api_key: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        settings = OllamaGenerateSettings()
+        resolved_model = model or settings.model
+        if resolved_model is None or not resolved_model.strip():
+            raise ValueError("Ollama generation model must be provided either as 'model' or OLLAMA_GENERATE__MODEL")
+
+        resolved_api_key = api_key or settings.api_key
+        if resolved_api_key is None or not resolved_api_key.strip():
+            raise ValueError("Ollama API key must be provided either as 'api_key' or OLLAMA_GENERATE__API_KEY")
+
+        self.model = resolved_model
+        self.base_url = (base_url or settings.base_url).rstrip("/")
+        self.timeout = timeout if timeout is not None else settings.timeout
+        self.headers = headers or {"Authorization": f"Bearer {resolved_api_key}"}
+        self._client = ollama.Client(host=self.base_url, headers=self.headers, timeout=self.timeout)
+
+    def generate(self, prompt: str) -> str:
+        try:
+            response = self._client.chat(model=self.model, messages=[{'role': 'user', 'content': prompt}])
+        except Exception as exc:
+            raise RuntimeError("Failed to generate response from Ollama") from exc
+
+        try:
+            generated_text = response['message']['content']
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError("Ollama returned a malformed generation response") from exc
+
+        return str(generated_text)
 
 
 @dataclass(slots=True)

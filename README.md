@@ -41,6 +41,7 @@ DocMesh 프로젝트의 RAG System core package
 
 즉, `DocumentRecord`는 본문(text)을 들고 있지 않고, 저장된 문서 자산 위치를 가리키는 방식입니다.
 
+
 ## 사용 예시
 
 ```python
