@@ -7,16 +7,18 @@ from typing import BinaryIO
 from uuid import uuid4
 
 from rag_system_core.helpers import (
-    ChunkRecord,
-    DocumentRecord,
     DocumentStorage,
-    EmbeddingClient,
     FixedWindowChunker,
-    IngestResult,
-    IngestionProgressRecord,
     extract_doc_id_from_storage_path,
 )
 from rag_system_core.metadata_store import MetadataStore
+from rag_system_core.types import (
+    ChunkRecord,
+    DocumentRecord,
+    EmbeddingClient,
+    IngestionProgressRecord,
+    IngestResult,
+)
 from rag_system_core.vector_store import VectorStore
 
 

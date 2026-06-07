@@ -4,6 +4,17 @@
 
 이 문서는 현재 구현된 `RAGCore` public API를 설명한다.
 
+### 1.1 문서 목적
+- `RAGCore`를 다른 애플리케이션이나 서비스에서 재사용할 때 필요한 public API 사용 기준을 제공한다.
+- 생성자, 주요 메서드, 반환 모델, 저장 구조, 현재 제약 사항을 한 곳에서 확인할 수 있도록 정리한다.
+- 내부 구현을 직접 읽지 않고도 기본적인 연동 방식과 호출 흐름을 이해할 수 있도록 돕는다.
+
+### 1.2 문서 목표
+- 외부 프로젝트에서 `RAGCore`를 생성하고 문서를 적재(query 전 포함)하는 최소 사용 흐름을 이해할 수 있어야 한다.
+- 어떤 입력값과 반환값이 오가는지, 그리고 user scope가 어떻게 적용되는지 파악할 수 있어야 한다.
+- 어떤 타입과 클래스가 public surface로 기대되는지 빠르게 확인할 수 있어야 한다.
+- 현재 문서가 설명하는 범위와 설명하지 않는 범위를 구분할 수 있어야 한다.
+
 기본 원칙:
 - `token`은 현재 구현에서 그대로 user scope로 사용된다.
 - `token`이 없거나 공백이면 `single-user` 스코프가 사용된다.
@@ -11,9 +22,39 @@
 
 ---
 
-## 2. 주요 반환 모델
+## 2. Public import
 
-### 2.1 `DocumentRecord`
+다른 프로젝트에서는 가능한 한 아래와 같이 **public import 경로만 사용**하는 것을 권장한다.
+내부 모듈 경로가 노출되어 있더라도, 별도 문서화되지 않은 경로는 public contract로 간주하지 않는다.
+
+```python
+from pathlib import Path
+
+from rag_system_core import RAGCore
+```
+
+반환 타입을 명시적으로 사용할 필요가 있다면, 아래와 같이 **패키지에서 공식적으로 재노출(re-export)된 public 타입 경로**를 제공하는 것이 바람직하다.
+
+```python
+from rag_system_core import RAGCore
+from rag_system_core.types import (
+    DocumentRecord,
+    ChunkRecord,
+    IngestResult,
+    IngestionProgressRecord,
+    QueryResult,
+)
+```
+
+> 주의:
+> - `rag_system_core.types`는 반환 타입과 client protocol 타입을 위한 **공식 public import 경로**로 사용한다.
+> - `rag_system_core.internal.*`, `rag_system_core.adapters.*` 등 내부 구현 경로에 직접 의존하는 방식은 권장하지 않는다.
+
+---
+
+## 3. 주요 반환 모델
+
+### 3.1 `DocumentRecord`
 
 ```python
 DocumentRecord(
@@ -25,7 +66,7 @@ DocumentRecord(
 )
 ```
 
-### 2.2 `ChunkRecord`
+### 3.2 `ChunkRecord`
 
 ```python
 ChunkRecord(
@@ -37,7 +78,7 @@ ChunkRecord(
 )
 ```
 
-### 2.3 `IngestResult`
+### 3.3 `IngestResult`
 
 ```python
 IngestResult(
@@ -50,7 +91,7 @@ IngestResult(
 )
 ```
 
-### 2.4 `IngestionProgressRecord`
+### 3.4 `IngestionProgressRecord`
 
 ```python
 IngestionProgressRecord(
@@ -66,7 +107,7 @@ IngestionProgressRecord(
 )
 ```
 
-### 2.5 `QueryResult`
+### 3.5 `QueryResult`
 
 ```python
 QueryResult(
@@ -78,7 +119,7 @@ QueryResult(
 
 ---
 
-## 3. `RAGCore` 생성
+## 4. `RAGCore` 생성
 
 ```python
 from pathlib import Path
@@ -95,7 +136,180 @@ core = RAGCore(
 )
 ```
 
-### 생성자 파라미터
+### 4.1 의존성 및 런타임 요구사항
+
+`RAGCore`를 실제로 import/생성하려면 현재 구현 기준으로 아래 런타임 의존성이 필요하다.
+
+- `ollama`: 기본 Ollama client 구현(`OllamaEmbeddingClient`, `OllamaGenerationClient`) import에 필요
+- `pydantic-settings`: Ollama/Milvus 설정 클래스 import에 필요
+- `sqlalchemy`: metadata persistence(SQLite ORM) 구동에 필요
+- `pymilvus`: Milvus Lite vector store 구동에 필요
+
+추가 런타임 조건:
+- `metadata_path`는 SQLite 파일을 생성/쓰기 가능한 경로여야 한다.
+- `document_storage_dir`는 `storage_mode="local"`일 때 문서 자산을 생성/쓰기 가능한 경로여야 한다.
+- Milvus Lite 저장 경로는 기본적으로 `metadata_path.with_suffix(".milvus.db")`를 사용하므로, 해당 위치 역시 쓰기 가능해야 한다.
+
+참고:
+- `from rag_system_core.types import ...` 형태의 **타입 import만 사용할 경우**에는 위 외부 런타임 의존성이 직접 필요하지 않다.
+- 반면 `from rag_system_core import RAGCore` 또는 Ollama/Milvus 관련 설정/클라이언트를 실제로 사용할 경우에는 위 의존성이 설치되어 있어야 한다.
+
+### 4.2 Client contract
+
+#### `EmbeddingClient`
+
+`RAGCore`가 기대하는 최소 contract는 아래와 같다.
+
+```python
+from rag_system_core.types import EmbeddingClient
+
+class MyEmbeddingClient(EmbeddingClient):
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        ...
+```
+
+호출 계약:
+- 입력은 `list[str]`이다.
+- 반환값은 `list[list[float]]`이다.
+- **반환 벡터 개수는 입력 텍스트 개수와 반드시 같아야 한다.**
+- 각 벡터의 차원 수는 서로 일관되어야 한다.
+- 같은 vector store 컬렉션에 들어가는 벡터 차원은 호출 간에도 일관되어야 한다.
+
+현재 구현과의 호환 요구사항:
+- ingestion 경로는 `embed(chunks)` 결과를 그대로 vector store에 전달하므로, 청크 수와 벡터 수가 다르면 실패한다.
+- query 경로는 `embed([question])[0]` 형태를 사용하므로, 질문 1개 입력에 대해 **반드시 최소 1개의 벡터**를 반환해야 한다.
+- 실패 시에는 예외를 발생시키는 것이 안전하다. 현재 `RAGCore`는 embedding 오류를 별도로 표준화하지 않고 상위로 전파한다.
+
+권장 사항:
+- 빈 입력 `[]`에 대해서는 `[]`를 반환하도록 구현하는 것이 바람직하다.
+- 반환값에는 `numpy.ndarray` 대신 직렬화 가능한 파이썬 `list[float]`를 사용하는 것이 안전하다.
+
+#### `GenerationClient`
+
+`RAGCore`가 기대하는 최소 contract는 아래와 같다.
+
+```python
+from rag_system_core.types import GenerationClient
+
+class MyGenerationClient(GenerationClient):
+    def generate(self, prompt: str) -> str:
+        ...
+```
+
+호출 계약:
+- 입력은 최종 조립된 단일 `prompt: str`이다.
+- 반환값은 **최종 답변 문자열** `str`이어야 한다.
+
+현재 구현과의 호환 요구사항:
+- `RAGCore`는 chat message list, tool call 결과, structured object를 기대하지 않는다.
+- `generate()` 결과를 그대로 `QueryResult.answer`에 넣으므로, 문자열이 아닌 객체를 반환하면 호출자 측에서 깨질 수 있다.
+- 실패 시에는 예외를 발생시키는 것이 안전하다. 현재 `RAGCore`는 generation 오류를 별도로 표준화하지 않고 상위로 전파한다.
+
+권장 사항:
+- prompt 전체를 하나의 입력으로 처리하는 non-streaming wrapper를 제공하는 것이 가장 단순하다.
+- 외부 LLM SDK가 dict/object를 반환한다면, adapter에서 최종 텍스트만 추출해서 `str`로 반환하는 것이 좋다.
+
+### 4.3 기본 제공 Ollama client
+
+현재 패키지는 `EmbeddingClient`, `GenerationClient`의 기본 구현으로 아래 클래스를 제공한다.
+
+#### `OllamaEmbeddingClient`
+
+```python
+from rag_system_core import OllamaEmbeddingClient
+
+embedding_client = OllamaEmbeddingClient(
+    model="bge-m3",
+    base_url="http://ollama:11434",
+    timeout=30.0,
+)
+```
+
+생성자 시그니처:
+
+```python
+OllamaEmbeddingClient(
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+    timeout: float | None = None,
+)
+```
+
+동작:
+- 내부적으로 `ollama.Client(host=..., timeout=...)`를 생성한다.
+- `embed(texts)` 호출 시 `client.embed(model=self.model, input=texts)`를 사용한다.
+- 응답의 `response["embeddings"]`를 읽어 `list[list[float]]`로 정규화한다.
+- 입력이 빈 리스트이면 `[]`를 반환한다.
+
+설정 소스:
+- 명시적으로 전달한 인자가 우선한다.
+- 인자를 생략하면 `OllamaEmbedSettings` 값을 사용한다.
+- `OllamaEmbedSettings`는 `.env`와 환경변수 `OLLAMA_EMBED__*`를 읽는다.
+
+관련 설정 필드:
+- `OLLAMA_EMBED__BASE_URL` 기본값: `http://ollama:11434`
+- `OLLAMA_EMBED__MODEL` 기본값 없음
+- `OLLAMA_EMBED__TIMEOUT` 기본값: `30.0`
+
+주의:
+- `model` 인자와 `OLLAMA_EMBED__MODEL`이 모두 비어 있으면 `ValueError`가 발생한다.
+- Ollama 호출 실패 시 `RuntimeError("Failed to fetch embeddings from Ollama")`가 발생한다.
+- 응답에 `embeddings` 필드가 없거나 형식이 다르면 `RuntimeError("Ollama returned a malformed embeddings response")`가 발생한다.
+
+#### `OllamaGenerationClient`
+
+```python
+from rag_system_core import OllamaGenerationClient
+
+generation_client = OllamaGenerationClient(
+    model="gpt-oss:20b",
+    base_url="https://ollama.com",
+    api_key="<api-key>",
+    timeout=30.0,
+)
+```
+
+생성자 시그니처:
+
+```python
+OllamaGenerationClient(
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+    timeout: float | None = None,
+    api_key: str | None = None,
+    headers: dict[str, str] | None = None,
+)
+```
+
+동작:
+- 내부적으로 `ollama.Client(host=..., headers=..., timeout=...)`를 생성한다.
+- `generate(prompt)` 호출 시 `client.chat(model=self.model, messages=[{"role": "user", "content": prompt}])`를 사용한다.
+- 응답의 `response["message"]["content"]`를 읽어 `str`로 반환한다.
+
+설정 소스:
+- 명시적으로 전달한 인자가 우선한다.
+- 인자를 생략하면 `OllamaGenerateSettings` 값을 사용한다.
+- `OllamaGenerateSettings`는 `.env`와 환경변수 `OLLAMA_GENERATE__*`를 읽는다.
+
+관련 설정 필드:
+- `OLLAMA_GENERATE__BASE_URL` 기본값: `https://ollama.com`
+- `OLLAMA_GENERATE__MODEL` 기본값: `gpt-oss:20b`
+- `OLLAMA_GENERATE__TIMEOUT` 기본값: `30.0`
+- `OLLAMA_GENERATE__API_KEY` 기본값 없음
+
+인증/헤더:
+- `headers`를 직접 주지 않으면 기본적으로 `{"Authorization": f"Bearer {api_key}"}` 헤더를 사용한다.
+- `headers`를 직접 주면 기본 Authorization 헤더 대신 전달한 헤더를 그대로 사용한다.
+
+주의:
+- `model` 인자와 `OLLAMA_GENERATE__MODEL`이 모두 비어 있으면 `ValueError`가 발생한다.
+- `api_key` 인자와 `OLLAMA_GENERATE__API_KEY`가 모두 비어 있으면 `ValueError`가 발생한다.
+- Ollama 호출 실패 시 `RuntimeError("Failed to generate response from Ollama")`가 발생한다.
+- 응답에 `message.content`가 없거나 형식이 다르면 `RuntimeError("Ollama returned a malformed generation response")`가 발생한다.
+
+### 4.4 생성자 파라미터
 
 - `embedding_client`: `embed(texts: list[str]) -> list[list[float]]`를 제공하는 객체
 - `generation_client`: `generate(prompt: str) -> str`를 제공하는 객체
@@ -107,9 +321,9 @@ core = RAGCore(
 
 ---
 
-## 4. Public API
+## 5. Public API
 
-### 4.1 `ingest_text`
+### 5.1 `ingest_text`
 
 텍스트 본문을 직접 적재한다.
 
@@ -137,7 +351,7 @@ ingest_text(*, text: str, source: str, token: str | None = None) -> IngestResult
 
 ---
 
-### 4.2 `ingest_file_stream`
+### 5.2 `ingest_file_stream`
 
 파일 스트림을 적재한다.
 
@@ -168,7 +382,7 @@ ingest_file_stream(
 
 ---
 
-### 4.3 `ingest_file_path`
+### 5.3 `ingest_file_path`
 
 파일 경로를 직접 받아 적재한다.
 
@@ -198,7 +412,7 @@ ingest_file_path(
 
 ---
 
-### 4.4 `query`
+### 5.4 `query`
 
 질문에 대해 사용자 스코프 내 문서만 검색하여 답변을 생성한다.
 
@@ -223,7 +437,7 @@ query(*, question: str, top_k: int = 3, token: str | None = None) -> QueryResult
 
 ---
 
-### 4.5 `list_documents`
+### 5.5 `list_documents`
 
 현재 user scope의 문서 목록을 반환한다.
 
@@ -239,7 +453,7 @@ list_documents(token: str | None = None) -> list[DocumentRecord]
 
 ---
 
-### 4.6 `get_document`
+### 5.6 `get_document`
 
 특정 문서 메타데이터를 **현재 user scope 기준으로** 조회한다.
 
@@ -259,7 +473,7 @@ get_document(doc_id: str, *, token: str | None = None) -> DocumentRecord | None
 
 ---
 
-### 4.7 `list_document_chunks`
+### 5.7 `list_document_chunks`
 
 특정 문서의 chunk 목록을 현재 user scope 기준으로 반환한다.
 
@@ -279,7 +493,7 @@ list_document_chunks(doc_id: str, *, token: str | None = None) -> list[ChunkReco
 
 ---
 
-### 4.8 `list_ingestion_progress`
+### 5.8 `list_ingestion_progress`
 
 특정 문서의 ingestion 파이프라인 진행 상태를 현재 user scope 기준으로 반환한다.
 
@@ -306,7 +520,7 @@ list_ingestion_progress(
 
 ---
 
-### 4.9 `delete_document`
+### 5.9 `delete_document`
 
 특정 문서를 현재 user scope에서 삭제한다.
 
@@ -333,7 +547,7 @@ delete_document(doc_id: str, *, token: str | None = None) -> bool
 
 ---
 
-## 5. 프롬프트 형식
+## 6. 프롬프트 형식
 
 현재 generation prompt는 아래 형식을 따른다.
 
@@ -352,9 +566,9 @@ delete_document(doc_id: str, *, token: str | None = None) -> bool
 
 ---
 
-## 6. 저장 구조 개요
+## 7. 저장 구조 개요
 
-### 6.1 Metadata DB
+### 7.1 Metadata DB
 - backend: SQLite
 - access layer: SQLAlchemy ORM
 - 주요 테이블:
@@ -362,17 +576,17 @@ delete_document(doc_id: str, *, token: str | None = None) -> bool
   - `chunks`
   - `ingestion_progress`
 
-### 6.2 Document storage
+### 7.2 Document storage
 - `memory`: `memory://...` logical path 사용
 - `local`: 실제 파일 저장 후 path 기록
 
-### 6.3 Retrieval 복원
+### 7.3 Retrieval 복원
 - 프로세스 시작 시 동일한 Milvus Lite 컬렉션을 다시 열어 retrieval 가능 상태를 복원한다.
 - SQLite에는 청크 메타데이터만 유지하고, embedding 벡터는 Milvus Lite가 관리한다.
 
 ---
 
-## 7. 사용 예시
+## 8. 사용 예시
 
 ```python
 from io import BytesIO
@@ -421,7 +635,7 @@ deleted = core.delete_document(stream_result.doc_id, token="user-a")
 
 ---
 
-## 8. 알려진 현재 제약
+## 9. 알려진 현재 제약
 
 - vector store는 현재 Milvus Lite 기반 로컬 영속 저장소 구현이다.
 - token과 user_id의 별도 매핑 저장소는 아직 없다. 현재는 token 문자열 자체를 scope로 사용한다.

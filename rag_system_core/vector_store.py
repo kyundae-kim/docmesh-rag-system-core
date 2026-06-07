@@ -4,7 +4,8 @@ from typing import Protocol
 
 from pymilvus import MilvusClient
 
-from rag_system_core.helpers import ChunkRecord, escape_milvus_string
+from rag_system_core.helpers import escape_milvus_string
+from rag_system_core.types import ChunkRecord
 
 
 class VectorStore(Protocol):

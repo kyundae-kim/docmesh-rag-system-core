@@ -6,7 +6,7 @@ from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
-from rag_system_core.helpers import ChunkRecord, DocumentRecord, IngestionProgressRecord
+from rag_system_core.types import ChunkRecord, DocumentRecord, IngestionProgressRecord
 
 
 class Base(DeclarativeBase):

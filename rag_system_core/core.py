@@ -7,25 +7,27 @@ import rag_system_core.helpers as helpers_module
 import rag_system_core.metadata_store as metadata_store_module
 import rag_system_core.vector_store as vector_store_module
 from rag_system_core.helpers import (
-    ChunkRecord,
     DocumentStorage,
-    DocumentRecord,
-    EmbeddingClient,
     FixedWindowChunker,
-    GenerationClient,
-    IngestionProgressRecord,
-    IngestResult,
     MilvusSettings,
     OllamaEmbeddingClient,
     OllamaEmbedSettings,
     OllamaGenerationClient,
     OllamaGenerateSettings,
     OllamaSettings,
-    QueryResult,
     resolve_user_id,
 )
 from rag_system_core.ingestion import IngestionService
 from rag_system_core.metadata_store import ChunkModel, DocumentModel, IngestionProgressModel, MetadataStore
+from rag_system_core.types import (
+    ChunkRecord,
+    DocumentRecord,
+    EmbeddingClient,
+    GenerationClient,
+    IngestionProgressRecord,
+    IngestResult,
+    QueryResult,
+)
 from rag_system_core.vector_store import MilvusClient, MilvusLiteVectorStore, VectorStore
 
 ollama = helpers_module.ollama
