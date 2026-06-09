@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from pymilvus import MilvusClient
 
-from rag_system_core.helpers import escape_milvus_string
+from rag_system_core.helpers import _create_docmesh_service_client, escape_milvus_string
 from rag_system_core.types import ChunkRecord
 
 
@@ -19,11 +19,18 @@ class VectorStore(Protocol):
 
 
 class MilvusLiteVectorStore:
-    def __init__(self, *, uri: str, collection_name: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        *,
+        uri: str,
+        collection_name: str,
+        timeout: float = 30.0,
+        client: Any | None = None,
+    ) -> None:
         self.uri = uri
         self.collection_name = collection_name
         self.timeout = timeout
-        self._client = MilvusClient(uri=uri, timeout=timeout)
+        self._client = client or _create_docmesh_service_client("milvus") or MilvusClient(uri=uri, timeout=timeout)
 
     def add(self, chunks: list[ChunkRecord], vectors: list[list[float]]) -> list[str]:
         if not chunks:
@@ -76,6 +83,15 @@ class MilvusLiteVectorStore:
             ids=[int(chunk_id) for chunk_id in chunk_ids],
             timeout=self.timeout,
         )
+
+    def check(self) -> None:
+        if hasattr(self._client, "check"):
+            self._client.check()
+            return
+        if hasattr(self._client, "list_collections"):
+            self._client.list_collections(timeout=self.timeout)
+            return
+        raise RuntimeError("Milvus client does not support health checks")
 
     def _ensure_collection(self, *, dimension: int) -> None:
         if self._client.has_collection(self.collection_name):

@@ -150,6 +150,31 @@ core = RAGCore(
 - `document_storage_dir`는 `storage_mode="local"`일 때 문서 자산을 생성/쓰기 가능한 경로여야 한다.
 - Milvus Lite 저장 경로는 기본적으로 `metadata_path.with_suffix(".milvus.db")`를 사용하므로, 해당 위치 역시 쓰기 가능해야 한다.
 
+### 4.1.1 `docmesh-py-core` 선택 연동
+
+`rag_system_core`는 `docmesh-py-core`를 **선택적으로** 사용할 수 있다.
+
+- `docmesh_py_core`가 설치되어 있고 `load_settings()`가 성공하면:
+  - `ServiceFactoryRegistry`를 통해 `ollama`, `milvus` client를 우선 생성한다.
+  - health check 집계 시 `check_all_services(...)`를 우선 사용한다.
+- `docmesh_py_core`가 없거나 settings 로딩/검증이 실패하면:
+  - 기존 `rag_system_core`의 환경변수 기반 설정과 기본 SDK client 생성 방식으로 fallback 한다.
+
+이 연동은 현재 다음 범위에 한정된다.
+
+- 설정 로딩
+- Ollama/Milvus client 생성
+- 공통 health check 집계
+- 선택적 Keycloak 기반 `token -> user_id` 해석
+
+반대로 아래는 여전히 `rag_system_core`가 직접 담당한다.
+
+- ingestion pipeline
+- chunking
+- SQLite metadata persistence
+- prompt assembly
+- retrieval orchestration
+
 참고:
 - `from rag_system_core.types import ...` 형태의 **타입 import만 사용할 경우**에는 위 외부 런타임 의존성이 직접 필요하지 않다.
 - 반면 `from rag_system_core import RAGCore` 또는 Ollama/Milvus 관련 설정/클라이언트를 실제로 사용할 경우에는 위 의존성이 설치되어 있어야 한다.
@@ -244,10 +269,15 @@ OllamaEmbeddingClient(
 
 설정 소스:
 - 명시적으로 전달한 인자가 우선한다.
-- 인자를 생략하면 `OllamaEmbedSettings` 값을 사용한다.
+- 그다음 `docmesh_py_core.load_settings()`에서 읽은 `settings.ollama` 값을 시도한다.
+- 그다음 `docmesh-py-core` 스타일 환경변수(`OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS`)를 시도한다.
+- 마지막으로 `OllamaEmbedSettings` 값을 사용한다.
 - `OllamaEmbedSettings`는 `.env`와 환경변수 `OLLAMA_EMBED__*`를 읽는다.
 
 관련 설정 필드:
+- `OLLAMA_HOST` 예: `http://ollama:11434`
+- `OLLAMA_EMBEDDING_MODEL` 예: `bge-m3`
+- `OLLAMA_REQUEST_TIMEOUT_SECONDS` 기본값 없음
 - `OLLAMA_EMBED__BASE_URL` 기본값: `http://ollama:11434`
 - `OLLAMA_EMBED__MODEL` 기본값 없음
 - `OLLAMA_EMBED__TIMEOUT` 기본값: `30.0`
@@ -256,6 +286,7 @@ OllamaEmbeddingClient(
 - `model` 인자와 `OLLAMA_EMBED__MODEL`이 모두 비어 있으면 `ValueError`가 발생한다.
 - Ollama 호출 실패 시 `RuntimeError("Failed to fetch embeddings from Ollama")`가 발생한다.
 - 응답에 `embeddings` 필드가 없거나 형식이 다르면 `RuntimeError("Ollama returned a malformed embeddings response")`가 발생한다.
+- `docmesh_py_core.load_settings()`가 Keycloak 등 다른 설정 오류로 실패해도, embedding client는 가능한 fallback 경로로 계속 초기화된다.
 
 #### `OllamaGenerationClient`
 
@@ -290,10 +321,15 @@ OllamaGenerationClient(
 
 설정 소스:
 - 명시적으로 전달한 인자가 우선한다.
-- 인자를 생략하면 `OllamaGenerateSettings` 값을 사용한다.
+- 그다음 `docmesh_py_core.load_settings()`에서 읽은 `settings.ollama` 값을 시도한다.
+- 그다음 `docmesh-py-core` 스타일 환경변수(`OLLAMA_HOST`, `OLLAMA_GENERATION_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS`)를 시도한다.
+- 마지막으로 `OllamaGenerateSettings` 값을 사용한다.
 - `OllamaGenerateSettings`는 `.env`와 환경변수 `OLLAMA_GENERATE__*`를 읽는다.
 
 관련 설정 필드:
+- `OLLAMA_HOST` 예: `http://ollama:11434`
+- `OLLAMA_GENERATION_MODEL` 예: `gpt-oss:20b`
+- `OLLAMA_REQUEST_TIMEOUT_SECONDS` 기본값 없음
 - `OLLAMA_GENERATE__BASE_URL` 기본값: `https://ollama.com`
 - `OLLAMA_GENERATE__MODEL` 기본값: `gpt-oss:20b`
 - `OLLAMA_GENERATE__TIMEOUT` 기본값: `30.0`
@@ -308,6 +344,7 @@ OllamaGenerationClient(
 - `api_key` 인자와 `OLLAMA_GENERATE__API_KEY`가 모두 비어 있으면 `ValueError`가 발생한다.
 - Ollama 호출 실패 시 `RuntimeError("Failed to generate response from Ollama")`가 발생한다.
 - 응답에 `message.content`가 없거나 형식이 다르면 `RuntimeError("Ollama returned a malformed generation response")`가 발생한다.
+- 단, `docmesh_py_core`의 `ollama` service client를 성공적으로 만든 경우에는 별도 `api_key` 없이 그 client를 그대로 사용할 수 있다.
 
 ### 4.4 생성자 파라미터
 
@@ -547,6 +584,35 @@ delete_document(doc_id: str, *, token: str | None = None) -> bool
 
 ---
 
+### 5.10 `health_check`
+
+현재 코어가 사용하는 주요 의존 서비스의 상태를 집계한다.
+
+```python
+status = core.health_check()
+```
+
+#### 시그니처
+
+```python
+health_check() -> object
+```
+
+#### 동작
+- 항상 metadata store check를 포함한다.
+- vector store가 `check()`를 제공하면 `milvus` 항목을 포함한다.
+- embedding client가 `check()`를 제공하면 `embedding` 항목을 포함한다.
+- generation client가 `check()`를 제공하면 `generation` 항목을 포함한다.
+- `docmesh_py_core.check_all_services(...)`를 사용할 수 있으면 그 결과 형식을 그대로 반환한다.
+- 그렇지 않으면 내부 집계 결과를 반환한다.
+
+#### integration contract
+- `check()` 메서드는 성공 시 `None` 또는 성공을 의미하는 값을 반환하고, 실패 시 예외를 발생시키는 방식이면 충분하다.
+- `MilvusLiteVectorStore.check()`는 내부 client의 `check()` 또는 `list_collections()`를 사용한다.
+- 기본 제공 Ollama client의 `check()`는 내부 client의 `check()` 또는 `ps()`를 사용한다.
+
+---
+
 ## 6. 프롬프트 형식
 
 현재 generation prompt는 아래 형식을 따른다.
@@ -639,3 +705,4 @@ deleted = core.delete_document(stream_result.doc_id, token="user-a")
 
 - vector store는 현재 Milvus Lite 기반 로컬 영속 저장소 구현이다.
 - token과 user_id의 별도 매핑 저장소는 아직 없다. 현재는 token 문자열 자체를 scope로 사용한다.
+- `DOCMESH_AUTH_MODE=keycloak`을 사용할 때는 `docmesh_py_core`와 Keycloak 관련 설정이 모두 유효해야 한다. 그렇지 않으면 user id 해석 시 런타임 오류가 발생할 수 있다.

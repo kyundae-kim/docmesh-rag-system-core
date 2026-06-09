@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Callable
 
 import rag_system_core.helpers as helpers_module
 import rag_system_core.metadata_store as metadata_store_module
@@ -15,7 +15,9 @@ from rag_system_core.helpers import (
     OllamaGenerationClient,
     OllamaGenerateSettings,
     OllamaSettings,
+    resolve_milvus_runtime_settings,
     resolve_user_id,
+    run_health_checks,
 )
 from rag_system_core.ingestion import IngestionService
 from rag_system_core.metadata_store import ChunkModel, DocumentModel, IngestionProgressModel, MetadataStore
@@ -91,15 +93,17 @@ class RAGCore:
         chunk_overlap: int = 64,
     ) -> None:
         self.embedding_client = embedding_client
+        self.generation_client = generation_client
         metadata_path = Path(metadata_path)
         self.metadata_store = MetadataStore(metadata_path)
         self.document_storage = DocumentStorage(storage_mode, Path(document_storage_dir))
-        milvus_settings = MilvusSettings()
-        milvus_uri = milvus_settings.uri or str(metadata_path.with_suffix(".milvus.db"))
+        milvus_uri, milvus_collection_name, milvus_timeout = resolve_milvus_runtime_settings(
+            fallback_uri=str(metadata_path.with_suffix(".milvus.db"))
+        )
         self.vector_store = MilvusLiteVectorStore(
             uri=milvus_uri,
-            collection_name=milvus_settings.collection_name,
-            timeout=milvus_settings.timeout,
+            collection_name=milvus_collection_name,
+            timeout=milvus_timeout,
         )
         self.ingestor = IngestionService(
             chunker=FixedWindowChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
@@ -192,6 +196,16 @@ class RAGCore:
             return False
         self.document_storage.delete(deleted_document)
         return True
+
+    def health_check(self):
+        service_checks: dict[str, Callable[[], None]] = {"metadata": self.metadata_store.check}
+        if hasattr(self.vector_store, "check"):
+            service_checks["milvus"] = self.vector_store.check
+        if hasattr(self.embedding_client, "check"):
+            service_checks["embedding"] = self.embedding_client.check
+        if hasattr(self.generation_client, "check"):
+            service_checks["generation"] = self.generation_client.check
+        return run_health_checks(service_checks, required_services=set(service_checks))
 
 
 __all__ = [

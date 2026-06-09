@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine, select
+from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -182,6 +182,10 @@ class MetadataStore:
             session.delete(document)
             session.commit()
         return document_record_from_model(document)
+
+    def check(self) -> None:
+        with self.session() as session:
+            session.execute(text("SELECT 1"))
 
 
 def document_record_from_model(row: DocumentModel | None) -> DocumentRecord | None:

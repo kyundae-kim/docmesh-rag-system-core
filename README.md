@@ -10,6 +10,7 @@ DocMesh 프로젝트의 RAG System core package
 - [PRD](docs/prd.md)
 - [API 문서](docs/api.md)
 - [테스트 문서](docs/test.md)
+- [환경변수 예시](.env.example)
 
 현재 코어는 다음 원칙으로 동작합니다.
 - `token` 기반 사용자 스코프 분리
@@ -17,6 +18,60 @@ DocMesh 프로젝트의 RAG System core package
 - `token`이 없으면 단일 사용자 모드로 동작
 - `DocumentStorage`는 문서 본문 자체를 메타데이터에 넣지 않고 **문서 파일/오브젝트 자산**을 관리
 - ingest는 **텍스트 입력**과 **파일 입력**을 분리해서 처리
+
+## docmesh-py-core 연동
+
+현재 `rag_system_core`는 `docmesh-py-core`를 **선택적으로** 연동할 수 있습니다.
+
+- `docmesh_py_core`가 설치되어 있고 `load_settings()`가 성공하면:
+  - `ServiceFactoryRegistry` 기반으로 `ollama`, `milvus` client를 우선 생성합니다.
+  - 가능하면 `check_all_services(...)`를 사용해 공통 health check 결과를 집계합니다.
+- `docmesh_py_core`가 없거나 설정 로딩이 실패하면:
+  - 기존 `rag_system_core`의 환경변수/기본 client 생성 방식으로 자동 fallback 합니다.
+
+즉, `docmesh-py-core`는 **설정 로딩, 서비스 client 생성, health check, 선택적 Keycloak 기반 사용자 식별**에 활용되고,
+문서 적재/청킹/retrieval 같은 핵심 RAG 로직은 현재 패키지가 계속 담당합니다.
+
+### 설정 우선순위
+
+기본 제공 Ollama/Milvus client는 아래 순서로 설정을 해석합니다.
+
+1. 생성자 인자
+2. `docmesh_py_core.load_settings()` 결과
+3. `docmesh-py-core` 스타일 환경변수
+4. 기존 `rag_system_core` 전용 환경변수
+
+예:
+
+- Ollama
+  - `OLLAMA_HOST`
+  - `OLLAMA_EMBEDDING_MODEL`
+  - `OLLAMA_GENERATION_MODEL`
+  - `OLLAMA_REQUEST_TIMEOUT_SECONDS`
+- Milvus
+  - `MILVUS_URI`
+  - `MILVUS_COLLECTION` 또는 `MILVUS_COLLECTION_NAME`
+  - `MILVUS_REQUEST_TIMEOUT_SECONDS` 또는 `MILVUS_CONNECT_TIMEOUT_SECONDS`
+- 기존 전용 설정도 계속 지원
+  - `OLLAMA_EMBED__*`
+  - `OLLAMA_GENERATE__*`
+  - `MILVUS__*`
+
+### 선택적 Keycloak 사용자 식별
+
+기본 동작은 기존과 동일합니다.
+
+- `token`이 있으면: token 문자열 자체를 user scope로 사용
+- `token`이 없으면: `single-user`
+
+아래처럼 설정하면 Keycloak 기반 user id 해석을 사용할 수 있습니다.
+
+```bash
+DOCMESH_AUTH_MODE=keycloak
+```
+
+이 모드에서는 `docmesh_py_core.KeycloakAuthService`를 사용해 토큰에서 `sub` 또는 `preferred_username`을 추출합니다.
+관련 Keycloak 세부 설정은 `docs/docmesh_py_core/config.md`를 참고하세요.
 
 ## 현재 인터페이스
 
@@ -56,13 +111,14 @@ class GenerationClient:
         raise NotImplementedError
 
 
-# environment variables:
-# - OLLAMA_BASE_URL=http://ollama:11434
-# - OLLAMA_EMBED_MODEL=bge-m3
-# - OLLAMA_TIMEOUT=30
+# environment variables (legacy or docmesh-py-core style):
+# - OLLAMA_HOST=http://ollama:11434
+# - OLLAMA_EMBEDDING_MODEL=bge-m3
+# - OLLAMA_GENERATION_MODEL=gpt-oss:20b
+# - OLLAMA_REQUEST_TIMEOUT_SECONDS=30
 # - MILVUS_URI=./data/metadata.milvus.db
-# - MILVUS_COLLECTION_NAME=rag_chunks
-# - MILVUS_TIMEOUT=30
+# - MILVUS_COLLECTION=rag_chunks
+# - MILVUS_REQUEST_TIMEOUT_SECONDS=30
 core = RAGCore(
     embedding_client=OllamaEmbeddingClient(),
     generation_client=GenerationClient(),
@@ -99,6 +155,8 @@ response = core.query(
 )
 
 print(response.answer)
+
+print(core.health_check())
 
 stored = core.list_documents(token="user-token-a")[0]
 print(stored.storage_path)

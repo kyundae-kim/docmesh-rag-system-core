@@ -1,23 +1,89 @@
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass
+from importlib import import_module
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, BinaryIO
 
 import ollama
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from rag_system_core.types import (
-    ChunkRecord,
-    DocumentRecord,
-    EmbeddingClient,
-    GenerationClient,
-    IngestionProgressRecord,
-    IngestResult,
-    QueryResult,
-)
+from rag_system_core.types import DocumentRecord
 
 DEFAULT_SINGLE_USER_ID = "single-user"
+
+
+def _load_docmesh_py_core() -> Any | None:
+    try:
+        return import_module("docmesh_py_core")
+    except ModuleNotFoundError:
+        return None
+
+
+def _load_docmesh_settings(env: dict[str, str] | None = None) -> Any | None:
+    module = _load_docmesh_py_core()
+    if module is None or not hasattr(module, "load_settings"):
+        return None
+    try:
+        return module.load_settings(env or os.environ)
+    except Exception:
+        return None
+
+
+def _create_docmesh_service_client(service_name: str, *, settings: Any | None = None) -> Any | None:
+    module = _load_docmesh_py_core()
+    if module is None or not hasattr(module, "ServiceFactoryRegistry"):
+        return None
+    resolved_settings = settings if settings is not None else _load_docmesh_settings()
+    if resolved_settings is None:
+        return None
+    registry = module.ServiceFactoryRegistry(resolved_settings)
+    return registry.create_client(service_name)
+
+
+def _read_docmesh_ollama_settings(settings: Any | None = None) -> tuple[str | None, str | None, str | None, float | None]:
+    resolved_settings = settings if settings is not None else _load_docmesh_settings()
+    if resolved_settings is None:
+        host = os.environ.get("OLLAMA_HOST")
+        embedding_model = os.environ.get("OLLAMA_EMBEDDING_MODEL")
+        generation_model = os.environ.get("OLLAMA_GENERATION_MODEL")
+        timeout = os.environ.get("OLLAMA_REQUEST_TIMEOUT_SECONDS")
+        return host, embedding_model, generation_model, float(timeout) if timeout else None
+
+    ollama_settings = getattr(resolved_settings, "ollama", None)
+    if ollama_settings is None:
+        return None, None, None, None
+
+    host = getattr(ollama_settings, "host", None)
+    embedding_model = getattr(ollama_settings, "embedding_model", None)
+    generation_model = getattr(ollama_settings, "generation_model", None)
+    timeout = getattr(ollama_settings, "request_timeout_seconds", None)
+    return host, embedding_model, generation_model, float(timeout) if timeout is not None else None
+
+
+def _read_docmesh_milvus_settings(settings: Any | None = None) -> tuple[str | None, str | None, float | None]:
+    resolved_settings = settings if settings is not None else _load_docmesh_settings()
+    if resolved_settings is None:
+        uri = os.environ.get("MILVUS_URI")
+        collection_name = os.environ.get("MILVUS_COLLECTION") or os.environ.get("MILVUS_COLLECTION_NAME")
+        timeout = os.environ.get("MILVUS_REQUEST_TIMEOUT_SECONDS") or os.environ.get("MILVUS_CONNECT_TIMEOUT_SECONDS")
+        return uri, collection_name, float(timeout) if timeout else None
+
+    milvus_settings = getattr(resolved_settings, "milvus", None)
+    if milvus_settings is None:
+        return None, None, None
+
+    uri = getattr(milvus_settings, "uri", None)
+    collection_name = getattr(milvus_settings, "collection", None) or getattr(
+        milvus_settings, "collection_name", None
+    )
+    timeout = getattr(milvus_settings, "request_timeout_seconds", None)
+    if timeout is None:
+        timeout = getattr(milvus_settings, "connect_timeout_seconds", None)
+    return uri, collection_name, float(timeout) if timeout is not None else None
 
 
 class OllamaEmbedSettings(BaseSettings):
@@ -57,13 +123,21 @@ class OllamaEmbeddingClient:
         timeout: float | None = None,
     ) -> None:
         settings = OllamaEmbedSettings()
-        resolved_model = model or settings.model
+        docmesh_settings = _load_docmesh_settings()
+        docmesh_host, docmesh_embedding_model, _, docmesh_timeout = _read_docmesh_ollama_settings(docmesh_settings)
+        resolved_model = model or docmesh_embedding_model or settings.model
         if resolved_model is None or not resolved_model.strip():
             raise ValueError("Ollama embed model must be provided either as 'model' or OLLAMA_EMBED__MODEL")
         self.model = resolved_model
-        self.base_url = (base_url or settings.base_url).rstrip("/")
-        self.timeout = timeout if timeout is not None else settings.timeout
-        self._client = ollama.Client(host=self.base_url, timeout=self.timeout)
+        self.base_url = (base_url or docmesh_host or settings.base_url).rstrip("/")
+        self.timeout = timeout if timeout is not None else (docmesh_timeout or settings.timeout)
+        if model is None and base_url is None and timeout is None:
+            self._client = _create_docmesh_service_client("ollama", settings=docmesh_settings) or ollama.Client(
+                host=self.base_url,
+                timeout=self.timeout,
+            )
+        else:
+            self._client = ollama.Client(host=self.base_url, timeout=self.timeout)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -80,6 +154,15 @@ class OllamaEmbeddingClient:
             raise RuntimeError("Ollama returned a malformed embeddings response") from exc
 
         return [[float(value) for value in vector] for vector in embeddings]
+
+    def check(self) -> None:
+        if hasattr(self._client, "check"):
+            self._client.check()
+            return
+        if hasattr(self._client, "ps"):
+            self._client.ps()
+            return
+        raise RuntimeError("Ollama client does not support health checks")
 
 
 class MilvusSettings(BaseSettings):
@@ -105,32 +188,46 @@ class OllamaGenerationClient:
         headers: dict[str, str] | None = None,
     ) -> None:
         settings = OllamaGenerateSettings()
-        resolved_model = model or settings.model
+        docmesh_settings = _load_docmesh_settings()
+        docmesh_host, _, docmesh_generation_model, docmesh_timeout = _read_docmesh_ollama_settings(docmesh_settings)
+        resolved_model = model or docmesh_generation_model or settings.model
         if resolved_model is None or not resolved_model.strip():
             raise ValueError("Ollama generation model must be provided either as 'model' or OLLAMA_GENERATE__MODEL")
 
         resolved_api_key = api_key or settings.api_key
+        using_docmesh_client = model is None and base_url is None and timeout is None and api_key is None and headers is None
+        docmesh_client = _create_docmesh_service_client("ollama", settings=docmesh_settings) if using_docmesh_client else None
         if resolved_api_key is None or not resolved_api_key.strip():
-            raise ValueError("Ollama API key must be provided either as 'api_key' or OLLAMA_GENERATE__API_KEY")
+            if docmesh_client is None:
+                raise ValueError("Ollama API key must be provided either as 'api_key' or OLLAMA_GENERATE__API_KEY")
 
         self.model = resolved_model
-        self.base_url = (base_url or settings.base_url).rstrip("/")
-        self.timeout = timeout if timeout is not None else settings.timeout
-        self.headers = headers or {"Authorization": f"Bearer {resolved_api_key}"}
-        self._client = ollama.Client(host=self.base_url, headers=self.headers, timeout=self.timeout)
+        self.base_url = (base_url or docmesh_host or settings.base_url).rstrip("/")
+        self.timeout = timeout if timeout is not None else (docmesh_timeout or settings.timeout)
+        self.headers = headers or ({"Authorization": f"Bearer {resolved_api_key}"} if resolved_api_key else None)
+        self._client = docmesh_client or ollama.Client(host=self.base_url, headers=self.headers, timeout=self.timeout)
 
     def generate(self, prompt: str) -> str:
         try:
-            response = self._client.chat(model=self.model, messages=[{'role': 'user', 'content': prompt}])
+            response = self._client.chat(model=self.model, messages=[{"role": "user", "content": prompt}])
         except Exception as exc:
             raise RuntimeError("Failed to generate response from Ollama") from exc
 
         try:
-            generated_text = response['message']['content']
+            generated_text = response["message"]["content"]
         except (KeyError, TypeError) as exc:
             raise RuntimeError("Ollama returned a malformed generation response") from exc
 
         return str(generated_text)
+
+    def check(self) -> None:
+        if hasattr(self._client, "check"):
+            self._client.check()
+            return
+        if hasattr(self._client, "ps"):
+            self._client.ps()
+            return
+        raise RuntimeError("Ollama client does not support health checks")
 
 
 class DocumentStorage:
@@ -221,6 +318,25 @@ class FixedWindowChunker:
         return [chunk for chunk in chunks if chunk]
 
 
+class AuthSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="DOCMESH_", env_file=".env", extra="ignore")
+
+    auth_mode: str = "token"
+
+
+@dataclass(slots=True)
+class LocalHealthServiceResult:
+    service: str
+    ok: bool
+    error: str | None = None
+
+
+@dataclass(slots=True)
+class LocalHealthCheckResult:
+    ok: bool
+    services: list[LocalHealthServiceResult]
+
+
 def resolve_user_id(token: str | None) -> str:
     if token is None:
         return DEFAULT_SINGLE_USER_ID
@@ -228,7 +344,25 @@ def resolve_user_id(token: str | None) -> str:
     normalized = token.strip()
     if not normalized:
         return DEFAULT_SINGLE_USER_ID
-    return normalized
+
+    auth_mode = AuthSettings().auth_mode.strip().lower()
+    if auth_mode != "keycloak":
+        return normalized
+
+    module = _load_docmesh_py_core()
+    settings = _load_docmesh_settings()
+    if module is None or settings is None or not hasattr(module, "KeycloakAuthService"):
+        raise RuntimeError("DOCMESH_AUTH_MODE=keycloak requires docmesh_py_core with KeycloakAuthService")
+
+    auth_service = module.KeycloakAuthService(settings, allowed_algorithms=["RS256"])
+    user = auth_service.extract_user_info(normalized)
+    subject = getattr(user, "sub", None)
+    if subject is not None and str(subject).strip():
+        return str(subject)
+    preferred_username = getattr(user, "preferred_username", None)
+    if preferred_username is not None and str(preferred_username).strip():
+        return str(preferred_username)
+    raise RuntimeError("Keycloak user info did not include a usable subject")
 
 
 def extract_doc_id_from_storage_path(storage_path: str) -> str:
@@ -240,3 +374,32 @@ def extract_doc_id_from_storage_path(storage_path: str) -> str:
 
 def escape_milvus_string(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def resolve_milvus_runtime_settings(*, fallback_uri: str) -> tuple[str, str, float]:
+    settings = MilvusSettings()
+    docmesh_settings = _load_docmesh_settings()
+    docmesh_uri, docmesh_collection_name, docmesh_timeout = _read_docmesh_milvus_settings(docmesh_settings)
+    resolved_uri = docmesh_uri or settings.uri or fallback_uri
+    resolved_collection_name = docmesh_collection_name or settings.collection_name
+    resolved_timeout = docmesh_timeout or settings.timeout
+    return resolved_uri, resolved_collection_name, resolved_timeout
+
+
+def run_health_checks(service_checks: dict[str, Any], required_services: set[str] | None = None) -> Any:
+    module = _load_docmesh_py_core()
+    if module is not None and hasattr(module, "check_all_services"):
+        return module.check_all_services(service_checks, required_services=required_services)
+
+    services: list[LocalHealthServiceResult] = []
+    ok = True
+    for service_name, check in service_checks.items():
+        try:
+            check()
+            services.append(LocalHealthServiceResult(service=service_name, ok=True, error=None))
+        except Exception as exc:
+            ok = False
+            services.append(LocalHealthServiceResult(service=service_name, ok=False, error=str(exc)))
+            if required_services is not None and service_name in required_services:
+                break
+    return LocalHealthCheckResult(ok=ok, services=services)
