@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
+import pytest
+
+import rag_system_core.infrastructure as infrastructure_module
 from rag_system_core import OllamaEmbeddingClient, OllamaGenerationClient, RAGCore
 from rag_system_core.infrastructure import resolve_user_id
 
@@ -92,12 +94,10 @@ def install_fake_docmesh(monkeypatch, *, ollama_wrapper: FakeDocmeshOllamaWrappe
             records["validated_token"] = token
             return SimpleNamespace(sub="user-from-keycloak", preferred_username="alice")
 
-    module = ModuleType("docmesh_py_core")
-    module.load_settings = fake_load_settings
-    module.ServiceFactoryRegistry = FakeRegistry
-    module.check_all_services = fake_check_all_services
-    module.KeycloakAuthService = FakeKeycloakAuthService
-    monkeypatch.setitem(sys.modules, "docmesh_py_core", module)
+    monkeypatch.setattr(infrastructure_module, "load_settings", fake_load_settings)
+    monkeypatch.setattr(infrastructure_module, "ServiceFactoryRegistry", FakeRegistry)
+    monkeypatch.setattr(infrastructure_module, "check_all_services", fake_check_all_services)
+    monkeypatch.setattr(infrastructure_module, "KeycloakAuthService", FakeKeycloakAuthService)
     return records, fake_milvus
 
 
@@ -162,3 +162,31 @@ def test_resolve_user_id_uses_keycloak_when_auth_mode_enabled(monkeypatch) -> No
 
     assert resolved == "user-from-keycloak"
     assert records["validated_token"] == "Bearer abc.def.ghi"
+
+
+def test_ollama_embedding_client_requires_valid_docmesh_settings_even_with_explicit_overrides(monkeypatch) -> None:
+    def broken_load_settings(env) -> object:
+        del env
+        raise RuntimeError("invalid docmesh settings")
+
+    monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
+
+    with pytest.raises(RuntimeError, match="invalid docmesh settings"):
+        OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+
+
+def test_rag_core_requires_valid_docmesh_settings_for_milvus_runtime(monkeypatch, tmp_path: Path) -> None:
+    def broken_load_settings(env) -> object:
+        del env
+        raise RuntimeError("invalid docmesh settings")
+
+    monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
+
+    with pytest.raises(RuntimeError, match="invalid docmesh settings"):
+        RAGCore(
+            embedding_client=FakeEmbeddingClient(),
+            generation_client=FakeGenerationClient(),
+            metadata_path=tmp_path / "metadata.db",
+            document_storage_dir=tmp_path / "documents",
+            storage_mode="local",
+        )

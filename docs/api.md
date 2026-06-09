@@ -145,20 +145,19 @@ core = RAGCore(
 - `sqlalchemy`: metadata persistence(SQLite ORM) 구동에 필요
 - `pymilvus`: Milvus Lite vector store 구동에 필요
 
-추가 런타임 조건:
+관련 런타임 조건:
+- `docmesh_py_core.load_settings()`가 성공할 수 있도록 docmesh 공통 설정이 유효해야 한다.
 - `metadata_path`는 SQLite 파일을 생성/쓰기 가능한 경로여야 한다.
 - `document_storage_dir`는 `storage_mode="local"`일 때 문서 자산을 생성/쓰기 가능한 경로여야 한다.
 - Milvus Lite 저장 경로는 기본적으로 `metadata_path.with_suffix(".milvus.db")`를 사용하므로, 해당 위치 역시 쓰기 가능해야 한다.
 
-### 4.1.1 `docmesh-py-core` 선택 연동
+### 4.1.1 `docmesh-py-core` 연동
 
-`rag_system_core`는 `docmesh-py-core`를 **선택적으로** 사용할 수 있다.
+`rag_system_core`는 `docmesh-py-core`를 기본 의존성으로 사용한다.
 
-- `docmesh_py_core`가 설치되어 있고 `load_settings()`가 성공하면:
-  - `ServiceFactoryRegistry`를 통해 `ollama`, `milvus` client를 우선 생성한다.
-  - health check 집계 시 `check_all_services(...)`를 우선 사용한다.
-- `docmesh_py_core`가 없거나 settings 로딩/검증이 실패하면:
-  - 기존 `rag_system_core`의 환경변수 기반 설정과 기본 SDK client 생성 방식으로 fallback 한다.
+- `load_settings()`를 통해 공통 설정을 읽는다.
+- `ServiceFactoryRegistry`를 통해 `ollama`, `milvus` client를 우선 생성한다.
+- health check 집계 시 `check_all_services(...)`를 우선 사용한다.
 
 이 연동은 현재 다음 범위에 한정된다.
 
@@ -270,9 +269,9 @@ OllamaEmbeddingClient(
 설정 소스:
 - 명시적으로 전달한 인자가 우선한다.
 - 그다음 `docmesh_py_core.load_settings()`에서 읽은 `settings.ollama` 값을 시도한다.
-- 그다음 `docmesh-py-core` 스타일 환경변수(`OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS`)를 시도한다.
 - 마지막으로 `OllamaEmbedSettings` 값을 사용한다.
 - `OllamaEmbedSettings`는 `.env`와 환경변수 `OLLAMA_EMBED__*`를 읽는다.
+- `OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS` 같은 값은 직접 fallback으로 읽지 않고, `load_settings()`가 성공적으로 해석한 결과를 통해 반영된다.
 
 관련 설정 필드:
 - `OLLAMA_HOST` 예: `http://ollama:11434`
@@ -286,7 +285,7 @@ OllamaEmbeddingClient(
 - `model` 인자와 `OLLAMA_EMBED__MODEL`이 모두 비어 있으면 `ValueError`가 발생한다.
 - Ollama 호출 실패 시 `RuntimeError("Failed to fetch embeddings from Ollama")`가 발생한다.
 - 응답에 `embeddings` 필드가 없거나 형식이 다르면 `RuntimeError("Ollama returned a malformed embeddings response")`가 발생한다.
-- `docmesh_py_core.load_settings()`가 Keycloak 등 다른 설정 오류로 실패해도, embedding client는 가능한 fallback 경로로 계속 초기화된다.
+- `docmesh_py_core.load_settings()`가 실패하면 embedding client 초기화도 즉시 실패한다.
 
 #### `OllamaGenerationClient`
 
@@ -322,9 +321,9 @@ OllamaGenerationClient(
 설정 소스:
 - 명시적으로 전달한 인자가 우선한다.
 - 그다음 `docmesh_py_core.load_settings()`에서 읽은 `settings.ollama` 값을 시도한다.
-- 그다음 `docmesh-py-core` 스타일 환경변수(`OLLAMA_HOST`, `OLLAMA_GENERATION_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS`)를 시도한다.
 - 마지막으로 `OllamaGenerateSettings` 값을 사용한다.
 - `OllamaGenerateSettings`는 `.env`와 환경변수 `OLLAMA_GENERATE__*`를 읽는다.
+- `OLLAMA_HOST`, `OLLAMA_GENERATION_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS` 같은 값은 직접 fallback으로 읽지 않고, `load_settings()`가 성공적으로 해석한 결과를 통해 반영된다.
 
 관련 설정 필드:
 - `OLLAMA_HOST` 예: `http://ollama:11434`
@@ -344,6 +343,7 @@ OllamaGenerationClient(
 - `api_key` 인자와 `OLLAMA_GENERATE__API_KEY`가 모두 비어 있으면 `ValueError`가 발생한다.
 - Ollama 호출 실패 시 `RuntimeError("Failed to generate response from Ollama")`가 발생한다.
 - 응답에 `message.content`가 없거나 형식이 다르면 `RuntimeError("Ollama returned a malformed generation response")`가 발생한다.
+- `docmesh_py_core.load_settings()`가 실패하면 generation client 초기화도 즉시 실패한다.
 - 단, `docmesh_py_core`의 `ollama` service client를 성공적으로 만든 경우에는 별도 `api_key` 없이 그 client를 그대로 사용할 수 있다.
 
 ### 4.4 생성자 파라미터
@@ -603,8 +603,8 @@ health_check() -> object
 - vector store가 `check()`를 제공하면 `milvus` 항목을 포함한다.
 - embedding client가 `check()`를 제공하면 `embedding` 항목을 포함한다.
 - generation client가 `check()`를 제공하면 `generation` 항목을 포함한다.
-- `docmesh_py_core.check_all_services(...)`를 사용할 수 있으면 그 결과 형식을 그대로 반환한다.
-- 그렇지 않으면 내부 집계 결과를 반환한다.
+- `docmesh_py_core.check_all_services(...)`를 우선 사용한다.
+- 공통 health check 호출 자체가 실패하면 내부 집계 결과로 fallback 한다.
 
 #### integration contract
 - `check()` 메서드는 성공 시 `None` 또는 성공을 의미하는 값을 반환하고, 실패 시 예외를 발생시키는 방식이면 충분하다.
@@ -705,4 +705,4 @@ deleted = core.delete_document(stream_result.doc_id, token="user-a")
 
 - vector store는 현재 Milvus Lite 기반 로컬 영속 저장소 구현이다.
 - token과 user_id의 별도 매핑 저장소는 아직 없다. 현재는 token 문자열 자체를 scope로 사용한다.
-- `DOCMESH_AUTH_MODE=keycloak`을 사용할 때는 `docmesh_py_core`와 Keycloak 관련 설정이 모두 유효해야 한다. 그렇지 않으면 user id 해석 시 런타임 오류가 발생할 수 있다.
+- `DOCMESH_AUTH_MODE=keycloak`을 사용할 때는 Keycloak 관련 `docmesh_py_core` 설정이 유효해야 한다. 그렇지 않으면 user id 해석 시 런타임 오류가 발생할 수 있다.

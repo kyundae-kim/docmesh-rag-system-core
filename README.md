@@ -21,41 +21,38 @@ DocMesh 프로젝트의 RAG System core package
 
 ## docmesh-py-core 연동
 
-현재 `rag_system_core`는 `docmesh-py-core`를 **선택적으로** 연동할 수 있습니다.
+현재 `rag_system_core`는 `docmesh-py-core`를 **기본 의존성**으로 사용합니다.
 
-- `docmesh_py_core`가 설치되어 있고 `load_settings()`가 성공하면:
-  - `ServiceFactoryRegistry` 기반으로 `ollama`, `milvus` client를 우선 생성합니다.
-  - 가능하면 `check_all_services(...)`를 사용해 공통 health check 결과를 집계합니다.
-- `docmesh_py_core`가 없거나 설정 로딩이 실패하면:
-  - 기존 `rag_system_core`의 환경변수/기본 client 생성 방식으로 자동 fallback 합니다.
+- `load_settings()`를 통해 docmesh 공통 설정을 읽습니다.
+- `ServiceFactoryRegistry` 기반으로 `ollama`, `milvus` client를 우선 생성합니다.
+- `check_all_services(...)`를 사용해 공통 health check 결과를 집계합니다.
 
 즉, `docmesh-py-core`는 **설정 로딩, 서비스 client 생성, health check, 선택적 Keycloak 기반 사용자 식별**에 활용되고,
 문서 적재/청킹/retrieval 같은 핵심 RAG 로직은 현재 패키지가 계속 담당합니다.
 
 ### 설정 우선순위
 
-기본 제공 Ollama/Milvus client는 아래 순서로 설정을 해석합니다.
+현재 코드는 `docmesh_py_core.load_settings()`가 **반드시 성공해야** 초기화됩니다.
+
+그 위에서 기본 제공 Ollama/Milvus client는 아래 순서로 설정을 해석합니다.
 
 1. 생성자 인자
 2. `docmesh_py_core.load_settings()` 결과
-3. `docmesh-py-core` 스타일 환경변수
-4. 기존 `rag_system_core` 전용 환경변수
+3. 기존 `rag_system_core` 전용 환경변수
 
-예:
+참고:
 
-- Ollama
-  - `OLLAMA_HOST`
-  - `OLLAMA_EMBEDDING_MODEL`
-  - `OLLAMA_GENERATION_MODEL`
-  - `OLLAMA_REQUEST_TIMEOUT_SECONDS`
-- Milvus
-  - `MILVUS_URI`
-  - `MILVUS_COLLECTION` 또는 `MILVUS_COLLECTION_NAME`
-  - `MILVUS_REQUEST_TIMEOUT_SECONDS` 또는 `MILVUS_CONNECT_TIMEOUT_SECONDS`
-- 기존 전용 설정도 계속 지원
-  - `OLLAMA_EMBED__*`
-  - `OLLAMA_GENERATE__*`
-  - `MILVUS__*`
+- `OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_GENERATION_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS`
+- `MILVUS_URI`, `MILVUS_COLLECTION`, `MILVUS_COLLECTION_NAME`, `MILVUS_REQUEST_TIMEOUT_SECONDS`, `MILVUS_CONNECT_TIMEOUT_SECONDS`
+
+위 값들은 `docmesh-py-core`의 `load_settings()` 입력으로 사용될 수 있습니다.
+직접 fallback으로 읽는 것은 아니며, 설정 검증이 먼저 성공해야 합니다.
+
+기존 전용 설정도 계속 지원합니다.
+
+- `OLLAMA_EMBED__*`
+- `OLLAMA_GENERATE__*`
+- `MILVUS__*`
 
 ### 선택적 Keycloak 사용자 식별
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from importlib import import_module
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, BinaryIO
 
+from docmesh_py_core import KeycloakAuthService, ServiceFactoryRegistry, check_all_services, load_settings
 import ollama
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,43 +16,18 @@ from rag_system_core.types import DocumentRecord
 DEFAULT_SINGLE_USER_ID = "single-user"
 
 
-def _load_docmesh_py_core() -> Any | None:
-    try:
-        return import_module("docmesh_py_core")
-    except ModuleNotFoundError:
-        return None
-
-
-def _load_docmesh_settings(env: dict[str, str] | None = None) -> Any | None:
-    module = _load_docmesh_py_core()
-    if module is None or not hasattr(module, "load_settings"):
-        return None
-    try:
-        return module.load_settings(env or os.environ)
-    except Exception:
-        return None
+def _load_docmesh_settings(env: dict[str, str] | None = None) -> Any:
+    return load_settings(env or os.environ)
 
 
 def _create_docmesh_service_client(service_name: str, *, settings: Any | None = None) -> Any | None:
-    module = _load_docmesh_py_core()
-    if module is None or not hasattr(module, "ServiceFactoryRegistry"):
-        return None
     resolved_settings = settings if settings is not None else _load_docmesh_settings()
-    if resolved_settings is None:
-        return None
-    registry = module.ServiceFactoryRegistry(resolved_settings)
+    registry = ServiceFactoryRegistry(resolved_settings)
     return registry.create_client(service_name)
 
 
 def _read_docmesh_ollama_settings(settings: Any | None = None) -> tuple[str | None, str | None, str | None, float | None]:
     resolved_settings = settings if settings is not None else _load_docmesh_settings()
-    if resolved_settings is None:
-        host = os.environ.get("OLLAMA_HOST")
-        embedding_model = os.environ.get("OLLAMA_EMBEDDING_MODEL")
-        generation_model = os.environ.get("OLLAMA_GENERATION_MODEL")
-        timeout = os.environ.get("OLLAMA_REQUEST_TIMEOUT_SECONDS")
-        return host, embedding_model, generation_model, float(timeout) if timeout else None
-
     ollama_settings = getattr(resolved_settings, "ollama", None)
     if ollama_settings is None:
         return None, None, None, None
@@ -66,12 +41,6 @@ def _read_docmesh_ollama_settings(settings: Any | None = None) -> tuple[str | No
 
 def _read_docmesh_milvus_settings(settings: Any | None = None) -> tuple[str | None, str | None, float | None]:
     resolved_settings = settings if settings is not None else _load_docmesh_settings()
-    if resolved_settings is None:
-        uri = os.environ.get("MILVUS_URI")
-        collection_name = os.environ.get("MILVUS_COLLECTION") or os.environ.get("MILVUS_COLLECTION_NAME")
-        timeout = os.environ.get("MILVUS_REQUEST_TIMEOUT_SECONDS") or os.environ.get("MILVUS_CONNECT_TIMEOUT_SECONDS")
-        return uri, collection_name, float(timeout) if timeout else None
-
     milvus_settings = getattr(resolved_settings, "milvus", None)
     if milvus_settings is None:
         return None, None, None
@@ -349,12 +318,8 @@ def resolve_user_id(token: str | None) -> str:
     if auth_mode != "keycloak":
         return normalized
 
-    module = _load_docmesh_py_core()
     settings = _load_docmesh_settings()
-    if module is None or settings is None or not hasattr(module, "KeycloakAuthService"):
-        raise RuntimeError("DOCMESH_AUTH_MODE=keycloak requires docmesh_py_core with KeycloakAuthService")
-
-    auth_service = module.KeycloakAuthService(settings, allowed_algorithms=["RS256"])
+    auth_service = KeycloakAuthService(settings, allowed_algorithms=["RS256"])
     user = auth_service.extract_user_info(normalized)
     subject = getattr(user, "sub", None)
     if subject is not None and str(subject).strip():
@@ -387,9 +352,10 @@ def resolve_milvus_runtime_settings(*, fallback_uri: str) -> tuple[str, str, flo
 
 
 def run_health_checks(service_checks: dict[str, Any], required_services: set[str] | None = None) -> Any:
-    module = _load_docmesh_py_core()
-    if module is not None and hasattr(module, "check_all_services"):
-        return module.check_all_services(service_checks, required_services=required_services)
+    try:
+        return check_all_services(service_checks, required_services=required_services)
+    except Exception:
+        pass
 
     services: list[LocalHealthServiceResult] = []
     ok = True
