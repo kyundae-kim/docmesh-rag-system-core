@@ -5,7 +5,7 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 from rag_system_core import OllamaEmbeddingClient, OllamaGenerationClient, RAGCore
-from rag_system_core.helpers import resolve_user_id
+from rag_system_core.infrastructure import resolve_user_id
 
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
 

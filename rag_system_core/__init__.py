@@ -15,7 +15,7 @@ from rag_system_core.types import (
 
 if TYPE_CHECKING:
     from rag_system_core.core import RAGCore
-    from rag_system_core.helpers import (
+    from rag_system_core.infrastructure import (
         MilvusSettings,
         OllamaEmbeddingClient,
         OllamaEmbedSettings,
@@ -43,12 +43,12 @@ __all__ = [
 
 _LAZY_EXPORTS = {
     "RAGCore": ("rag_system_core.core", "RAGCore"),
-    "MilvusSettings": ("rag_system_core.helpers", "MilvusSettings"),
-    "OllamaEmbeddingClient": ("rag_system_core.helpers", "OllamaEmbeddingClient"),
-    "OllamaEmbedSettings": ("rag_system_core.helpers", "OllamaEmbedSettings"),
-    "OllamaGenerationClient": ("rag_system_core.helpers", "OllamaGenerationClient"),
-    "OllamaGenerateSettings": ("rag_system_core.helpers", "OllamaGenerateSettings"),
-    "OllamaSettings": ("rag_system_core.helpers", "OllamaSettings"),
+    "MilvusSettings": ("rag_system_core.infrastructure", "MilvusSettings"),
+    "OllamaEmbeddingClient": ("rag_system_core.infrastructure", "OllamaEmbeddingClient"),
+    "OllamaEmbedSettings": ("rag_system_core.infrastructure", "OllamaEmbedSettings"),
+    "OllamaGenerationClient": ("rag_system_core.infrastructure", "OllamaGenerationClient"),
+    "OllamaGenerateSettings": ("rag_system_core.infrastructure", "OllamaGenerateSettings"),
+    "OllamaSettings": ("rag_system_core.infrastructure", "OllamaSettings"),
 }
 
 

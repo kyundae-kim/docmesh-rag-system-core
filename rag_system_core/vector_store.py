@@ -4,7 +4,7 @@ from typing import Any, Protocol
 
 from pymilvus import MilvusClient
 
-from rag_system_core.helpers import _create_docmesh_service_client, escape_milvus_string
+from rag_system_core.infrastructure import _create_docmesh_service_client, escape_milvus_string
 from rag_system_core.types import ChunkRecord
 
 

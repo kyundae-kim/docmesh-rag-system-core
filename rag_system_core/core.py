@@ -3,10 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import BinaryIO, Callable
 
-import rag_system_core.helpers as helpers_module
 import rag_system_core.metadata_store as metadata_store_module
 import rag_system_core.vector_store as vector_store_module
-from rag_system_core.helpers import (
+from rag_system_core.infrastructure import (
     DocumentStorage,
     FixedWindowChunker,
     MilvusSettings,
@@ -15,6 +14,7 @@ from rag_system_core.helpers import (
     OllamaGenerationClient,
     OllamaGenerateSettings,
     OllamaSettings,
+    ollama,
     resolve_milvus_runtime_settings,
     resolve_user_id,
     run_health_checks,
@@ -31,8 +31,6 @@ from rag_system_core.types import (
     QueryResult,
 )
 from rag_system_core.vector_store import MilvusClient, MilvusLiteVectorStore, VectorStore
-
-ollama = helpers_module.ollama
 
 
 class RetrievalService:
@@ -234,7 +232,6 @@ __all__ = [
     "RAGCore",
     "RetrievalService",
     "VectorStore",
-    "helpers_module",
     "metadata_store_module",
     "ollama",
     "vector_store_module",

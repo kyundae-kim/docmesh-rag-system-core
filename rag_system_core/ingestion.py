@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
 
-from rag_system_core.helpers import (
+from rag_system_core.infrastructure import (
     DocumentStorage,
     FixedWindowChunker,
     extract_doc_id_from_storage_path,
