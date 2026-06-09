@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "docmesh-py-core>=0.1.0",
     "ollama>=0.6.2",
     "pydantic-settings>=2.14.1",
     "pymilvus[milvus-lite]>=3.0.0",
@@ -19,3 +20,6 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["rag_system_core*"]
 exclude = ["test_rag_system_core*"]
+
+[tool.uv.sources]
+docmesh-py-core = { git = "https://github.com/kyundae-kim/docmesh-py-core.git" }
