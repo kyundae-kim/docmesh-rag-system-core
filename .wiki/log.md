@@ -57,3 +57,11 @@
   - concepts/interface-roadmap.md
   - queries/sdk-first-with-api-and-mcp-evaluation.md
 
+## [2026-06-11] update | Project roadmap document
+- Created concepts/project-roadmap.md
+- Updated index.md
+- Roadmap synthesized from:
+  - concepts/interface-roadmap.md
+  - queries/sdk-first-with-api-and-mcp-evaluation.md
+  - queries/future-considerations-for-sdk-api-mcp-rag-project.md
+
