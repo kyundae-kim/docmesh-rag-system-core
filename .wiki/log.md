@@ -65,3 +65,44 @@
   - queries/sdk-first-with-api-and-mcp-evaluation.md
   - queries/future-considerations-for-sdk-api-mcp-rag-project.md
 
+## [2026-06-19] ingest | docmesh-py-core SDK guide
+- Source ingested:
+  - https://github.com/kyundae-kim/docmesh-py-core/blob/main/docs/sdk.md
+- Raw file created:
+  - raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md
+- Wiki pages created:
+  - entities/docmesh-py-core.md
+  - concepts/service-factory-registry.md
+  - concepts/service-health-orchestration.md
+- Navigation updated:
+  - index.md
+
+## [2026-06-19] ingest | docmesh-py-core API guide
+- Source ingested:
+  - https://github.com/kyundae-kim/docmesh-py-core/blob/main/docs/api.md
+- Raw file created:
+  - raw/articles/docmesh-py-core-api-guide-2026-06-19.md
+- Wiki pages created:
+  - concepts/keycloak-auth-service.md
+- Wiki pages updated:
+  - entities/docmesh-py-core.md
+  - concepts/service-factory-registry.md
+  - concepts/service-health-orchestration.md
+  - concepts/public-api-surface.md
+- Navigation updated:
+  - index.md
+
+## [2026-06-19] ingest | docmesh-py-core config guide
+- Source ingested:
+  - https://github.com/kyundae-kim/docmesh-py-core/blob/main/docs/config.md
+- Raw file created:
+  - raw/articles/docmesh-py-core-config-guide-2026-06-19.md
+- Wiki pages created:
+  - concepts/settings-loading-and-validation.md
+  - concepts/service-configuration-topology.md
+- Wiki pages updated:
+  - entities/docmesh-py-core.md
+  - concepts/service-factory-registry.md
+  - concepts/keycloak-auth-service.md
+- Navigation updated:
+  - index.md

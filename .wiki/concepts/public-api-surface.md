@@ -1,10 +1,10 @@
 ---
 title: Public API Surface
 created: 2026-06-11
-updated: 2026-06-11
+updated: 2026-06-19
 type: concept
 tags: [sdk, api, python, integration]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-11.md, raw/articles/docmesh-rag-core-prd-2026-06-11.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md]
+sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-11.md, raw/articles/docmesh-rag-core-prd-2026-06-11.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
 confidence: high
 ---
 
@@ -23,6 +23,10 @@ confidence: high
 ## Adapter contracts
 
 `EmbeddingClient`는 `embed(texts: list[str]) -> list[list[float]]`, `GenerationClient`는 `generate(prompt: str) -> str` 계약을 만족해야 한다. 특히 embedding 결과 개수와 입력 텍스트 개수 일치, generation 결과의 문자열성은 호출 안정성의 핵심이다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-11.md]
+
+## Root import discipline
+
+`docmesh-py-core` API 가이드는 패키지 루트에서 직접 import 가능한 심볼 목록을 명시적으로 제공한다. 이 점은 public surface를 단순히 "무엇을 할 수 있는가"가 아니라 "어디서 import해야 안정적인가"의 문제로 확장하며, `Settings`, `ServiceFactoryRegistry`, `ServiceClientWrapper`, `NatsConnectionBuilder`, `KeycloakAuthService`, `check_all_services`, `mask_sensitive_value`, `build_settings_snapshot` 같은 루트 심볼이 안정적인 소비 경계임을 시사한다.^[raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
 
 ## Integration implications
 
