@@ -14,8 +14,7 @@ from rag_system_core.types import (
 )
 
 if TYPE_CHECKING:
-    from rag_system_core.core import RAGCore
-    from rag_system_core.infrastructure import (
+    from rag_system_core.adapters.ollama import (
         MilvusSettings,
         OllamaEmbeddingClient,
         OllamaEmbedSettings,
@@ -23,6 +22,8 @@ if TYPE_CHECKING:
         OllamaGenerateSettings,
         OllamaSettings,
     )
+    from rag_system_core.composition.bootstrap import bootstrap_rag_core_from_docmesh
+    from rag_system_core.domain.core import RAGCore
 
 __all__ = [
     "ChunkRecord",
@@ -39,16 +40,21 @@ __all__ = [
     "OllamaSettings",
     "QueryResult",
     "RAGCore",
+    "bootstrap_rag_core_from_docmesh",
 ]
 
 _LAZY_EXPORTS = {
-    "RAGCore": ("rag_system_core.core", "RAGCore"),
-    "MilvusSettings": ("rag_system_core.infrastructure", "MilvusSettings"),
-    "OllamaEmbeddingClient": ("rag_system_core.infrastructure", "OllamaEmbeddingClient"),
-    "OllamaEmbedSettings": ("rag_system_core.infrastructure", "OllamaEmbedSettings"),
-    "OllamaGenerationClient": ("rag_system_core.infrastructure", "OllamaGenerationClient"),
-    "OllamaGenerateSettings": ("rag_system_core.infrastructure", "OllamaGenerateSettings"),
-    "OllamaSettings": ("rag_system_core.infrastructure", "OllamaSettings"),
+    "RAGCore": ("rag_system_core.domain.core", "RAGCore"),
+    "MilvusSettings": ("rag_system_core.adapters.ollama", "MilvusSettings"),
+    "OllamaEmbeddingClient": ("rag_system_core.adapters.ollama", "OllamaEmbeddingClient"),
+    "OllamaEmbedSettings": ("rag_system_core.adapters.ollama", "OllamaEmbedSettings"),
+    "OllamaGenerationClient": ("rag_system_core.adapters.ollama", "OllamaGenerationClient"),
+    "OllamaGenerateSettings": ("rag_system_core.adapters.ollama", "OllamaGenerateSettings"),
+    "OllamaSettings": ("rag_system_core.adapters.ollama", "OllamaSettings"),
+    "bootstrap_rag_core_from_docmesh": (
+        "rag_system_core.composition.bootstrap",
+        "bootstrap_rag_core_from_docmesh",
+    ),
 }
 
 
