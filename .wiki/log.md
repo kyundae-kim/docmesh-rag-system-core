@@ -106,3 +106,41 @@
   - concepts/keycloak-auth-service.md
 - Navigation updated:
   - index.md
+
+## [2026-06-19] query | developing with docmesh-py-core
+- Question:
+  - docmesh-py-core를 개발에 활용하는 방법은?
+- Wiki pages consulted:
+  - entities/docmesh-py-core.md
+  - concepts/public-api-surface.md
+  - concepts/settings-loading-and-validation.md
+  - concepts/service-factory-registry.md
+  - concepts/service-health-orchestration.md
+- Wiki pages created:
+  - queries/developing-with-docmesh-py-core.md
+- Navigation updated:
+  - index.md
+
+## [2026-06-19] query | structural integration of docmesh-py-core into docmesh-rag-system-core
+- Question:
+  - docmesh-rag-system-core에 어떻게 연결할지 구조 제안
+- Wiki pages consulted:
+  - concepts/interface-roadmap.md
+  - concepts/rag-service-architecture.md
+  - concepts/project-roadmap.md
+  - concepts/user-scope-isolation.md
+  - queries/future-considerations-for-sdk-api-mcp-rag-project.md
+- Wiki pages created:
+  - queries/structural-integration-of-docmesh-py-core-into-docmesh-rag-system-core.md
+- Navigation updated:
+  - index.md
+
+## [2026-06-19] query | directory refactoring plan for docmesh runtime integration
+- Question:
+  - 이 구조 기준 디렉터리 리팩터링안
+- Wiki pages created:
+  - queries/directory-refactoring-plan-for-docmesh-runtime-integration.md
+- Supporting plan created:
+  - .hermes/plans/2026-06-19_171139-docmesh-runtime-directory-refactor.md
+- Navigation updated:
+  - index.md
