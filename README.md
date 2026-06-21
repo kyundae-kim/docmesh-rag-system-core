@@ -21,7 +21,7 @@ DocMesh 프로젝트의 RAG System core package
 
 ## docmesh-py-core 연동
 
-현재 `rag_system_core`는 `docmesh-py-core`를 **기본 의존성**으로 사용합니다.
+현재 `rag_system_core`는 `docmesh-py-core`를 **canonical 설정 소스**로 사용합니다.
 
 - `load_settings()`를 통해 docmesh 공통 설정을 읽습니다.
 - `ServiceFactoryRegistry` 기반으로 `ollama`, `milvus` client를 우선 생성합니다.
@@ -32,27 +32,54 @@ DocMesh 프로젝트의 RAG System core package
 
 ### 설정 우선순위
 
-현재 코드는 `docmesh_py_core.load_settings()`가 **반드시 성공해야** 초기화됩니다.
-
-그 위에서 기본 제공 Ollama/Milvus client는 아래 순서로 설정을 해석합니다.
+기본 제공 Ollama/Milvus client는 아래 순서로 설정을 해석합니다.
 
 1. 생성자 인자
 2. `docmesh_py_core.load_settings()` 결과
-3. 기존 `rag_system_core` 전용 환경변수
+3. 내장 기본값(일부 필드만)
 
-참고:
+### 지원되는 canonical 환경변수
 
-- `OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_GENERATION_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS`
-- `MILVUS_URI`, `MILVUS_COLLECTION`, `MILVUS_COLLECTION_NAME`, `MILVUS_REQUEST_TIMEOUT_SECONDS`, `MILVUS_CONNECT_TIMEOUT_SECONDS`
+#### Ollama
+- `OLLAMA_HOST`
+- `OLLAMA_EMBEDDING_MODEL`
+- `OLLAMA_GENERATION_MODEL`
+- `OLLAMA_REQUEST_TIMEOUT_SECONDS`
 
-위 값들은 `docmesh-py-core`의 `load_settings()` 입력으로 사용될 수 있습니다.
-직접 fallback으로 읽는 것은 아니며, 설정 검증이 먼저 성공해야 합니다.
+#### Milvus
+- `MILVUS_URI`
+- `MILVUS_COLLECTION`
+- `MILVUS_REQUEST_TIMEOUT_SECONDS`
+- `MILVUS_CONNECT_TIMEOUT_SECONDS`
 
-기존 전용 설정도 계속 지원합니다.
+### Breaking change: legacy env 제거
+
+다음 legacy 설정 계약은 더 이상 지원하지 않습니다.
 
 - `OLLAMA_EMBED__*`
 - `OLLAMA_GENERATE__*`
 - `MILVUS__*`
+
+또한 generation client의 legacy API key 경로도 제거되었습니다.
+
+- `OLLAMA_GENERATE__API_KEY`
+- `OllamaGenerationClient(..., api_key=...)`
+- `OllamaGenerationClient(..., headers=...)`
+
+### 기본값 및 fallback
+
+- `OllamaEmbeddingClient`
+  - `base_url`: 명시 인자와 docmesh 설정이 모두 없으면 `http://ollama:11434`
+  - `timeout`: 명시 인자와 docmesh 설정이 모두 없으면 `30.0`
+  - `model`: 명시 인자 또는 `OLLAMA_EMBEDDING_MODEL`이 필요
+- `OllamaGenerationClient`
+  - `base_url`: 명시 인자와 docmesh 설정이 모두 없으면 `http://ollama:11434`
+  - `timeout`: 명시 인자와 docmesh 설정이 모두 없으면 `30.0`
+  - `model`: 명시 인자 또는 `OLLAMA_GENERATION_MODEL`이 필요
+- Milvus runtime
+  - `uri`: docmesh 설정이 없으면 코어 내부 fallback 경로 사용
+  - `collection`: docmesh 설정이 없으면 `rag_chunks`
+  - `timeout`: docmesh 설정이 없으면 `30.0`
 
 ### 선택적 Keycloak 사용자 식별
 
@@ -93,7 +120,6 @@ DOCMESH_AUTH_MODE=keycloak
 
 즉, `DocumentRecord`는 본문(text)을 들고 있지 않고, 저장된 문서 자산 위치를 가리키는 방식입니다.
 
-
 ## 사용 예시
 
 ```python
@@ -108,7 +134,7 @@ class GenerationClient:
         raise NotImplementedError
 
 
-# environment variables (legacy or docmesh-py-core style):
+# canonical environment variables:
 # - OLLAMA_HOST=http://ollama:11434
 # - OLLAMA_EMBEDDING_MODEL=bge-m3
 # - OLLAMA_GENERATION_MODEL=gpt-oss:20b
@@ -116,6 +142,7 @@ class GenerationClient:
 # - MILVUS_URI=./data/metadata.milvus.db
 # - MILVUS_COLLECTION=rag_chunks
 # - MILVUS_REQUEST_TIMEOUT_SECONDS=30
+# - MILVUS_CONNECT_TIMEOUT_SECONDS=30
 core = RAGCore(
     embedding_client=OllamaEmbeddingClient(),
     generation_client=GenerationClient(),
