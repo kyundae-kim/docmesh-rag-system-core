@@ -11,9 +11,9 @@ from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClie
 
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
     milvus_uri = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("MILVUS__URI", str(milvus_uri))
-    monkeypatch.setenv("MILVUS__COLLECTION_NAME", "configured_chunks")
-    monkeypatch.setenv("MILVUS__TIMEOUT", "9.5")
+    monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
+    monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
+    monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9.5")
 
     rig = create_test_rig(tmp_path)
     ingested = rig.core.ingest_text(token="token-a", text="alpha beta gamma", source="configured.txt")
@@ -37,14 +37,14 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
     assert any(chunk.doc_id == ingested.doc_id for chunk in response.context_chunks)
 
 
-def test_rag_core_integration_uses_split_ollama_and_milvus_environment(monkeypatch, tmp_path: Path) -> None:
+def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Path) -> None:
     client_inits: list[dict[str, Any]] = []
     embed_calls: list[dict[str, Any]] = []
     chat_calls: list[dict[str, Any]] = []
 
     class FakeOllamaClient:
-        def __init__(self, *, host: str, timeout: float, headers: dict[str, str] | None = None) -> None:
-            client_inits.append({"host": host, "timeout": timeout, "headers": headers})
+        def __init__(self, *, host: str, timeout: float) -> None:
+            client_inits.append({"host": host, "timeout": timeout})
 
         def embed(self, *, model: str, input: list[str]) -> dict[str, list[list[float]]]:
             embed_calls.append({"model": model, "input": list(input)})
@@ -55,16 +55,13 @@ def test_rag_core_integration_uses_split_ollama_and_milvus_environment(monkeypat
             return {"message": {"content": f"generated::{messages[0]['content'].splitlines()[-1]}"}}
 
     milvus_uri = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("OLLAMA_EMBED__BASE_URL", "http://embed-ollama")
-    monkeypatch.setenv("OLLAMA_EMBED__MODEL", "bge-m3")
-    monkeypatch.setenv("OLLAMA_EMBED__TIMEOUT", "12.5")
-    monkeypatch.setenv("OLLAMA_GENERATE__BASE_URL", "https://generate-ollama")
-    monkeypatch.setenv("OLLAMA_GENERATE__MODEL", "gpt-oss:20b")
-    monkeypatch.setenv("OLLAMA_GENERATE__TIMEOUT", "18.5")
-    monkeypatch.setenv("OLLAMA_GENERATE__API_KEY", "test-api-key")
-    monkeypatch.setenv("MILVUS__URI", str(milvus_uri))
-    monkeypatch.setenv("MILVUS__COLLECTION_NAME", "configured_chunks")
-    monkeypatch.setenv("MILVUS__TIMEOUT", "9.5")
+    monkeypatch.setenv("OLLAMA_HOST", "http://shared-ollama")
+    monkeypatch.setenv("OLLAMA_EMBEDDING_MODEL", "bge-m3")
+    monkeypatch.setenv("OLLAMA_GENERATION_MODEL", "gpt-oss:20b")
+    monkeypatch.setenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "18.5")
+    monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
+    monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
+    monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9.5")
     monkeypatch.setattr(core_module.ollama, "Client", FakeOllamaClient)
 
     core = RAGCore(
@@ -84,12 +81,8 @@ def test_rag_core_integration_uses_split_ollama_and_milvus_environment(monkeypat
     assert core.vector_store.collection_name == "configured_chunks"
     assert core.vector_store.timeout == 9.5
     assert client_inits == [
-        {"host": "http://embed-ollama", "timeout": 12.5, "headers": None},
-        {
-            "host": "https://generate-ollama",
-            "timeout": 18.5,
-            "headers": {"Authorization": "Bearer test-api-key"},
-        },
+        {"host": "http://shared-ollama", "timeout": 18.5},
+        {"host": "http://shared-ollama", "timeout": 18.5},
     ]
     assert embed_calls == [
         {"model": "bge-m3", "input": ["alpha beta gamma"]},

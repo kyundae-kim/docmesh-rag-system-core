@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from typing import Any, BinaryIO
 
 from docmesh_py_core import KeycloakAuthService, ServiceFactoryRegistry, check_all_services, load_settings
-import ollama
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from rag_system_core.types import DocumentRecord
@@ -55,148 +54,8 @@ def _read_docmesh_milvus_settings(settings: Any | None = None) -> tuple[str | No
     return uri, collection_name, float(timeout) if timeout is not None else None
 
 
-class OllamaEmbedSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="OLLAMA_EMBED__",
-        env_file=".env",
-        extra="ignore",
-    )
-
-    base_url: str = "http://ollama:11434"
-    model: str | None = None
-    timeout: float = 30.0
-
-
-class OllamaGenerateSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="OLLAMA_GENERATE__",
-        env_file=".env",
-        extra="ignore",
-    )
-
-    base_url: str = "https://ollama.com"
-    model: str = "gpt-oss:20b"
-    timeout: float = 30.0
-    api_key: str | None = None
-
-
-OllamaSettings = OllamaEmbedSettings
-
-
-class OllamaEmbeddingClient:
-    def __init__(
-        self,
-        *,
-        model: str | None = None,
-        base_url: str | None = None,
-        timeout: float | None = None,
-    ) -> None:
-        settings = OllamaEmbedSettings()
-        docmesh_settings = _load_docmesh_settings()
-        docmesh_host, docmesh_embedding_model, _, docmesh_timeout = _read_docmesh_ollama_settings(docmesh_settings)
-        resolved_model = model or docmesh_embedding_model or settings.model
-        if resolved_model is None or not resolved_model.strip():
-            raise ValueError("Ollama embed model must be provided either as 'model' or OLLAMA_EMBED__MODEL")
-        self.model = resolved_model
-        self.base_url = (base_url or docmesh_host or settings.base_url).rstrip("/")
-        self.timeout = timeout if timeout is not None else (docmesh_timeout or settings.timeout)
-        if model is None and base_url is None and timeout is None:
-            self._client = _create_docmesh_service_client("ollama", settings=docmesh_settings) or ollama.Client(
-                host=self.base_url,
-                timeout=self.timeout,
-            )
-        else:
-            self._client = ollama.Client(host=self.base_url, timeout=self.timeout)
-
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-
-        try:
-            response = self._client.embed(model=self.model, input=texts)
-        except Exception as exc:
-            raise RuntimeError("Failed to fetch embeddings from Ollama") from exc
-
-        try:
-            embeddings = response["embeddings"]
-        except (KeyError, TypeError) as exc:
-            raise RuntimeError("Ollama returned a malformed embeddings response") from exc
-
-        return [[float(value) for value in vector] for vector in embeddings]
-
-    def check(self) -> None:
-        if hasattr(self._client, "check"):
-            self._client.check()
-            return
-        if hasattr(self._client, "ps"):
-            self._client.ps()
-            return
-        raise RuntimeError("Ollama client does not support health checks")
-
-
-class MilvusSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="MILVUS__",
-        env_file=".env",
-        extra="ignore",
-    )
-
-    uri: str | None = None
-    collection_name: str = "rag_chunks"
-    timeout: float = 30.0
-
-
-class OllamaGenerationClient:
-    def __init__(
-        self,
-        *,
-        model: str | None = None,
-        base_url: str | None = None,
-        timeout: float | None = None,
-        api_key: str | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> None:
-        settings = OllamaGenerateSettings()
-        docmesh_settings = _load_docmesh_settings()
-        docmesh_host, _, docmesh_generation_model, docmesh_timeout = _read_docmesh_ollama_settings(docmesh_settings)
-        resolved_model = model or docmesh_generation_model or settings.model
-        if resolved_model is None or not resolved_model.strip():
-            raise ValueError("Ollama generation model must be provided either as 'model' or OLLAMA_GENERATE__MODEL")
-
-        resolved_api_key = api_key or settings.api_key
-        using_docmesh_client = model is None and base_url is None and timeout is None and api_key is None and headers is None
-        docmesh_client = _create_docmesh_service_client("ollama", settings=docmesh_settings) if using_docmesh_client else None
-        if resolved_api_key is None or not resolved_api_key.strip():
-            if docmesh_client is None:
-                raise ValueError("Ollama API key must be provided either as 'api_key' or OLLAMA_GENERATE__API_KEY")
-
-        self.model = resolved_model
-        self.base_url = (base_url or docmesh_host or settings.base_url).rstrip("/")
-        self.timeout = timeout if timeout is not None else (docmesh_timeout or settings.timeout)
-        self.headers = headers or ({"Authorization": f"Bearer {resolved_api_key}"} if resolved_api_key else None)
-        self._client = docmesh_client or ollama.Client(host=self.base_url, headers=self.headers, timeout=self.timeout)
-
-    def generate(self, prompt: str) -> str:
-        try:
-            response = self._client.chat(model=self.model, messages=[{"role": "user", "content": prompt}])
-        except Exception as exc:
-            raise RuntimeError("Failed to generate response from Ollama") from exc
-
-        try:
-            generated_text = response["message"]["content"]
-        except (KeyError, TypeError) as exc:
-            raise RuntimeError("Ollama returned a malformed generation response") from exc
-
-        return str(generated_text)
-
-    def check(self) -> None:
-        if hasattr(self._client, "check"):
-            self._client.check()
-            return
-        if hasattr(self._client, "ps"):
-            self._client.ps()
-            return
-        raise RuntimeError("Ollama client does not support health checks")
+# Legacy Ollama/Milvus runtime settings were removed.
+# Canonical runtime configuration now comes from docmesh-py-core settings.
 
 
 class DocumentStorage:
@@ -342,12 +201,11 @@ def escape_milvus_string(value: str) -> str:
 
 
 def resolve_milvus_runtime_settings(*, fallback_uri: str) -> tuple[str, str, float]:
-    settings = MilvusSettings()
     docmesh_settings = _load_docmesh_settings()
     docmesh_uri, docmesh_collection_name, docmesh_timeout = _read_docmesh_milvus_settings(docmesh_settings)
-    resolved_uri = docmesh_uri or settings.uri or fallback_uri
-    resolved_collection_name = docmesh_collection_name or settings.collection_name
-    resolved_timeout = docmesh_timeout or settings.timeout
+    resolved_uri = docmesh_uri or fallback_uri
+    resolved_collection_name = docmesh_collection_name or "rag_chunks"
+    resolved_timeout = docmesh_timeout or 30.0
     return resolved_uri, resolved_collection_name, resolved_timeout
 
 

@@ -15,14 +15,14 @@ def _optional_float(value: str | None) -> float | None:
 
 @pytest.fixture(autouse=True)
 def isolate_docmesh_environment(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    monkeypatch.setenv("MILVUS__URI", str(tmp_path / "test.milvus.db"))
-    monkeypatch.delenv("MILVUS_URI", raising=False)
-    monkeypatch.delenv("MILVUS_COLLECTION_NAME", raising=False)
-    monkeypatch.delenv("MILVUS_TIMEOUT", raising=False)
-    monkeypatch.delenv("OLLAMA_EMBED__MODEL", raising=False)
-    monkeypatch.delenv("OLLAMA_GENERATE__MODEL", raising=False)
+    monkeypatch.setenv("MILVUS_URI", str(tmp_path / "test.milvus.db"))
+    monkeypatch.delenv("MILVUS_COLLECTION", raising=False)
+    monkeypatch.delenv("MILVUS_REQUEST_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("MILVUS_CONNECT_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
     monkeypatch.delenv("OLLAMA_EMBEDDING_MODEL", raising=False)
     monkeypatch.delenv("OLLAMA_GENERATION_MODEL", raising=False)
+    monkeypatch.delenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", raising=False)
 
     def fake_load_settings(env) -> object:
         return SimpleNamespace(
@@ -34,7 +34,7 @@ def isolate_docmesh_environment(monkeypatch: pytest.MonkeyPatch, tmp_path) -> No
             ),
             milvus=SimpleNamespace(
                 uri=env.get("MILVUS_URI"),
-                collection=env.get("MILVUS_COLLECTION") or env.get("MILVUS_COLLECTION_NAME"),
+                collection=env.get("MILVUS_COLLECTION"),
                 request_timeout_seconds=_optional_float(env.get("MILVUS_REQUEST_TIMEOUT_SECONDS")),
                 connect_timeout_seconds=_optional_float(env.get("MILVUS_CONNECT_TIMEOUT_SECONDS")),
             ),

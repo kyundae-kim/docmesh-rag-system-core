@@ -40,8 +40,7 @@ def create_docmesh_service_client(service_name: str, *, settings: Any | None = N
 def read_docmesh_ollama_settings(settings: Any | None = None) -> tuple[str | None, str | None, str | None, float | None]:
     if settings is None:
         return None, None, None, None
-    resolved_settings = settings
-    ollama_settings = getattr(resolved_settings, "ollama", None)
+    ollama_settings = getattr(settings, "ollama", None)
     if ollama_settings is None:
         return None, None, None, None
 
@@ -55,8 +54,7 @@ def read_docmesh_ollama_settings(settings: Any | None = None) -> tuple[str | Non
 def read_docmesh_milvus_settings(settings: Any | None = None) -> tuple[str | None, str | None, float | None]:
     if settings is None:
         return None, None, None
-    resolved_settings = settings
-    milvus_settings = getattr(resolved_settings, "milvus", None)
+    milvus_settings = getattr(settings, "milvus", None)
     if milvus_settings is None:
         return None, None, None
 
@@ -71,12 +69,9 @@ def read_docmesh_milvus_settings(settings: Any | None = None) -> tuple[str | Non
 
 
 def resolve_milvus_runtime_settings(*, fallback_uri: str, settings: Any | None = None) -> tuple[str, str, float]:
-    from rag_system_core.adapters.ollama import MilvusSettings
-
-    local_settings = MilvusSettings()
     resolved_settings = settings if settings is not None else try_load_docmesh_settings()
     docmesh_uri, docmesh_collection_name, docmesh_timeout = read_docmesh_milvus_settings(resolved_settings)
-    resolved_uri = docmesh_uri or local_settings.uri or fallback_uri
-    resolved_collection_name = docmesh_collection_name or local_settings.collection_name or "rag_chunks"
-    resolved_timeout = docmesh_timeout or local_settings.timeout or 30.0
+    resolved_uri = docmesh_uri or fallback_uri
+    resolved_collection_name = docmesh_collection_name or "rag_chunks"
+    resolved_timeout = docmesh_timeout or 30.0
     return resolved_uri, resolved_collection_name, resolved_timeout

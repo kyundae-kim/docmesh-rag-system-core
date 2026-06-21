@@ -191,7 +191,7 @@ def test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavai
         storage_mode="local",
     )
 
-    expected_uri = str(tmp_path / "test.milvus.db")
+    expected_uri = str((tmp_path / "metadata.db").with_suffix(".milvus.db"))
     assert core.vector_store.uri == expected_uri
     assert core.vector_store.collection_name == "rag_chunks"
     assert core.vector_store.timeout == 30.0
