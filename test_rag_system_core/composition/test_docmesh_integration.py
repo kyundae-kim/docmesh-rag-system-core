@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 import rag_system_core.infrastructure as infrastructure_module
 from rag_system_core import OllamaEmbeddingClient, OllamaGenerationClient, RAGCore
 from rag_system_core.infrastructure import resolve_user_id
@@ -164,29 +162,36 @@ def test_resolve_user_id_uses_keycloak_when_auth_mode_enabled(monkeypatch) -> No
     assert records["validated_token"] == "Bearer abc.def.ghi"
 
 
-def test_ollama_embedding_client_requires_valid_docmesh_settings_even_with_explicit_overrides(monkeypatch) -> None:
+def test_ollama_embedding_client_explicit_overrides_do_not_require_docmesh_settings(monkeypatch) -> None:
     def broken_load_settings(env) -> object:
         del env
         raise RuntimeError("invalid docmesh settings")
 
     monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
 
-    with pytest.raises(RuntimeError, match="invalid docmesh settings"):
-        OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+    client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+
+    assert client.model == "bge-m3"
+    assert client.base_url == "http://ollama"
+    assert client.timeout == 7.0
 
 
-def test_rag_core_requires_valid_docmesh_settings_for_milvus_runtime(monkeypatch, tmp_path: Path) -> None:
+def test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavailable(monkeypatch, tmp_path: Path) -> None:
     def broken_load_settings(env) -> object:
         del env
         raise RuntimeError("invalid docmesh settings")
 
     monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
 
-    with pytest.raises(RuntimeError, match="invalid docmesh settings"):
-        RAGCore(
-            embedding_client=FakeEmbeddingClient(),
-            generation_client=FakeGenerationClient(),
-            metadata_path=tmp_path / "metadata.db",
-            document_storage_dir=tmp_path / "documents",
-            storage_mode="local",
-        )
+    core = RAGCore(
+        embedding_client=FakeEmbeddingClient(),
+        generation_client=FakeGenerationClient(),
+        metadata_path=tmp_path / "metadata.db",
+        document_storage_dir=tmp_path / "documents",
+        storage_mode="local",
+    )
+
+    expected_uri = str(tmp_path / "test.milvus.db")
+    assert core.vector_store.uri == expected_uri
+    assert core.vector_store.collection_name == "rag_chunks"
+    assert core.vector_store.timeout == 30.0

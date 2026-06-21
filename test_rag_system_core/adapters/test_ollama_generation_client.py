@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 import rag_system_core.core as core_module
+import rag_system_core.infrastructure as infrastructure_module
 from rag_system_core import OllamaGenerationClient
 
 
@@ -64,6 +65,36 @@ def test_ollama_generation_client_reads_cloud_configuration_from_environment(mon
         "host": "https://generate-ollama",
         "headers": {"Authorization": "Bearer test-api-key"},
         "timeout": 18.5,
+        "model": "gpt-oss:20b",
+        "messages": [{"role": "user", "content": "Summarize alpha"}],
+    }
+
+
+def test_ollama_generation_client_explicit_overrides_bypass_docmesh_loading(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *, host: str, headers: dict[str, str], timeout: float) -> None:
+            self._delegate = RecordingOllamaGenerateClient(captured, host=host, headers=headers, timeout=timeout)
+
+        def chat(self, *, model: str, messages: list[dict[str, str]]):
+            return self._delegate.chat(model=model, messages=messages)
+
+    def broken_load_settings(env) -> object:
+        del env
+        raise RuntimeError("invalid docmesh settings")
+
+    monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
+    monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
+
+    client = OllamaGenerationClient(model="gpt-oss:20b", base_url="https://ollama.example", timeout=7.0, api_key="test-api-key")
+    response = client.generate("Summarize alpha")
+
+    assert response == "cloud answer"
+    assert captured == {
+        "host": "https://ollama.example",
+        "headers": {"Authorization": "Bearer test-api-key"},
+        "timeout": 7.0,
         "model": "gpt-oss:20b",
         "messages": [{"role": "user", "content": "Summarize alpha"}],
     }

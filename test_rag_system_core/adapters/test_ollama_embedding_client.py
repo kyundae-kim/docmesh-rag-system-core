@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 import rag_system_core.core as core_module
+import rag_system_core.infrastructure as infrastructure_module
 from rag_system_core import OllamaEmbeddingClient
 
 
@@ -82,6 +83,35 @@ def test_ollama_embedding_client_uses_ollama_package_client(monkeypatch) -> None
         "timeout": 7.0,
         "model": "bge-m3",
         "input": ["alpha", "beta"],
+    }
+
+
+def test_ollama_embedding_client_explicit_overrides_bypass_docmesh_loading(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *, host: str, timeout: float) -> None:
+            self._delegate = RecordingOllamaClient(captured, host=host, timeout=timeout)
+
+        def embed(self, *, model: str, input: list[str]):
+            return self._delegate.embed(model=model, input=input)
+
+    def broken_load_settings(env) -> object:
+        del env
+        raise RuntimeError("invalid docmesh settings")
+
+    monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
+    monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
+
+    client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+    vectors = client.embed(["alpha"])
+
+    assert vectors == [[1.0, 0.0, 0.5]]
+    assert captured == {
+        "host": "http://ollama",
+        "timeout": 7.0,
+        "model": "bge-m3",
+        "input": ["alpha"],
     }
 
 

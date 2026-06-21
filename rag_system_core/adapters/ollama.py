@@ -5,8 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from rag_system_core.composition.docmesh_runtime import (
     create_docmesh_service_client,
-    load_docmesh_settings,
     read_docmesh_ollama_settings,
+    try_load_docmesh_settings,
 )
 
 
@@ -59,15 +59,16 @@ class OllamaEmbeddingClient:
         timeout: float | None = None,
     ) -> None:
         settings = OllamaEmbedSettings()
-        docmesh_settings = load_docmesh_settings()
+        should_try_docmesh = model is None or base_url is None or timeout is None
+        docmesh_settings = try_load_docmesh_settings() if should_try_docmesh else None
         docmesh_host, docmesh_embedding_model, _, docmesh_timeout = read_docmesh_ollama_settings(docmesh_settings)
-        resolved_model = model or settings.model or docmesh_embedding_model
+        resolved_model = model or docmesh_embedding_model or settings.model
         if resolved_model is None or not resolved_model.strip():
             raise ValueError("Ollama embed model must be provided either as 'model' or OLLAMA_EMBED__MODEL")
         self.model = resolved_model
-        self.base_url = (base_url or settings.base_url or docmesh_host or "http://ollama:11434").rstrip("/")
-        self.timeout = timeout if timeout is not None else (settings.timeout if settings.timeout is not None else (docmesh_timeout or 30.0))
-        if model is None and base_url is None and timeout is None:
+        self.base_url = (base_url or docmesh_host or settings.base_url or "http://ollama:11434").rstrip("/")
+        self.timeout = timeout if timeout is not None else (docmesh_timeout or settings.timeout or 30.0)
+        if model is None and base_url is None and timeout is None and docmesh_settings is not None:
             self._client = create_docmesh_service_client("ollama", settings=docmesh_settings) or ollama.Client(
                 host=self.base_url,
                 timeout=self.timeout,
@@ -112,22 +113,30 @@ class OllamaGenerationClient:
         headers: dict[str, str] | None = None,
     ) -> None:
         settings = OllamaGenerateSettings()
-        docmesh_settings = load_docmesh_settings()
+        should_try_docmesh = model is None or base_url is None or timeout is None
+        docmesh_settings = try_load_docmesh_settings() if should_try_docmesh else None
         docmesh_host, _, docmesh_generation_model, docmesh_timeout = read_docmesh_ollama_settings(docmesh_settings)
-        resolved_model = model or settings.model or docmesh_generation_model
+        resolved_model = model or docmesh_generation_model or settings.model
         if resolved_model is None or not resolved_model.strip():
             raise ValueError("Ollama generation model must be provided either as 'model' or OLLAMA_GENERATE__MODEL")
 
         resolved_api_key = api_key or settings.api_key
-        using_docmesh_client = model is None and base_url is None and timeout is None and api_key is None and headers is None
+        using_docmesh_client = (
+            model is None
+            and base_url is None
+            and timeout is None
+            and api_key is None
+            and headers is None
+            and docmesh_settings is not None
+        )
         docmesh_client = create_docmesh_service_client("ollama", settings=docmesh_settings) if using_docmesh_client else None
         if resolved_api_key is None or not resolved_api_key.strip():
             if docmesh_client is None:
                 raise ValueError("Ollama API key must be provided either as 'api_key' or OLLAMA_GENERATE__API_KEY")
 
         self.model = resolved_model
-        self.base_url = (base_url or settings.base_url or docmesh_host or "https://ollama.com").rstrip("/")
-        self.timeout = timeout if timeout is not None else (settings.timeout if settings.timeout is not None else (docmesh_timeout or 30.0))
+        self.base_url = (base_url or docmesh_host or settings.base_url or "https://ollama.com").rstrip("/")
+        self.timeout = timeout if timeout is not None else (docmesh_timeout or settings.timeout or 30.0)
         self.headers = headers or ({"Authorization": f"Bearer {resolved_api_key}"} if resolved_api_key else None)
         self._client = docmesh_client or ollama.Client(host=self.base_url, headers=self.headers, timeout=self.timeout)
 
