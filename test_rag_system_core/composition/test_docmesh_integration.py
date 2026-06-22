@@ -174,11 +174,19 @@ def test_resolve_user_id_uses_keycloak_when_auth_mode_enabled(monkeypatch) -> No
 
 
 def test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavailable(monkeypatch, tmp_path: Path) -> None:
+    records: dict[str, object] = {}
+
     def broken_load_settings(env) -> object:
         del env
         raise RuntimeError("invalid docmesh settings")
 
+    class FakeMilvusClient:
+        def __init__(self, *, uri: str, timeout: float) -> None:
+            records["uri"] = uri
+            records["timeout"] = timeout
+
     monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
+    monkeypatch.setattr("rag_system_core.domain.core.MilvusClient", FakeMilvusClient)
 
     core = RAGCore(
         embedding_client=FakeEmbeddingClient(),
@@ -189,6 +197,7 @@ def test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavai
     )
 
     expected_uri = str((tmp_path / "metadata.db").with_suffix(".milvus.db"))
-    assert core.vector_store.uri == expected_uri
+    assert records == {"uri": expected_uri, "timeout": 30.0}
     assert core.vector_store.collection_name == "rag_chunks"
     assert core.vector_store.timeout == 30.0
+    assert isinstance(core.vector_store._client, FakeMilvusClient)

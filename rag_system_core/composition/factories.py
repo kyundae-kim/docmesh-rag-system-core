@@ -10,7 +10,7 @@ from rag_system_core.composition.docmesh_runtime import (
     resolve_milvus_runtime_settings,
 )
 from rag_system_core.storage.document_storage import DocumentStorage
-from rag_system_core.storage.vector_store import MilvusLiteVectorStore
+from rag_system_core.storage.vector_store import MilvusClient, MilvusLiteVectorStore
 
 
 def _require_ollama_client(*, settings: Any | None = None, registry: Any | None = None, client: Any | None = None) -> Any:
@@ -51,8 +51,12 @@ def create_rag_vector_store(*, metadata_path: str | Path, settings: Any | None =
     client = overrides.pop('client', None)
     if client is None:
         client = create_docmesh_service_client('milvus', settings=settings)
+    if client is None:
+        client = MilvusClient(
+            uri=overrides.get('uri', uri),
+            timeout=overrides.get('timeout', timeout),
+        )
     return MilvusLiteVectorStore(
-        uri=overrides.pop('uri', uri),
         collection_name=overrides.pop('collection_name', collection_name),
         timeout=overrides.pop('timeout', timeout),
         client=client,

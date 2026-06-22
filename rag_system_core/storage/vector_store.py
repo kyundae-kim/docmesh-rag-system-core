@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from pymilvus import MilvusClient
-
-from rag_system_core.composition.docmesh_runtime import create_docmesh_service_client
 from rag_system_core.types import ChunkRecord
 
 
@@ -26,20 +24,12 @@ class MilvusLiteVectorStore:
     def __init__(
         self,
         *,
-        uri: str,
         collection_name: str,
         timeout: float = 30.0,
-        client: Any | None = None,
+        client: Any,
     ) -> None:
-        self.uri = uri
         self.collection_name = collection_name
         self.timeout = timeout
-        if client is None:
-            client = create_docmesh_service_client("milvus")
-        if client is None:
-            import rag_system_core.vector_store as vector_store_module
-
-            client = vector_store_module.MilvusClient(uri=uri, timeout=timeout)
         self._client = client
 
     def add(self, chunks: list[ChunkRecord], vectors: list[list[float]]) -> list[str]:

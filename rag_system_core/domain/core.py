@@ -5,6 +5,7 @@ from typing import BinaryIO, Callable
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.auth import resolve_user_id
+from rag_system_core.composition.docmesh_runtime import create_docmesh_service_client
 from rag_system_core.composition.health import run_health_checks
 from rag_system_core.composition.docmesh_runtime import resolve_milvus_runtime_settings
 from rag_system_core.domain.generation import GenerationService
@@ -46,10 +47,13 @@ class RAGCore:
             milvus_uri, milvus_collection_name, milvus_timeout = resolve_milvus_runtime_settings(
                 fallback_uri=str(metadata_path.with_suffix(".milvus.db"))
             )
+            milvus_client = create_docmesh_service_client("milvus")
+            if milvus_client is None:
+                milvus_client = MilvusClient(uri=milvus_uri, timeout=milvus_timeout)
             vector_store = MilvusLiteVectorStore(
-                uri=milvus_uri,
                 collection_name=milvus_collection_name,
                 timeout=milvus_timeout,
+                client=milvus_client,
             )
         self.vector_store = vector_store
         self.ingestor = IngestionService(

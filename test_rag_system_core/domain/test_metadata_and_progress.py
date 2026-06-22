@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import inspect
 
-import rag_system_core.core as core_module
+import rag_system_core.domain.core as domain_core_module
 
 from test_rag_system_core.support import create_test_rig
 
@@ -67,8 +67,8 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
         def delete(self, *args, **kwargs) -> None:
             del args, kwargs
 
-    original_client = core_module.vector_store_module.MilvusClient
-    core_module.vector_store_module.MilvusClient = FakeMilvusClient
+    original_client = domain_core_module.MilvusClient
+    domain_core_module.MilvusClient = FakeMilvusClient
     try:
         rig = create_test_rig(tmp_path)
         result = rig.core.ingest_text(
@@ -77,7 +77,7 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
             source="milvus-ids.txt",
         )
     finally:
-        core_module.vector_store_module.MilvusClient = original_client
+        domain_core_module.MilvusClient = original_client
 
     assert result.chunk_count == 2
     assert all("chunk_id" not in payload for payload in FakeMilvusClient.inserted_payload)
