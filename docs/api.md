@@ -2,367 +2,252 @@
 
 ## 1. 개요
 
-이 문서는 현재 구현된 `RAGCore` public API를 설명한다.
+이 문서는 **현재 저장소에 구현된 코드 기준**으로 `rag_system_core`의 public API와 연동 계약을 설명한다.
+목표는 외부 애플리케이션이 소스코드를 직접 읽지 않고도 `RAGCore`를 생성하고, 문서를 적재하고, 검색/질의하고, 운영 시 제약을 이해할 수 있게 만드는 것이다.
 
-### 1.1 문서 목적
-- `RAGCore`를 다른 애플리케이션이나 서비스에서 재사용할 때 필요한 public API 사용 기준을 제공한다.
-- 생성자, 주요 메서드, 반환 모델, 저장 구조, 현재 제약 사항을 한 곳에서 확인할 수 있도록 정리한다.
-- 내부 구현을 직접 읽지 않고도 기본적인 연동 방식과 호출 흐름을 이해할 수 있도록 돕는다.
+### 1.1 이 문서가 다루는 범위
+- 패키지 루트(`rag_system_core`)에서 공개하는 안정적 import 경로
+- `RAGCore` 생성자와 public method
+- 반환 타입과 client protocol
+- 기본 제공 Ollama adapter의 **실제 생성자 계약**
+- DocMesh 런타임 설정/서비스 팩토리 연동 방식
+- 저장 구조, health check, 현재 제약
 
-### 1.2 문서 목표
-- 외부 프로젝트에서 `RAGCore`를 생성하고 문서를 적재(query 전 포함)하는 최소 사용 흐름을 이해할 수 있어야 한다.
-- 어떤 입력값과 반환값이 오가는지, 그리고 user scope가 어떻게 적용되는지 파악할 수 있어야 한다.
-- 어떤 타입과 클래스가 public surface로 기대되는지 빠르게 확인할 수 있어야 한다.
-- 현재 문서가 설명하는 범위와 설명하지 않는 범위를 구분할 수 있어야 한다.
-
-기본 원칙:
-- `token`은 현재 구현에서 그대로 user scope로 사용된다.
-- `token`이 없거나 공백이면 `single-user` 스코프가 사용된다.
-- 문서 본문은 메타데이터에 직접 저장되지 않고 `storage_path` 기반 자산 관리 방식을 사용한다.
+### 1.2 핵심 구현 원칙
+- 기본 사용자 식별은 `token -> user_id` 직접 매핑이다.
+- `token`이 없거나 공백이면 `single-user` 스코프를 사용한다.
+- `DOCMESH_AUTH_MODE=keycloak`일 때만 Keycloak 검증을 통해 `user_id`를 해석한다.
+- 문서 본문은 metadata DB에 직접 저장하지 않고 `storage_path`가 가리키는 managed asset으로 저장한다.
+- metadata는 SQLite에, 벡터는 Milvus Lite 컬렉션에 저장한다.
+- 재시작 복원은 **같은 Milvus 설정/컬렉션을 다시 여는 방식**으로 동작한다.
 
 ---
 
-## 2. Public import
+## 2. Public import surface
 
-다른 프로젝트에서는 가능한 한 아래와 같이 **public import 경로만 사용**하는 것을 권장한다.
-내부 모듈 경로가 노출되어 있더라도, 별도 문서화되지 않은 경로는 public contract로 간주하지 않는다.
+### 2.1 패키지 루트에서 공개하는 import
+
+공식적으로 문서화된 루트 import는 다음과 같다.
 
 ```python
-from pathlib import Path
-
-from rag_system_core import RAGCore
+from rag_system_core import (
+    RAGCore,
+    OllamaEmbeddingClient,
+    OllamaGenerationClient,
+    bootstrap_rag_core_from_docmesh,
+    DocumentRecord,
+    ChunkRecord,
+    IngestResult,
+    IngestionProgressRecord,
+    QueryResult,
+    EmbeddingClient,
+    GenerationClient,
+)
 ```
 
-반환 타입을 명시적으로 사용할 필요가 있다면, 아래와 같이 **패키지에서 공식적으로 재노출(re-export)된 public 타입 경로**를 제공하는 것이 바람직하다.
+패키지 루트 `__all__`에는 위 이름들이 포함되어 있으며, `RAGCore`, Ollama client, bootstrap helper는 lazy import로 노출된다.
+
+### 2.2 타입 전용 import
+
+타입과 protocol은 별도 모듈에서도 직접 import할 수 있다.
 
 ```python
-from rag_system_core import RAGCore
 from rag_system_core.types import (
     DocumentRecord,
     ChunkRecord,
     IngestResult,
     IngestionProgressRecord,
     QueryResult,
+    EmbeddingClient,
+    GenerationClient,
 )
 ```
 
-> 주의:
-> - `rag_system_core.types`는 반환 타입과 client protocol 타입을 위한 **공식 public import 경로**로 사용한다.
-> - `rag_system_core.internal.*`, `rag_system_core.adapters.*` 등 내부 구현 경로에 직접 의존하는 방식은 권장하지 않는다.
+### 2.3 구현 세부 모듈 import에 대한 주의
+
+다음 경로들은 현재 존재하지만, 외부 통합에서는 **구현 세부사항**으로 간주하는 것이 안전하다.
+
+- `rag_system_core.domain.*`
+- `rag_system_core.storage.*`
+- `rag_system_core.composition.*`
+- `rag_system_core.adapters.*`
+- `rag_system_core.core`
+
+예외적으로 `rag_system_core.core`는 여러 내부 클래스와 ORM model을 재노출하지만, 장기 호환 계약은 패키지 루트와 `rag_system_core.types` 기준으로 보는 것이 좋다.
 
 ---
 
-## 3. 주요 반환 모델
+## 3. Public return models / protocols
 
-### 3.1 `DocumentRecord`
+### 3.1 `EmbeddingClient`
 
 ```python
-DocumentRecord(
-    doc_id: str,
-    user_id: str,
-    source: str,
-    created_at: str,
-    storage_path: str | None,
-)
+class EmbeddingClient(Protocol):
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
 ```
 
-### 3.2 `ChunkRecord`
+계약:
+- 입력은 `list[str]`
+- 반환은 `list[list[float]]`
+- 반환 벡터 수는 입력 텍스트 수와 같아야 함
+- 같은 vector store 컬렉션에 저장되는 벡터는 차원이 일관되어야 함
+- query 경로는 `embed([question])[0]`를 사용하므로 최소 1개 벡터를 반환해야 함
+
+### 3.2 `GenerationClient`
 
 ```python
-ChunkRecord(
-    chunk_id: str,
-    doc_id: str,
-    user_id: str,
-    content: str,
-    metadata: dict[str, str],
-)
+class GenerationClient(Protocol):
+    def generate(self, prompt: str) -> str: ...
 ```
 
-### 3.3 `IngestResult`
+계약:
+- 입력은 완성된 단일 프롬프트 문자열
+- 반환은 최종 답변 문자열 `str`
+- structured object나 message list가 아니라 plain text를 반환해야 함
+
+### 3.3 `DocumentRecord`
 
 ```python
-IngestResult(
-    job_id: str,
-    doc_id: str,
-    user_id: str,
-    source: str,
-    created_at: str,
-    chunk_count: int,
-)
+@dataclass(slots=True)
+class DocumentRecord:
+    doc_id: str
+    user_id: str
+    source: str
+    created_at: str
+    storage_path: str | None = None
 ```
 
-### 3.4 `IngestionProgressRecord`
+### 3.4 `ChunkRecord`
 
 ```python
-IngestionProgressRecord(
-    progress_id: str,
-    job_id: str,
-    doc_id: str,
-    user_id: str,
-    source: str,
-    step_name: str,
-    step_order: int,
-    status: str,
-    created_at: str,
-)
+@dataclass(slots=True)
+class ChunkRecord:
+    chunk_id: str
+    doc_id: str
+    user_id: str
+    content: str
+    metadata: dict[str, str] = field(default_factory=dict)
 ```
 
-### 3.5 `QueryResult`
+현재 구현에서 chunk metadata에는 기본적으로 `{"source": <source>}`가 들어간다.
+
+### 3.5 `IngestResult`
 
 ```python
-QueryResult(
-    answer: str,
-    prompt: str,
-    context_chunks: list[ChunkRecord],
-)
+@dataclass(slots=True)
+class IngestResult:
+    job_id: str
+    doc_id: str
+    user_id: str
+    source: str
+    created_at: str
+    chunk_count: int
+```
+
+### 3.6 `IngestionProgressRecord`
+
+```python
+@dataclass(slots=True)
+class IngestionProgressRecord:
+    progress_id: str
+    job_id: str
+    doc_id: str
+    user_id: str
+    source: str
+    step_name: str
+    step_order: int
+    status: str
+    created_at: str
+```
+
+### 3.7 `QueryResult`
+
+```python
+@dataclass(slots=True)
+class QueryResult:
+    answer: str
+    prompt: str
+    context_chunks: list[ChunkRecord]
 ```
 
 ---
 
-## 4. `RAGCore` 생성
+## 4. `RAGCore`
+
+### 4.1 생성자 시그니처
 
 ```python
-from pathlib import Path
-from rag_system_core import RAGCore
-
-core = RAGCore(
-    embedding_client=embedding_client,
-    generation_client=generation_client,
-    metadata_path=Path("./data/metadata.db"),
-    document_storage_dir=Path("./data/documents"),
-    storage_mode="local",
-    chunk_size=512,
-    chunk_overlap=64,
-)
-```
-
-### 4.1 의존성 및 런타임 요구사항
-
-`RAGCore`를 실제로 import/생성하려면 현재 구현 기준으로 아래 런타임 의존성이 필요하다.
-
-- `ollama`: 기본 Ollama client 구현(`OllamaEmbeddingClient`, `OllamaGenerationClient`) import에 필요
-- `pydantic-settings`: Ollama/Milvus 설정 클래스 import에 필요
-- `sqlalchemy`: metadata persistence(SQLite ORM) 구동에 필요
-- `pymilvus`: Milvus Lite vector store 구동에 필요
-
-관련 런타임 조건:
-- `docmesh_py_core.load_settings()`가 성공할 수 있도록 docmesh 공통 설정이 유효해야 한다.
-- `metadata_path`는 SQLite 파일을 생성/쓰기 가능한 경로여야 한다.
-- `document_storage_dir`는 `storage_mode="local"`일 때 문서 자산을 생성/쓰기 가능한 경로여야 한다.
-- Milvus Lite 저장 경로는 기본적으로 `metadata_path.with_suffix(".milvus.db")`를 사용하므로, 해당 위치 역시 쓰기 가능해야 한다.
-
-### 4.1.1 `docmesh-py-core` 연동
-
-`rag_system_core`는 `docmesh-py-core`를 기본 의존성으로 사용한다.
-
-- `load_settings()`를 통해 공통 설정을 읽는다.
-- `ServiceFactoryRegistry`를 통해 `ollama`, `milvus` client를 우선 생성한다.
-- health check 집계 시 `check_all_services(...)`를 우선 사용한다.
-
-이 연동은 현재 다음 범위에 한정된다.
-
-- 설정 로딩
-- Ollama/Milvus client 생성
-- 공통 health check 집계
-- 선택적 Keycloak 기반 `token -> user_id` 해석
-
-반대로 아래는 여전히 `rag_system_core`가 직접 담당한다.
-
-- ingestion pipeline
-- chunking
-- SQLite metadata persistence
-- prompt assembly
-- retrieval orchestration
-
-참고:
-- `from rag_system_core.types import ...` 형태의 **타입 import만 사용할 경우**에는 위 외부 런타임 의존성이 직접 필요하지 않다.
-- 반면 `from rag_system_core import RAGCore` 또는 Ollama/Milvus 관련 설정/클라이언트를 실제로 사용할 경우에는 위 의존성이 설치되어 있어야 한다.
-
-### 4.2 Client contract
-
-#### `EmbeddingClient`
-
-`RAGCore`가 기대하는 최소 contract는 아래와 같다.
-
-```python
-from rag_system_core.types import EmbeddingClient
-
-class MyEmbeddingClient(EmbeddingClient):
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        ...
-```
-
-호출 계약:
-- 입력은 `list[str]`이다.
-- 반환값은 `list[list[float]]`이다.
-- **반환 벡터 개수는 입력 텍스트 개수와 반드시 같아야 한다.**
-- 각 벡터의 차원 수는 서로 일관되어야 한다.
-- 같은 vector store 컬렉션에 들어가는 벡터 차원은 호출 간에도 일관되어야 한다.
-
-현재 구현과의 호환 요구사항:
-- ingestion 경로는 `embed(chunks)` 결과를 그대로 vector store에 전달하므로, 청크 수와 벡터 수가 다르면 실패한다.
-- query 경로는 `embed([question])[0]` 형태를 사용하므로, 질문 1개 입력에 대해 **반드시 최소 1개의 벡터**를 반환해야 한다.
-- 실패 시에는 예외를 발생시키는 것이 안전하다. 현재 `RAGCore`는 embedding 오류를 별도로 표준화하지 않고 상위로 전파한다.
-
-권장 사항:
-- 빈 입력 `[]`에 대해서는 `[]`를 반환하도록 구현하는 것이 바람직하다.
-- 반환값에는 `numpy.ndarray` 대신 직렬화 가능한 파이썬 `list[float]`를 사용하는 것이 안전하다.
-
-#### `GenerationClient`
-
-`RAGCore`가 기대하는 최소 contract는 아래와 같다.
-
-```python
-from rag_system_core.types import GenerationClient
-
-class MyGenerationClient(GenerationClient):
-    def generate(self, prompt: str) -> str:
-        ...
-```
-
-호출 계약:
-- 입력은 최종 조립된 단일 `prompt: str`이다.
-- 반환값은 **최종 답변 문자열** `str`이어야 한다.
-
-현재 구현과의 호환 요구사항:
-- `RAGCore`는 chat message list, tool call 결과, structured object를 기대하지 않는다.
-- `generate()` 결과를 그대로 `QueryResult.answer`에 넣으므로, 문자열이 아닌 객체를 반환하면 호출자 측에서 깨질 수 있다.
-- 실패 시에는 예외를 발생시키는 것이 안전하다. 현재 `RAGCore`는 generation 오류를 별도로 표준화하지 않고 상위로 전파한다.
-
-권장 사항:
-- prompt 전체를 하나의 입력으로 처리하는 non-streaming wrapper를 제공하는 것이 가장 단순하다.
-- 외부 LLM SDK가 dict/object를 반환한다면, adapter에서 최종 텍스트만 추출해서 `str`로 반환하는 것이 좋다.
-
-### 4.3 기본 제공 Ollama client
-
-현재 패키지는 `EmbeddingClient`, `GenerationClient`의 기본 구현으로 아래 클래스를 제공한다.
-
-#### `OllamaEmbeddingClient`
-
-```python
-from rag_system_core import OllamaEmbeddingClient
-
-embedding_client = OllamaEmbeddingClient(
-    model="bge-m3",
-    base_url="http://ollama:11434",
-    timeout=30.0,
-)
-```
-
-생성자 시그니처:
-
-```python
-OllamaEmbeddingClient(
+RAGCore(
     *,
-    model: str | None = None,
-    base_url: str | None = None,
-    timeout: float | None = None,
+    embedding_client: EmbeddingClient,
+    generation_client: GenerationClient,
+    metadata_path: str | Path,
+    document_storage_dir: str | Path,
+    storage_mode: str = "memory",
+    chunk_size: int = 512,
+    chunk_overlap: int = 64,
+    vector_store: VectorStore | None = None,
 )
 ```
 
-동작:
-- 내부적으로 `ollama.Client(host=..., timeout=...)`를 생성한다.
-- `embed(texts)` 호출 시 `client.embed(model=self.model, input=texts)`를 사용한다.
-- 응답의 `response["embeddings"]`를 읽어 `list[list[float]]`로 정규화한다.
-- 입력이 빈 리스트이면 `[]`를 반환한다.
+중요:
+- `storage_mode` 기본값은 **`"memory"`** 이다.
+- `vector_store`를 주지 않으면 내부에서 Milvus Lite 기반 store를 생성한다.
+- `metadata_path`는 SQLite 파일 경로로 사용된다.
+- `document_storage_dir`는 `storage_mode="local"`일 때 managed asset 저장 디렉터리로 사용된다.
 
-설정 소스:
-- 명시적으로 전달한 인자가 우선한다.
-- 그다음 `docmesh_py_core.load_settings()`에서 읽은 `settings.ollama` 값을 시도한다.
-- 마지막으로 `OllamaEmbedSettings` 값을 사용한다.
-- `OllamaEmbedSettings`는 `.env`와 환경변수 `OLLAMA_EMBED__*`를 읽는다.
-- `OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS` 같은 값은 직접 fallback으로 읽지 않고, `load_settings()`가 성공적으로 해석한 결과를 통해 반영된다.
+### 4.2 파라미터 의미
 
-관련 설정 필드:
-- `OLLAMA_HOST` 예: `http://ollama:11434`
-- `OLLAMA_EMBEDDING_MODEL` 예: `bge-m3`
-- `OLLAMA_REQUEST_TIMEOUT_SECONDS` 기본값 없음
-- `OLLAMA_EMBED__BASE_URL` 기본값: `http://ollama:11434`
-- `OLLAMA_EMBED__MODEL` 기본값 없음
-- `OLLAMA_EMBED__TIMEOUT` 기본값: `30.0`
+| 파라미터 | 설명 |
+|---|---|
+| `embedding_client` | `embed(texts)`를 제공하는 embedding adapter |
+| `generation_client` | `generate(prompt)`를 제공하는 generation adapter |
+| `metadata_path` | SQLite metadata DB 파일 경로 |
+| `document_storage_dir` | 문서 자산 저장 디렉터리 |
+| `storage_mode` | `"memory"` 또는 `"local"` |
+| `chunk_size` | 고정 길이 chunk 크기 |
+| `chunk_overlap` | 인접 chunk overlap 길이 |
+| `vector_store` | 선택적 사용자 제공 vector store 구현 |
 
-주의:
-- `model` 인자와 `OLLAMA_EMBED__MODEL`이 모두 비어 있으면 `ValueError`가 발생한다.
-- Ollama 호출 실패 시 `RuntimeError("Failed to fetch embeddings from Ollama")`가 발생한다.
-- 응답에 `embeddings` 필드가 없거나 형식이 다르면 `RuntimeError("Ollama returned a malformed embeddings response")`가 발생한다.
-- `docmesh_py_core.load_settings()`가 실패하면 embedding client 초기화도 즉시 실패한다.
+### 4.3 내부 구성
 
-#### `OllamaGenerationClient`
+`RAGCore`는 현재 다음 구성요소를 묶는 orchestration entry point다.
 
-```python
-from rag_system_core import OllamaGenerationClient
-
-generation_client = OllamaGenerationClient(
-    model="gpt-oss:20b",
-    base_url="https://ollama.com",
-    api_key="<api-key>",
-    timeout=30.0,
-)
-```
-
-생성자 시그니처:
-
-```python
-OllamaGenerationClient(
-    *,
-    model: str | None = None,
-    base_url: str | None = None,
-    timeout: float | None = None,
-    api_key: str | None = None,
-    headers: dict[str, str] | None = None,
-)
-```
-
-동작:
-- 내부적으로 `ollama.Client(host=..., headers=..., timeout=...)`를 생성한다.
-- `generate(prompt)` 호출 시 `client.chat(model=self.model, messages=[{"role": "user", "content": prompt}])`를 사용한다.
-- 응답의 `response["message"]["content"]`를 읽어 `str`로 반환한다.
-
-설정 소스:
-- 명시적으로 전달한 인자가 우선한다.
-- 그다음 `docmesh_py_core.load_settings()`에서 읽은 `settings.ollama` 값을 시도한다.
-- 마지막으로 `OllamaGenerateSettings` 값을 사용한다.
-- `OllamaGenerateSettings`는 `.env`와 환경변수 `OLLAMA_GENERATE__*`를 읽는다.
-- `OLLAMA_HOST`, `OLLAMA_GENERATION_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS` 같은 값은 직접 fallback으로 읽지 않고, `load_settings()`가 성공적으로 해석한 결과를 통해 반영된다.
-
-관련 설정 필드:
-- `OLLAMA_HOST` 예: `http://ollama:11434`
-- `OLLAMA_GENERATION_MODEL` 예: `gpt-oss:20b`
-- `OLLAMA_REQUEST_TIMEOUT_SECONDS` 기본값 없음
-- `OLLAMA_GENERATE__BASE_URL` 기본값: `https://ollama.com`
-- `OLLAMA_GENERATE__MODEL` 기본값: `gpt-oss:20b`
-- `OLLAMA_GENERATE__TIMEOUT` 기본값: `30.0`
-- `OLLAMA_GENERATE__API_KEY` 기본값 없음
-
-인증/헤더:
-- `headers`를 직접 주지 않으면 기본적으로 `{"Authorization": f"Bearer {api_key}"}` 헤더를 사용한다.
-- `headers`를 직접 주면 기본 Authorization 헤더 대신 전달한 헤더를 그대로 사용한다.
-
-주의:
-- `model` 인자와 `OLLAMA_GENERATE__MODEL`이 모두 비어 있으면 `ValueError`가 발생한다.
-- `api_key` 인자와 `OLLAMA_GENERATE__API_KEY`가 모두 비어 있으면 `ValueError`가 발생한다.
-- Ollama 호출 실패 시 `RuntimeError("Failed to generate response from Ollama")`가 발생한다.
-- 응답에 `message.content`가 없거나 형식이 다르면 `RuntimeError("Ollama returned a malformed generation response")`가 발생한다.
-- `docmesh_py_core.load_settings()`가 실패하면 generation client 초기화도 즉시 실패한다.
-- 단, `docmesh_py_core`의 `ollama` service client를 성공적으로 만든 경우에는 별도 `api_key` 없이 그 client를 그대로 사용할 수 있다.
-
-### 4.4 생성자 파라미터
-
-- `embedding_client`: `embed(texts: list[str]) -> list[list[float]]`를 제공하는 객체
-- `generation_client`: `generate(prompt: str) -> str`를 제공하는 객체
-- `metadata_path`: SQLite DB 파일 경로
-- `document_storage_dir`: local 문서 자산 저장 경로
-- `storage_mode`: `"memory" | "local"`
-- `chunk_size`: 청크 길이
-- `chunk_overlap`: 청크 overlap 길이
+- `MetadataStore`
+- `DocumentStorage`
+- `IngestionService`
+- `RetrievalService`
+- `GenerationService`
+- `MilvusLiteVectorStore` (직접 주입하지 않은 경우)
 
 ---
 
-## 5. Public API
+## 5. 사용자 식별 규칙
 
-### 5.1 `ingest_text`
+사용자 스코프 해석은 `rag_system_core.composition.auth.resolve_user_id()`를 통해 수행된다.
 
-텍스트 본문을 직접 적재한다.
+기본 규칙:
+- `token is None` → `single-user`
+- `token.strip() == ""` → `single-user`
+- 그 외 → 기본적으로 token 문자열 자체를 `user_id`로 사용
+
+Keycloak 모드:
+- `DOCMESH_AUTH_MODE=keycloak`이면 token 문자열을 그대로 user_id로 쓰지 않는다.
+- `docmesh_py_core.load_settings()`와 `KeycloakAuthService`를 사용해 토큰을 검증한다.
+- 우선 `sub`, 없으면 `preferred_username`을 user_id로 사용한다.
+- 둘 다 없으면 `RuntimeError`가 발생한다.
+
+---
+
+## 6. Public methods
+
+### 6.1 `ingest_text`
+
+```python
+ingest_text(*, text: str, source: str, token: str | None = None) -> IngestResult
+```
+
+예시:
 
 ```python
 result = core.ingest_text(
@@ -372,25 +257,30 @@ result = core.ingest_text(
 )
 ```
 
-#### 시그니처
+동작:
+1. `token`을 `user_id`로 해석한다.
+2. 텍스트를 `strip()` 기반으로 전처리한다.
+3. managed asset에 저장한다.
+4. 문서를 chunking 한다.
+5. embedding을 **배치 1회 호출**로 생성한다.
+6. Milvus Lite에 저장해 chunk id를 받는다.
+7. SQLite metadata에 chunk/document/progress를 기록한다.
+
+주의:
+- 전처리 후 비어 있으면 chunking 단계에서 `ValueError("Document must contain non-empty text")`가 발생한다.
+
+### 6.2 `ingest_file_stream`
 
 ```python
-ingest_text(*, text: str, source: str, token: str | None = None) -> IngestResult
+ingest_file_stream(
+    *,
+    file_stream: BinaryIO,
+    source: str | None = None,
+    token: str | None = None,
+) -> IngestResult
 ```
 
-#### 동작
-- token을 user scope로 해석한다.
-- `job_id`가 부여된 ingestion 실행 결과를 반환한다.
-- 텍스트를 전처리/청킹/임베딩한다.
-- 문서 자산을 저장한다.
-- 문서/청크 메타데이터를 persistence에 기록한다.
-- vector store에 청크를 적재한다.
-
----
-
-### 5.2 `ingest_file_stream`
-
-파일 스트림을 적재한다.
+예시:
 
 ```python
 from io import BytesIO
@@ -402,143 +292,75 @@ result = core.ingest_file_stream(
 )
 ```
 
-#### 시그니처
+주의:
+- `source`는 실질적으로 필수다.
+- `source is None` 또는 공백이면 `ValueError("source is required for stream ingestion")`가 발생한다.
+- 현재 구현은 파일 스트림 바이트를 UTF-8로 decode 한다.
 
-```python
-ingest_file_stream(
-    *,
-    file_stream,
-    source: str | None = None,
-    token: str | None = None,
-) -> IngestResult
-```
-
-#### 주의
-- `source`는 필수 의미를 가진다.
-- `source`가 없거나 공백이면 `ValueError("source is required for stream ingestion")`가 발생한다.
-
----
-
-### 5.3 `ingest_file_path`
-
-파일 경로를 직접 받아 적재한다.
-
-```python
-from pathlib import Path
-
-result = core.ingest_file_path(
-    file_path=Path("./sample.txt"),
-    token="user-token-a",
-)
-```
-
-#### 시그니처
+### 6.3 `ingest_file_path`
 
 ```python
 ingest_file_path(
     *,
-    file_path,
+    file_path: str | Path,
     token: str | None = None,
     source: str | None = None,
 ) -> IngestResult
 ```
 
-#### 동작
-- `source`를 생략하면 파일명(`file_path.name`)을 사용한다.
-- 파일 내용을 읽어 ingest 파이프라인에 전달한다.
+동작:
+- `source`를 생략하면 `file_path.name`을 사용한다.
+- 파일 내용을 읽어 UTF-8로 decode 한다.
+- 실제 managed asset 이름은 원본 파일명이 아니라 `doc_id + suffix` 형태가 된다.
 
----
-
-### 5.4 `query`
-
-질문에 대해 사용자 스코프 내 문서만 검색하여 답변을 생성한다.
-
-```python
-response = core.query(
-    question="alpha에 대해 요약해줘",
-    top_k=3,
-    token="user-token-a",
-)
-```
-
-#### 시그니처
+### 6.4 `query`
 
 ```python
 query(*, question: str, top_k: int = 3, token: str | None = None) -> QueryResult
 ```
 
-#### 반환
-- `answer`: 생성된 답변
-- `prompt`: 실제 생성에 사용된 프롬프트
-- `context_chunks`: 검색된 청크 목록
+동작:
+- 질문을 embedding 한다.
+- 현재 `user_id` 범위로 Milvus 검색을 수행한다.
+- 검색된 chunk로 prompt를 조립한다.
+- generation client의 `generate(prompt)`를 호출한다.
 
----
+반환:
+- `answer`: 최종 텍스트 답변
+- `prompt`: 실제 전달된 프롬프트
+- `context_chunks`: 검색된 chunk 목록
 
-### 5.5 `list_documents`
-
-현재 user scope의 문서 목록을 반환한다.
-
-```python
-documents = core.list_documents(token="user-token-a")
-```
-
-#### 시그니처
+### 6.5 `list_documents`
 
 ```python
 list_documents(token: str | None = None) -> list[DocumentRecord]
 ```
 
----
+동작:
+- 현재 user scope의 문서만 반환
+- `created_at` 기준 정렬
 
-### 5.6 `get_document`
-
-특정 문서 메타데이터를 **현재 user scope 기준으로** 조회한다.
-
-```python
-doc = core.get_document(doc_id, token="user-token-a")
-```
-
-#### 시그니처
+### 6.6 `get_document`
 
 ```python
 get_document(doc_id: str, *, token: str | None = None) -> DocumentRecord | None
 ```
 
-#### 동작
-- 현재 user scope와 `doc_id`가 모두 일치하는 문서만 반환한다.
-- scope가 다르거나 문서가 없으면 `None`을 반환한다.
+동작:
+- `doc_id`와 `user_id`가 모두 일치하는 문서만 반환
+- 범위 밖 문서거나 없으면 `None`
 
----
-
-### 5.7 `list_document_chunks`
-
-특정 문서의 chunk 목록을 현재 user scope 기준으로 반환한다.
-
-```python
-chunks = core.list_document_chunks(doc_id, token="user-token-a")
-```
-
-#### 시그니처
+### 6.7 `list_document_chunks`
 
 ```python
 list_document_chunks(doc_id: str, *, token: str | None = None) -> list[ChunkRecord]
 ```
 
-#### 동작
-- 지정한 `doc_id`와 현재 user scope가 모두 일치하는 chunk만 반환한다.
-- 정렬은 chunk 생성 순서(`chunk_index`) 기준이다.
+동작:
+- `doc_id` + 현재 user scope 기준으로 chunk 반환
+- `chunk_index` 순서로 정렬
 
----
-
-### 5.8 `list_ingestion_progress`
-
-특정 문서의 ingestion 파이프라인 진행 상태를 현재 user scope 기준으로 반환한다.
-
-```python
-progress_rows = core.list_ingestion_progress(doc_id, token="user-token-a")
-```
-
-#### 시그니처
+### 6.8 `list_ingestion_progress`
 
 ```python
 list_ingestion_progress(
@@ -549,115 +371,278 @@ list_ingestion_progress(
 ) -> list[IngestionProgressRecord]
 ```
 
-#### 동작
-- 지정한 `doc_id`와 현재 user scope가 모두 일치하는 진행 상태 row만 반환한다.
-- `job_id`를 주면 특정 ingestion 실행 단위만 필터링할 수 있다.
-- 정렬은 pipeline 순서(`step_order`) 기준이다.
-- 현재 구현은 단계별 상태 전이를 `running`, `completed`, `failed`로 기록한다.
+동작:
+- 현재 user scope에 속한 진행 상태만 반환
+- `job_id`를 주면 특정 ingestion 실행만 필터링
+- `step_order`, `created_at` 기준 정렬
 
----
+파이프라인 단계 순서:
+1. `load`
+2. `preprocess`
+3. `chunking`
+4. `embedding`
+5. `vector_store`
+6. `chunk_persistence`
 
-### 5.9 `delete_document`
+상태 전이:
+- 정상 단계는 `running` → `completed`
+- 실패 가능 단계에서는 `failed` row가 남을 수 있음
 
-특정 문서를 현재 user scope에서 삭제한다.
-
-```python
-deleted = core.delete_document(doc_id, token="user-token-a")
-```
-
-#### 시그니처
+### 6.9 `delete_document`
 
 ```python
 delete_document(doc_id: str, *, token: str | None = None) -> bool
 ```
 
-#### 반환
+정상 삭제 순서:
+1. 현재 user scope에서 문서 조회
+2. vector store에서 `doc_id` 기준 삭제
+3. SQLite metadata에서 document/chunk/ingestion progress 삭제
+4. managed asset 삭제
+
+반환:
 - `True`: 삭제 성공
-- `False`: 대상 문서가 없거나 현재 user scope와 일치하지 않음
+- `False`: 대상 문서가 없거나 현재 user scope에 없음
 
-#### 삭제 범위
-- document metadata row
-- chunk metadata rows
-- ingestion progress rows
-- stored asset file or memory object
-- Milvus Lite vector store entries
+중요 제약:
+- vector store 삭제가 먼저 수행된다.
+- vector store 삭제에서 예외가 발생하면 metadata와 asset 삭제는 수행되지 않는다.
+- 즉, 현재 구현은 전체 삭제를 하나의 원자적 트랜잭션으로 보장하지 않는다. 다만 실패 후 재시도는 가능하도록 동작한다.
 
----
-
-### 5.10 `health_check`
-
-현재 코어가 사용하는 주요 의존 서비스의 상태를 집계한다.
-
-```python
-status = core.health_check()
-```
-
-#### 시그니처
+### 6.10 `health_check`
 
 ```python
 health_check() -> object
 ```
 
-#### 동작
-- 항상 metadata store check를 포함한다.
-- vector store가 `check()`를 제공하면 `milvus` 항목을 포함한다.
-- embedding client가 `check()`를 제공하면 `embedding` 항목을 포함한다.
-- generation client가 `check()`를 제공하면 `generation` 항목을 포함한다.
-- `docmesh_py_core.check_all_services(...)`를 우선 사용한다.
-- 공통 health check 호출 자체가 실패하면 내부 집계 결과로 fallback 한다.
+동작:
+- 항상 metadata store check 포함
+- vector store가 `check()`를 제공하면 `milvus` 포함
+- embedding client가 `check()`를 제공하면 `embedding` 포함
+- generation client가 `check()`를 제공하면 `generation` 포함
+- 가능하면 `docmesh_py_core.check_all_services(...)`를 사용
+- 공통 집계 호출 실패 시 로컬 집계 결과로 fallback
 
-#### integration contract
-- `check()` 메서드는 성공 시 `None` 또는 성공을 의미하는 값을 반환하고, 실패 시 예외를 발생시키는 방식이면 충분하다.
-- `MilvusLiteVectorStore.check()`는 내부 client의 `check()` 또는 `list_collections()`를 사용한다.
-- 기본 제공 Ollama client의 `check()`는 내부 client의 `check()` 또는 `ps()`를 사용한다.
+로컬 fallback 결과 shape:
+- `LocalHealthCheckResult(ok: bool, services: list[LocalHealthServiceResult])`
+- 각 service row는 `service`, `ok`, `error` 필드를 가짐
 
 ---
 
-## 6. 프롬프트 형식
+## 7. 생성 프롬프트 형식
 
-현재 generation prompt는 아래 형식을 따른다.
+현재 `GenerationService.build_prompt()`는 다음 형식을 사용한다.
 
 ```text
 [System Prompt]
-<system prompt>
+You are a helpful RAG assistant. Answer only from the retrieved context.
 
 [Retrieved Context]
-<context chunk 1>
+<chunk 1>
 
-<context chunk 2>
+<chunk 2>
 
 [User Query]
 <question>
 ```
 
----
-
-## 7. 저장 구조 개요
-
-### 7.1 Metadata DB
-- backend: SQLite
-- access layer: SQLAlchemy ORM
-- 주요 테이블:
-  - `documents`
-  - `chunks`
-  - `ingestion_progress`
-
-### 7.2 Document storage
-- `memory`: `memory://...` logical path 사용
-- `local`: 실제 파일 저장 후 path 기록
-
-### 7.3 Retrieval 복원
-- 프로세스 시작 시 동일한 Milvus Lite 컬렉션을 다시 열어 retrieval 가능 상태를 복원한다.
-- SQLite에는 청크 메타데이터만 유지하고, embedding 벡터는 Milvus Lite가 관리한다.
+검색 결과가 없으면 context 영역에는 `No context retrieved.`가 들어간다.
 
 ---
 
-## 8. 사용 예시
+## 8. 기본 제공 Ollama adapter
+
+## 8.1 중요한 사실
+
+현재 코드 기준으로 `OllamaEmbeddingClient`, `OllamaGenerationClient`는 **직접 HTTP 설정을 받는 고수준 client가 아니다.**
+이 두 클래스는 이미 생성된 Ollama 호환 client 객체를 주입받는 얇은 adapter다.
+
+### 8.2 `OllamaEmbeddingClient`
 
 ```python
-from io import BytesIO
+OllamaEmbeddingClient(*, client: Any, model: str)
+```
+
+동작:
+- `client.embed(model=self.model, input=texts)` 호출
+- 응답의 `response["embeddings"]`를 읽음
+- 빈 입력이면 `[]` 반환
+- transport 오류는 `RuntimeError("Failed to fetch embeddings from Ollama")`로 감싼다
+- malformed response는 `RuntimeError("Ollama returned a malformed embeddings response")`
+
+health check:
+- 내부 client에 `check()`가 있으면 사용
+- 없고 `ps()`가 있으면 사용
+- 둘 다 없으면 `RuntimeError`
+
+### 8.3 `OllamaGenerationClient`
+
+```python
+OllamaGenerationClient(*, client: Any, model: str)
+```
+
+동작:
+- `client.chat(model=self.model, messages=[{"role": "user", "content": prompt}])` 호출
+- 응답의 `response["message"]["content"]`를 읽어 문자열 반환
+- transport 오류는 `RuntimeError("Failed to generate response from Ollama")`
+- malformed response는 `RuntimeError("Ollama returned a malformed generation response")`
+
+health check:
+- 내부 client에 `check()`가 있으면 사용
+- 없고 `ps()`가 있으면 사용
+- 둘 다 없으면 `RuntimeError`
+
+### 8.4 권장 생성 경로: factory 사용
+
+직접 `client`를 만들기보다 아래 factory/helper를 사용하는 편이 안전하다.
+
+```python
+from rag_system_core.composition.factories import (
+    create_rag_embedding_client,
+    create_rag_generation_client,
+)
+```
+
+factory 동작:
+- `docmesh_py_core` service registry에서 `ollama` client 생성을 우선 시도
+- settings의 `ollama.embedding_model`, `ollama.generation_model`을 읽음
+- 명시적 override가 없고 model 설정이 비어 있으면 `ValueError`
+
+---
+
+## 9. Bootstrap helper
+
+패키지 루트는 `bootstrap_rag_core_from_docmesh`를 공개한다.
+
+```python
+bootstrap_rag_core_from_docmesh(
+    *,
+    metadata_path,
+    document_storage_dir,
+    storage_mode="local",
+    chunk_size=512,
+    chunk_overlap=64,
+)
+```
+
+동작:
+- DocMesh settings 로드
+- service registry 생성
+- registry를 통해 embedding/generation client 생성
+- DocMesh 설정 기반 vector store 생성
+- 최종적으로 `RAGCore(...)` 반환
+
+주의:
+- 이 helper의 기본 `storage_mode`는 `"local"`이다.
+- 반면 `RAGCore` 생성자 자체의 기본값은 `"memory"`이다.
+
+---
+
+## 10. Runtime configuration
+
+### 10.1 Milvus runtime resolution
+
+`RAGCore`가 내부 vector store를 생성할 때:
+- 우선 `docmesh_py_core` 설정에서 Milvus 정보를 읽는다.
+- 읽을 수 없으면 fallback을 사용한다.
+
+fallback 기본값:
+- `uri`: `metadata_path.with_suffix(".milvus.db")`
+- `collection_name`: `rag_chunks`
+- `timeout`: `30.0`
+
+DocMesh 설정에서 읽는 필드:
+- `milvus.uri`
+- `milvus.collection` 또는 `milvus.collection_name`
+- `milvus.request_timeout_seconds` 또는 `milvus.connect_timeout_seconds`
+
+### 10.2 서비스 클라이언트 생성 우선순위
+
+일부 경로는 `docmesh_py_core.ServiceFactoryRegistry`를 통해 client 생성을 시도한다.
+
+- `ollama` 서비스 client
+- `milvus` 서비스 client
+
+생성 실패/설정 부재 시 fallback:
+- embedding/generation factory는 usable `ollama` client가 없으면 실패
+- `RAGCore` 내부 vector store 생성은 직접 `MilvusClient(uri=..., timeout=...)`로 fallback 가능
+
+---
+
+## 11. 저장 구조
+
+### 11.1 SQLite metadata
+
+테이블:
+- `documents`
+- `chunks`
+- `ingestion_progress`
+
+#### `documents`
+- `doc_id`
+- `user_id`
+- `source`
+- `created_at`
+- `storage_path`
+
+#### `chunks`
+- `chunk_id`
+- `doc_id`
+- `user_id`
+- `chunk_index`
+- `content`
+- `metadata_json`
+
+#### `ingestion_progress`
+- `progress_id`
+- `job_id`
+- `doc_id`
+- `user_id`
+- `source`
+- `step_name`
+- `step_order`
+- `status`
+- `created_at`
+
+### 11.2 Document storage
+
+`memory` 모드:
+- `memory://<doc_id>/<source>` logical path 사용
+- 본문은 process memory dict에 저장
+- 재시작 후 자산은 유지되지 않음
+
+`local` 모드:
+- 실제 파일을 `document_storage_dir/<doc_id><suffix>` 형식으로 저장
+- 원본 파일명은 metadata `source`로 유지되지만, 저장 파일명 자체는 `doc_id` 기반으로 바뀐다
+
+### 11.3 Vector store
+
+기본 구현은 `MilvusLiteVectorStore`이다.
+
+특징:
+- `chunk_id`는 Milvus auto id를 사용
+- 검색 시 `user_id == "..."` filter 적용
+- `doc_id` 기준 삭제 지원
+- Milvus collection이 없으면 첫 insert 때 dimension 기준으로 생성
+
+---
+
+## 12. 사용 예시
+
+### 12.1 직접 조립
+
+```python
 from pathlib import Path
 from rag_system_core import RAGCore
+from rag_system_core.composition.factories import (
+    create_rag_embedding_client,
+    create_rag_generation_client,
+)
+from rag_system_core.composition.docmesh_runtime import load_docmesh_settings
+
+settings = load_docmesh_settings()
+embedding_client = create_rag_embedding_client(settings=settings)
+generation_client = create_rag_generation_client(settings=settings)
 
 core = RAGCore(
     embedding_client=embedding_client,
@@ -666,6 +651,26 @@ core = RAGCore(
     document_storage_dir=Path("./data/documents"),
     storage_mode="local",
 )
+```
+
+### 12.2 bootstrap helper 사용
+
+```python
+from pathlib import Path
+from rag_system_core import bootstrap_rag_core_from_docmesh
+
+core = bootstrap_rag_core_from_docmesh(
+    metadata_path=Path("./data/metadata.db"),
+    document_storage_dir=Path("./data/documents"),
+    storage_mode="local",
+)
+```
+
+### 12.3 문서 적재 / 질의 / 관리
+
+```python
+from io import BytesIO
+from pathlib import Path
 
 text_result = core.ingest_text(
     token="user-a",
@@ -690,19 +695,22 @@ response = core.query(
     top_k=3,
 )
 
+documents = core.list_documents(token="user-a")
+document = core.get_document(text_result.doc_id, token="user-a")
 chunks = core.list_document_chunks(text_result.doc_id, token="user-a")
-progress_rows = core.list_ingestion_progress(
-    text_result.doc_id,
-    token="user-a",
-    job_id=text_result.job_id,
-)
+progress_rows = core.list_ingestion_progress(text_result.doc_id, token="user-a", job_id=text_result.job_id)
+status = core.health_check()
 deleted = core.delete_document(stream_result.doc_id, token="user-a")
 ```
 
 ---
 
-## 9. 알려진 현재 제약
+## 13. 현재 제약 / non-goals
 
-- vector store는 현재 Milvus Lite 기반 로컬 영속 저장소 구현이다.
-- token과 user_id의 별도 매핑 저장소는 아직 없다. 현재는 token 문자열 자체를 scope로 사용한다.
-- `DOCMESH_AUTH_MODE=keycloak`을 사용할 때는 Keycloak 관련 `docmesh_py_core` 설정이 유효해야 한다. 그렇지 않으면 user id 해석 시 런타임 오류가 발생할 수 있다.
+- vector store 기본 구현은 Milvus Lite 단일 컬렉션 기반이다.
+- 강한 의미의 distributed / production-grade vector DB 운영은 범위 밖이다.
+- 문서 파일/스트림 ingestion은 현재 UTF-8 decode 가능한 텍스트를 전제로 한다.
+- delete는 vector store와 metadata/asset 사이의 완전한 분산 트랜잭션을 제공하지 않는다.
+- `memory` storage mode의 문서 자산은 재시작 시 복원되지 않는다.
+- `DOCMESH_AUTH_MODE=keycloak`을 사용할 때는 DocMesh Keycloak 설정이 유효해야 한다.
+- `rag_system_core.core`가 많은 내부 심볼을 export하지만, 외부 연동의 안정 경로로는 패키지 루트와 `rag_system_core.types`를 권장한다.
