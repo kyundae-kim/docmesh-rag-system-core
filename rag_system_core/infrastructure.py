@@ -19,25 +19,6 @@ def _load_docmesh_settings(env: dict[str, str] | None = None) -> Any:
     return load_settings(env or os.environ)
 
 
-def _create_docmesh_service_client(service_name: str, *, settings: Any | None = None) -> Any | None:
-    resolved_settings = settings if settings is not None else _load_docmesh_settings()
-    registry = ServiceFactoryRegistry(resolved_settings)
-    return registry.create_client(service_name)
-
-
-def _read_docmesh_ollama_settings(settings: Any | None = None) -> tuple[str | None, str | None, str | None, float | None]:
-    resolved_settings = settings if settings is not None else _load_docmesh_settings()
-    ollama_settings = getattr(resolved_settings, "ollama", None)
-    if ollama_settings is None:
-        return None, None, None, None
-
-    host = getattr(ollama_settings, "host", None)
-    embedding_model = getattr(ollama_settings, "embedding_model", None)
-    generation_model = getattr(ollama_settings, "generation_model", None)
-    timeout = getattr(ollama_settings, "request_timeout_seconds", None)
-    return host, embedding_model, generation_model, float(timeout) if timeout is not None else None
-
-
 def _read_docmesh_milvus_settings(settings: Any | None = None) -> tuple[str | None, str | None, float | None]:
     resolved_settings = settings if settings is not None else _load_docmesh_settings()
     milvus_settings = getattr(resolved_settings, "milvus", None)
