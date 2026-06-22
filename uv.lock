@@ -1246,10 +1246,8 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "docmesh-py-core" },
-    { name = "ollama" },
     { name = "pydantic-settings" },
     { name = "pymilvus", extra = ["milvus-lite"] },
-    { name = "sqlalchemy" },
 ]
 
 [package.dev-dependencies]
@@ -1260,10 +1258,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "docmesh-py-core", git = "https://github.com/kyundae-kim/docmesh-py-core.git?rev=v0.1.2" },
-    { name = "ollama", specifier = ">=0.6.2" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "pymilvus", extras = ["milvus-lite"], specifier = ">=3.0.0" },
-    { name = "sqlalchemy", specifier = ">=2.0.50" },
 ]
 
 [package.metadata.requires-dev]
