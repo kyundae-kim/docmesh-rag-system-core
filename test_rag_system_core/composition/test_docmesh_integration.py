@@ -3,8 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import rag_system_core.infrastructure as infrastructure_module
-from rag_system_core import OllamaEmbeddingClient, OllamaGenerationClient, RAGCore
+from rag_system_core import RAGCore
+from rag_system_core.composition.factories import create_rag_embedding_client, create_rag_generation_client
 from rag_system_core.infrastructure import resolve_user_id
 
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
@@ -37,7 +40,7 @@ class FakeDocmeshMilvusWrapper:
         self.check_calls += 1
 
 
-def install_fake_docmesh(monkeypatch, *, ollama_wrapper: FakeDocmeshOllamaWrapper | None = None) -> tuple[dict[str, object], FakeDocmeshMilvusWrapper]:
+def install_fake_docmesh(monkeypatch, *, ollama_wrapper: FakeDocmeshOllamaWrapper | None = None) -> tuple[dict[str, object], FakeDocmeshMilvusWrapper, object]:
     records: dict[str, object] = {"settings_calls": 0, "registry_settings": []}
     fake_ollama = ollama_wrapper or FakeDocmeshOllamaWrapper()
     fake_milvus = FakeDocmeshMilvusWrapper()
@@ -96,26 +99,34 @@ def install_fake_docmesh(monkeypatch, *, ollama_wrapper: FakeDocmeshOllamaWrappe
     monkeypatch.setattr(infrastructure_module, "ServiceFactoryRegistry", FakeRegistry)
     monkeypatch.setattr(infrastructure_module, "check_all_services", fake_check_all_services)
     monkeypatch.setattr(infrastructure_module, "KeycloakAuthService", FakeKeycloakAuthService)
-    return records, fake_milvus
+    return records, fake_milvus, settings
 
 
-def test_ollama_clients_use_docmesh_service_factory_when_available(monkeypatch) -> None:
-    records, _ = install_fake_docmesh(monkeypatch)
+def test_ollama_factories_use_docmesh_service_factory_when_available(monkeypatch) -> None:
+    records, _, settings = install_fake_docmesh(monkeypatch)
+    registry = infrastructure_module.ServiceFactoryRegistry(settings)
 
-    embedding_client = OllamaEmbeddingClient.from_env()
-    generation_client = OllamaGenerationClient.from_env()
+    embedding_client = create_rag_embedding_client(settings=settings, registry=registry)
+    generation_client = create_rag_generation_client(settings=settings, registry=registry)
 
     vectors = embedding_client.embed(["alpha", "beta"])
     answer = generation_client.generate("Summarize alpha")
 
     assert vectors == [[5.0, 1.0], [4.0, 0.0]]
     assert answer == "docmesh answer"
-    assert records["settings_calls"] == 2
     assert records["created_services"] == ["ollama", "ollama"]
 
 
+def test_ollama_factories_require_models_from_settings(monkeypatch) -> None:
+    _, _, settings = install_fake_docmesh(monkeypatch)
+    settings.ollama.embedding_model = ""
+
+    with pytest.raises(ValueError, match="Ollama embed model must be configured"):
+        create_rag_embedding_client(settings=settings)
+
+
 def test_rag_core_health_check_uses_docmesh_aggregate_when_available(monkeypatch, tmp_path: Path) -> None:
-    records, fake_milvus = install_fake_docmesh(monkeypatch)
+    records, fake_milvus, _ = install_fake_docmesh(monkeypatch)
 
     class HealthCheckedEmbeddingClient(FakeEmbeddingClient):
         def __init__(self) -> None:
@@ -153,27 +164,13 @@ def test_rag_core_health_check_uses_docmesh_aggregate_when_available(monkeypatch
 
 
 def test_resolve_user_id_uses_keycloak_when_auth_mode_enabled(monkeypatch) -> None:
-    records, _ = install_fake_docmesh(monkeypatch)
+    records, _, _ = install_fake_docmesh(monkeypatch)
     monkeypatch.setenv("DOCMESH_AUTH_MODE", "keycloak")
 
     resolved = resolve_user_id("Bearer abc.def.ghi")
 
     assert resolved == "user-from-keycloak"
     assert records["validated_token"] == "Bearer abc.def.ghi"
-
-
-def test_ollama_embedding_client_explicit_overrides_do_not_require_docmesh_settings(monkeypatch) -> None:
-    def broken_load_settings(env) -> object:
-        del env
-        raise RuntimeError("invalid docmesh settings")
-
-    monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
-
-    client = OllamaEmbeddingClient.from_settings(model="bge-m3", base_url="http://ollama", timeout=7.0)
-
-    assert client.model == "bge-m3"
-    assert client.base_url == "http://ollama"
-    assert client.timeout == 7.0
 
 
 def test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavailable(monkeypatch, tmp_path: Path) -> None:

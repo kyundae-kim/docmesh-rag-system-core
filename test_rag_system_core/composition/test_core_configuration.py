@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import rag_system_core.core as core_module
-from rag_system_core import OllamaEmbeddingClient, OllamaGenerationClient, RAGCore
+from rag_system_core import RAGCore
+from rag_system_core.composition.factories import create_rag_embedding_client, create_rag_generation_client
 
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient, create_test_rig
 
@@ -38,14 +40,10 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
 
 
 def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Path) -> None:
-    client_inits: list[dict[str, Any]] = []
     embed_calls: list[dict[str, Any]] = []
     chat_calls: list[dict[str, Any]] = []
 
     class FakeOllamaClient:
-        def __init__(self, *, host: str, timeout: float) -> None:
-            client_inits.append({"host": host, "timeout": timeout})
-
         def embed(self, *, model: str, input: list[str]) -> dict[str, list[list[float]]]:
             embed_calls.append({"model": model, "input": list(input)})
             return {"embeddings": [[float(len(text)), float(text.lower().count("alpha"))] for text in input]}
@@ -54,19 +52,26 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
             chat_calls.append({"model": model, "messages": messages})
             return {"message": {"content": f"generated::{messages[0]['content'].splitlines()[-1]}"}}
 
+    settings = SimpleNamespace(
+        ollama=SimpleNamespace(
+            host="http://shared-ollama",
+            embedding_model="bge-m3",
+            generation_model="gpt-oss:20b",
+            request_timeout_seconds=18.5,
+        )
+    )
     milvus_uri = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("OLLAMA_HOST", "http://shared-ollama")
-    monkeypatch.setenv("OLLAMA_EMBEDDING_MODEL", "bge-m3")
-    monkeypatch.setenv("OLLAMA_GENERATION_MODEL", "gpt-oss:20b")
-    monkeypatch.setenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "18.5")
     monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
     monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
     monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9.5")
-    monkeypatch.setattr(core_module.ollama, "Client", FakeOllamaClient)
+    monkeypatch.setattr(
+        "rag_system_core.composition.factories.create_docmesh_service_client",
+        lambda service_name, *, settings, registry=None: FakeOllamaClient() if service_name == "ollama" else None,
+    )
 
     core = RAGCore(
-        embedding_client=OllamaEmbeddingClient.from_env(),
-        generation_client=OllamaGenerationClient.from_env(),
+        embedding_client=create_rag_embedding_client(settings=settings),
+        generation_client=create_rag_generation_client(settings=settings),
         metadata_path=tmp_path / "metadata.db",
         document_storage_dir=tmp_path / "documents",
         storage_mode="local",
@@ -80,10 +85,6 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     assert core.vector_store.uri == str(milvus_uri)
     assert core.vector_store.collection_name == "configured_chunks"
     assert core.vector_store.timeout == 9.5
-    assert client_inits == [
-        {"host": "http://shared-ollama", "timeout": 18.5},
-        {"host": "http://shared-ollama", "timeout": 18.5},
-    ]
     assert embed_calls == [
         {"model": "bge-m3", "input": ["alpha beta gamma"]},
         {"model": "bge-m3", "input": ["Where is alpha?"]},

@@ -4,17 +4,44 @@ from pathlib import Path
 from typing import Any
 
 from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
+from rag_system_core.composition.docmesh_runtime import (
+    create_docmesh_service_client,
+    read_docmesh_ollama_settings,
+    resolve_milvus_runtime_settings,
+)
 from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
-from rag_system_core.composition.docmesh_runtime import create_docmesh_service_client, resolve_milvus_runtime_settings
+
+
+def _require_ollama_client(*, settings: Any | None = None, registry: Any | None = None, client: Any | None = None) -> Any:
+    if client is not None:
+        return client
+    resolved_client = create_docmesh_service_client("ollama", settings=settings, registry=registry)
+    if resolved_client is None:
+        raise RuntimeError("Failed to create Ollama service client")
+    return resolved_client
 
 
 def create_rag_embedding_client(*, settings: Any | None = None, registry: Any | None = None, **overrides):
-    return OllamaEmbeddingClient.from_settings(settings=settings, registry=registry, **overrides)
+    model = overrides.pop("model", None)
+    client = overrides.pop("client", None)
+    _, configured_model, _, _ = read_docmesh_ollama_settings(settings)
+    resolved_model = model or configured_model
+    return OllamaEmbeddingClient(
+        client=_require_ollama_client(settings=settings, registry=registry, client=client),
+        model=resolved_model or "",
+    )
 
 
 def create_rag_generation_client(*, settings: Any | None = None, registry: Any | None = None, **overrides):
-    return OllamaGenerationClient.from_settings(settings=settings, registry=registry, **overrides)
+    model = overrides.pop("model", None)
+    client = overrides.pop("client", None)
+    _, _, configured_model, _ = read_docmesh_ollama_settings(settings)
+    resolved_model = model or configured_model
+    return OllamaGenerationClient(
+        client=_require_ollama_client(settings=settings, registry=registry, client=client),
+        model=resolved_model or "",
+    )
 
 
 def create_rag_vector_store(*, metadata_path: str | Path, settings: Any | None = None, registry: Any | None = None, **overrides):
