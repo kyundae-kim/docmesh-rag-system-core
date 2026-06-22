@@ -65,8 +65,8 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(core_module.ollama, "Client", FakeOllamaClient)
 
     core = RAGCore(
-        embedding_client=OllamaEmbeddingClient(),
-        generation_client=OllamaGenerationClient(),
+        embedding_client=OllamaEmbeddingClient.from_env(),
+        generation_client=OllamaGenerationClient.from_env(),
         metadata_path=tmp_path / "metadata.db",
         document_storage_dir=tmp_path / "documents",
         storage_mode="local",

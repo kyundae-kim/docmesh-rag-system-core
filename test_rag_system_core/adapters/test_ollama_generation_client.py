@@ -26,7 +26,7 @@ def test_ollama_generation_client_requires_model_when_not_configured(monkeypatch
         ValueError,
         match="Ollama generation model must be provided either as 'model' or OLLAMA_GENERATION_MODEL",
     ):
-        OllamaGenerationClient()
+        OllamaGenerationClient.from_env()
 
 
 def test_ollama_generation_client_reads_configuration_from_environment(monkeypatch) -> None:
@@ -44,7 +44,7 @@ def test_ollama_generation_client_reads_configuration_from_environment(monkeypat
     monkeypatch.setenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "18.5")
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
 
-    client = OllamaGenerationClient()
+    client = OllamaGenerationClient.from_env()
     response = client.generate("Summarize alpha")
 
     assert response == "cloud answer"
@@ -73,7 +73,7 @@ def test_ollama_generation_client_explicit_overrides_bypass_docmesh_loading(monk
     monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
 
-    client = OllamaGenerationClient(model="gpt-oss:20b", base_url="http://ollama.example", timeout=7.0)
+    client = OllamaGenerationClient.from_settings(model="gpt-oss:20b", base_url="http://ollama.example", timeout=7.0)
     response = client.generate("Summarize alpha")
 
     assert response == "cloud answer"
@@ -95,7 +95,7 @@ def test_ollama_generation_client_wraps_transport_errors(monkeypatch) -> None:
             raise ConnectionError("boom")
 
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
-    client = OllamaGenerationClient(model="gpt-oss:20b", base_url="http://ollama", timeout=7.0)
+    client = OllamaGenerationClient.from_settings(model="gpt-oss:20b", base_url="http://ollama", timeout=7.0)
 
     with pytest.raises(RuntimeError, match="Failed to generate response from Ollama") as exc_info:
         client.generate("alpha")
@@ -113,9 +113,32 @@ def test_ollama_generation_client_rejects_malformed_response(monkeypatch) -> Non
             return {}
 
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
-    client = OllamaGenerationClient(model="gpt-oss:20b", base_url="http://ollama", timeout=7.0)
+    client = OllamaGenerationClient.from_settings(model="gpt-oss:20b", base_url="http://ollama", timeout=7.0)
 
     with pytest.raises(RuntimeError, match="Ollama returned a malformed generation response") as exc_info:
         client.generate("alpha")
 
     assert isinstance(exc_info.value.__cause__, KeyError)
+
+
+def test_ollama_generation_client_uses_injected_client_without_loading_settings(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def broken_load_settings(env) -> object:
+        del env
+        raise RuntimeError("invalid docmesh settings")
+
+    monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
+
+    injected_client = RecordingOllamaGenerateClient(captured, host="http://ignored", timeout=999.0)
+    client = OllamaGenerationClient(client=injected_client, model="gpt-oss:20b")
+
+    response = client.generate("Summarize alpha")
+
+    assert response == "cloud answer"
+    assert captured == {
+        "host": "http://ignored",
+        "timeout": 999.0,
+        "model": "gpt-oss:20b",
+        "messages": [{"role": "user", "content": "Summarize alpha"}],
+    }

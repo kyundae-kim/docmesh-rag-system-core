@@ -30,7 +30,7 @@ def test_ollama_embedding_client_requires_model_when_not_configured(monkeypatch)
         ValueError,
         match="Ollama embed model must be provided either as 'model' or OLLAMA_EMBEDDING_MODEL",
     ):
-        OllamaEmbeddingClient(base_url="http://ollama", timeout=7.0)
+        OllamaEmbeddingClient.from_env(base_url="http://ollama", timeout=7.0)
 
 
 def test_ollama_embedding_client_reads_configuration_from_environment(monkeypatch) -> None:
@@ -48,7 +48,7 @@ def test_ollama_embedding_client_reads_configuration_from_environment(monkeypatc
     monkeypatch.setenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "12.5")
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
 
-    client = OllamaEmbeddingClient()
+    client = OllamaEmbeddingClient.from_env()
     vectors = client.embed(["alpha"])
 
     assert vectors == [[1.0, 0.0, 0.5]]
@@ -72,7 +72,7 @@ def test_ollama_embedding_client_uses_ollama_package_client(monkeypatch) -> None
 
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
 
-    client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+    client = OllamaEmbeddingClient.from_settings(model="bge-m3", base_url="http://ollama", timeout=7.0)
     vectors = client.embed(["alpha", "beta"])
 
     assert vectors == [[1.0, 0.0, 0.5], [0.0, 1.0, 0.5]]
@@ -101,7 +101,7 @@ def test_ollama_embedding_client_explicit_overrides_bypass_docmesh_loading(monke
     monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
 
-    client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+    client = OllamaEmbeddingClient.from_settings(model="bge-m3", base_url="http://ollama", timeout=7.0)
     vectors = client.embed(["alpha"])
 
     assert vectors == [[1.0, 0.0, 0.5]]
@@ -123,7 +123,7 @@ def test_ollama_embedding_client_wraps_ollama_transport_errors(monkeypatch) -> N
             raise ConnectionError("boom")
 
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
-    client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+    client = OllamaEmbeddingClient.from_settings(model="bge-m3", base_url="http://ollama", timeout=7.0)
 
     with pytest.raises(RuntimeError, match="Failed to fetch embeddings from Ollama") as exc_info:
         client.embed(["alpha"])
@@ -141,9 +141,32 @@ def test_ollama_embedding_client_rejects_malformed_embeddings_response(monkeypat
             return {}
 
     monkeypatch.setattr(core_module.ollama, "Client", FakeClient)
-    client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+    client = OllamaEmbeddingClient.from_settings(model="bge-m3", base_url="http://ollama", timeout=7.0)
 
     with pytest.raises(RuntimeError, match="Ollama returned a malformed embeddings response") as exc_info:
         client.embed(["alpha"])
 
     assert isinstance(exc_info.value.__cause__, KeyError)
+
+
+def test_ollama_embedding_client_uses_injected_client_without_loading_settings(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def broken_load_settings(env) -> object:
+        del env
+        raise RuntimeError("invalid docmesh settings")
+
+    monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
+
+    injected_client = RecordingOllamaClient(captured, host="http://ignored", timeout=999.0)
+    client = OllamaEmbeddingClient(client=injected_client, model="bge-m3")
+
+    vectors = client.embed(["alpha"])
+
+    assert vectors == [[1.0, 0.0, 0.5]]
+    assert captured == {
+        "host": "http://ignored",
+        "timeout": 999.0,
+        "model": "bge-m3",
+        "input": ["alpha"],
+    }

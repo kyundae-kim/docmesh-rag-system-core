@@ -102,8 +102,8 @@ def install_fake_docmesh(monkeypatch, *, ollama_wrapper: FakeDocmeshOllamaWrappe
 def test_ollama_clients_use_docmesh_service_factory_when_available(monkeypatch) -> None:
     records, _ = install_fake_docmesh(monkeypatch)
 
-    embedding_client = OllamaEmbeddingClient()
-    generation_client = OllamaGenerationClient()
+    embedding_client = OllamaEmbeddingClient.from_env()
+    generation_client = OllamaGenerationClient.from_env()
 
     vectors = embedding_client.embed(["alpha", "beta"])
     answer = generation_client.generate("Summarize alpha")
@@ -169,7 +169,7 @@ def test_ollama_embedding_client_explicit_overrides_do_not_require_docmesh_setti
 
     monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
 
-    client = OllamaEmbeddingClient(model="bge-m3", base_url="http://ollama", timeout=7.0)
+    client = OllamaEmbeddingClient.from_settings(model="bge-m3", base_url="http://ollama", timeout=7.0)
 
     assert client.model == "bge-m3"
     assert client.base_url == "http://ollama"

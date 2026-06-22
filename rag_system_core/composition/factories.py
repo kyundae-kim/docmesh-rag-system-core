@@ -10,13 +10,11 @@ from rag_system_core.composition.docmesh_runtime import create_docmesh_service_c
 
 
 def create_rag_embedding_client(*, settings: Any | None = None, registry: Any | None = None, **overrides):
-    del settings, registry
-    return OllamaEmbeddingClient(**overrides)
+    return OllamaEmbeddingClient.from_settings(settings=settings, registry=registry, **overrides)
 
 
 def create_rag_generation_client(*, settings: Any | None = None, registry: Any | None = None, **overrides):
-    del settings, registry
-    return OllamaGenerationClient(**overrides)
+    return OllamaGenerationClient.from_settings(settings=settings, registry=registry, **overrides)
 
 
 def create_rag_vector_store(*, metadata_path: str | Path, settings: Any | None = None, registry: Any | None = None, **overrides):
