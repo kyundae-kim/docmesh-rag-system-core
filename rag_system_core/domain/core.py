@@ -29,21 +29,19 @@ class RAGCore:
         *,
         embedding_client: EmbeddingClient,
         generation_client: GenerationClient,
-        metadata_path: str | Path,
-        document_storage_dir: str | Path,
-        storage_mode: str = "memory",
-        chunk_size: int = 512,
-        chunk_overlap: int = 64,
         vector_store: VectorStore,
+        metadata_store: MetadataStore,
+        document_storage: DocumentStorage,
+        chunker: FixedWindowChunker,
     ) -> None:
         self.embedding_client = embedding_client
         self.generation_client = generation_client
-        metadata_path = Path(metadata_path)
-        self.metadata_store = MetadataStore(metadata_path)
-        self.document_storage = DocumentStorage(storage_mode, Path(document_storage_dir))
+        self.metadata_store = metadata_store
+        self.document_storage = document_storage
         self.vector_store = vector_store
+        self.chunker = chunker
         self.ingestor = IngestionService(
-            chunker=FixedWindowChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
+            chunker=self.chunker,
             embedding_client=embedding_client,
             vector_store=self.vector_store,
             metadata_store=self.metadata_store,

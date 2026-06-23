@@ -4,7 +4,12 @@ from pathlib import Path
 
 from sqlalchemy import inspect
 
-from rag_system_core.composition.factories import create_rag_vector_store
+from rag_system_core.composition.factories import (
+    create_rag_chunker,
+    create_rag_document_storage,
+    create_rag_metadata_store,
+    create_rag_vector_store,
+)
 
 from test_rag_system_core.support import create_test_rig
 
@@ -80,11 +85,12 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
             embedding_client=rig.embedding_client,
             generation_client=rig.generation_client,
             vector_store=vector_store,
-            metadata_path=tmp_path / "metadata.db",
-            document_storage_dir=tmp_path / "documents",
-            storage_mode="memory",
-            chunk_size=32,
-            chunk_overlap=4,
+            metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
+            document_storage=create_rag_document_storage(
+                storage_mode="memory",
+                document_storage_dir=tmp_path / "documents",
+            ),
+            chunker=create_rag_chunker(chunk_size=32, chunk_overlap=4),
         )
         result = rig.core.ingest_text(
             token="token-a",

@@ -5,7 +5,14 @@ from types import SimpleNamespace
 from typing import Any
 
 from rag_system_core import RAGCore
-from rag_system_core.composition.factories import create_rag_embedding_client, create_rag_generation_client, create_rag_vector_store
+from rag_system_core.composition.factories import (
+    create_rag_chunker,
+    create_rag_document_storage,
+    create_rag_embedding_client,
+    create_rag_generation_client,
+    create_rag_metadata_store,
+    create_rag_vector_store,
+)
 
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient, create_test_rig
 
@@ -28,9 +35,12 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
         vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
-        metadata_path=tmp_path / "metadata.db",
-        document_storage_dir=tmp_path / "documents",
-        storage_mode="local",
+        metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
+        document_storage=create_rag_document_storage(
+            storage_mode="local",
+            document_storage_dir=tmp_path / "documents",
+        ),
+        chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
     )
     response = restarted.query(token="token-a", question="Where is alpha?", top_k=3)
 
@@ -72,9 +82,12 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
         embedding_client=create_rag_embedding_client(settings=settings),
         generation_client=create_rag_generation_client(settings=settings),
         vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
-        metadata_path=tmp_path / "metadata.db",
-        document_storage_dir=tmp_path / "documents",
-        storage_mode="local",
+        metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
+        document_storage=create_rag_document_storage(
+            storage_mode="local",
+            document_storage_dir=tmp_path / "documents",
+        ),
+        chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
     )
 
     ingested = core.ingest_text(token="token-a", text="alpha beta gamma", source="configured.txt")
@@ -119,9 +132,12 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
         vector_store=vector_store,
-        metadata_path=tmp_path / "metadata.db",
-        document_storage_dir=tmp_path / "documents",
-        storage_mode="local",
+        metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
+        document_storage=create_rag_document_storage(
+            storage_mode="local",
+            document_storage_dir=tmp_path / "documents",
+        ),
+        chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
     )
 
     assert records == {"uri": str(tmp_path / "external-milvus.db"), "timeout": 7.25}
