@@ -1,10 +1,10 @@
 ---
 title: Public API Surface
 created: 2026-06-11
-updated: 2026-06-19
+updated: 2026-06-23
 type: concept
 tags: [sdk, api, python, integration]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-11.md, raw/articles/docmesh-rag-core-prd-2026-06-11.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
+sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-11.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
 confidence: high
 ---
 
@@ -18,7 +18,11 @@ confidence: high
 
 ## Core methods
 
-공식 public 메서드는 세 가지 ingestion entrypoint(`ingest_text`, `ingest_file_stream`, `ingest_file_path`)와 query/관리 메서드(`query`, `list_documents`, `get_document`, `list_document_chunks`, `list_ingestion_progress`, `delete_document`)로 구성된다. 이 표면은 문서 생명주기 전반을 다루며 테스트 명세도 이 메서드 집합을 중심으로 작성되어 있다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-11.md]^[raw/articles/docmesh-rag-core-test-spec-2026-06-11.md]
+공식 public 메서드는 세 가지 ingestion entrypoint(`ingest_text`, `ingest_file_stream`, `ingest_file_path`)와 query/관리 메서드(`query`, `list_documents`, `get_document`, `list_document_chunks`, `list_ingestion_progress`, `delete_document`)로 구성된다. 현재 PRD는 여기에 health check 집계도 제품 범위로 포함하므로, 외부 통합은 단순 CRUD 스타일 호출뿐 아니라 운영 readiness 확인 경로까지 하나의 surface 일부로 다뤄야 한다.^[raw/articles/docmesh-rag-core-prd-2026-06-23.md]^[raw/articles/docmesh-rag-core-test-spec-2026-06-11.md]
+
+## Input and prompt contracts
+
+현재 제품 계약에서 `ingest_file_stream(...)`는 `source`가 비어 있으면 실패해야 하며, generation prompt는 최소 `[System Prompt]`, `[Retrieved Context]`, `[User Query]` 섹션을 포함해야 한다. 이런 세부는 단순 구현 취향이 아니라 acceptance criteria에 해당하므로 adapter를 만들 때도 유지되어야 한다.^[raw/articles/docmesh-rag-core-prd-2026-06-23.md]
 
 ## Adapter contracts
 
@@ -30,10 +34,13 @@ confidence: high
 
 ## Integration implications
 
-외부 인터페이스는 단순하지만 실제 구현은 [[rag-service-architecture]]와 [[ingestion-pipeline]]에 걸친 내부 조합 위에 있다. 따라서 SDK를 API나 MCP로 감쌀 때는 public surface를 그대로 재노출하되 내부 구현 경계는 새 인터페이스 계층 밖으로 새지 않게 유지하는 편이 바람직하다.
+외부 인터페이스는 단순하지만 실제 구현은 [[rag-service-architecture]]와 [[ingestion-pipeline]]에 걸친 내부 조합 위에 있다. 따라서 SDK를 API나 MCP로 감쌀 때는 public surface를 그대로 재노출하되 내부 구현 경계는 새 인터페이스 계층 밖으로 새지 않게 유지하는 편이 바람직하다. 제품 전체 범위를 해석할 때는 [[product-scope-and-requirements]]와 [[service-factory-registry]]를 함께 보는 것이 좋다.
 
 ## Related pages
 
 - [[ragcore]]
+- [[product-scope-and-requirements]]
 - [[rag-service-architecture]]
+- [[ingestion-pipeline]]
+- [[service-factory-registry]]
 - [[interface-roadmap]]

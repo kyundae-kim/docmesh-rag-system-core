@@ -144,3 +144,20 @@
   - .hermes/plans/2026-06-19_171139-docmesh-runtime-directory-refactor.md
 - Navigation updated:
   - index.md
+
+## [2026-06-23] ingest | docs/prd.md
+- Source captured:
+  - raw/articles/docmesh-rag-core-prd-2026-06-23.md
+- Source drift noted:
+  - raw/articles/docmesh-rag-core-prd-2026-06-11.md and docs/prd.md now differ for the same source path
+- Wiki pages created:
+  - concepts/product-scope-and-requirements.md
+- Wiki pages updated:
+  - entities/ragcore.md
+  - concepts/rag-service-architecture.md
+  - concepts/public-api-surface.md
+  - concepts/ingestion-pipeline.md
+  - concepts/user-scope-isolation.md
+  - concepts/persistence-and-restart-recovery.md
+- Navigation updated:
+  - index.md

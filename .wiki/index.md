@@ -2,7 +2,7 @@
 
 > Content catalog. Every wiki page listed under its type with a one-line summary.
 > Read this first to find relevant pages for any query.
-> Last updated: 2026-06-19 | Total pages: 19
+> Last updated: 2026-06-23 | Total pages: 20
 
 ## Entities
 - [[docmesh-py-core]] — 설정 로드, 서비스 client 생성, health check, Keycloak 인증을 공통화하는 DocMesh Python SDK 엔티티 페이지.
@@ -14,6 +14,7 @@
 - [[interface-roadmap]] — SDK 중심 현재 구조에서 API/MCP 등 후속 인터페이스 확장 방향.
 - [[keycloak-auth-service]] — Keycloak 토큰 발급, JWT 검증, provisioning 경계를 정리한 인증 API 개념 페이지.
 - [[persistence-and-restart-recovery]] — SQLite, Milvus Lite, storage_path 기반 자산 관리와 재시작 복원 요구.
+- [[product-scope-and-requirements]] — 현재 PRD 기준 제품 범위, 제외 범위, acceptance contract를 요약한 개념 페이지.
 - [[project-roadmap]] — SDK canonical core를 기준으로 API, 비동기 운영, MCP, 저장소 확장까지 단계별 실행 순서를 정리한 로드맵.
 - [[public-api-surface]] — 공식 import 경로, public 메서드, adapter contract를 정리한 API 개념 페이지.
 - [[rag-service-architecture]] — RAGCore facade 아래 ingestion/retrieval/generation/metadata 책임 분리 구조.
