@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from rag_system_core.composition.auth import resolve_user_id
-    from rag_system_core.composition.bootstrap import bootstrap_rag_core, bootstrap_rag_core_from_docmesh
+    from rag_system_core.composition.bootstrap import bootstrap_rag_core
     from rag_system_core.composition.docmesh_runtime import (
         create_docmesh_service_client,
         create_service_registry,
@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "bootstrap_rag_core",
-    "bootstrap_rag_core_from_docmesh",
     "create_docmesh_service_client",
     "create_service_registry",
     "load_docmesh_settings",
@@ -30,7 +29,6 @@ __all__ = [
 
 _LAZY_EXPORTS = {
     "bootstrap_rag_core": ("rag_system_core.composition.bootstrap", "bootstrap_rag_core"),
-    "bootstrap_rag_core_from_docmesh": ("rag_system_core.composition.bootstrap", "bootstrap_rag_core_from_docmesh"),
     "create_docmesh_service_client": ("rag_system_core.composition.docmesh_runtime", "create_docmesh_service_client"),
     "create_service_registry": ("rag_system_core.composition.docmesh_runtime", "create_service_registry"),
     "load_docmesh_settings": ("rag_system_core.composition.docmesh_runtime", "load_docmesh_settings"),
