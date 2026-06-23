@@ -175,3 +175,18 @@
   - concepts/rag-service-architecture.md
 - Navigation updated:
   - index.md
+
+## [2026-06-23] ingest | docs/api.md
+- Source captured:
+  - raw/articles/docmesh-rag-core-api-reference-2026-06-23.md
+- Source drift noted:
+  - raw/articles/docmesh-rag-core-api-reference-2026-06-11.md and docs/api.md now differ for the same source path
+- Wiki pages created:
+  - concepts/construction-paths-and-adapter-contracts.md
+- Wiki pages updated:
+  - concepts/public-api-surface.md
+  - entities/ragcore.md
+  - concepts/service-factory-registry.md
+  - concepts/user-scope-isolation.md
+- Navigation updated:
+  - index.md

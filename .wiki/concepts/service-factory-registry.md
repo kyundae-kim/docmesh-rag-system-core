@@ -1,10 +1,10 @@
 ---
 title: Service Factory Registry
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-23
 type: concept
 tags: [sdk, python, integration, config, decision]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md]
+sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
 confidence: medium
 ---
 
@@ -24,6 +24,10 @@ confidence: medium
 
 registry가 반환하는 값은 서비스마다 성격이 다를 수 있다. 특히 `create_client("nats")`는 즉시 연결된 동기 client가 아니라 `NatsConnectionBuilder`를 돌려주므로 `await builder.connect()` 또는 `await builder.check()` 패턴을 강제한다. 따라서 소비 프로젝트는 서비스별 반환 계약 차이를 흡수하는 래퍼 계층을 둘지 여부를 검토해야 한다.^[raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md]
 
+## RAG bootstrap implications
+
+RAG Core API reference는 `bootstrap_rag_core(...)`가 settings를 직접 로드하지 않고 `service_factory`를 통해 embedding/generation/vector/metadata/storage/chunker를 조립한다고 명시한다. 또한 DocMesh 경로 예시에서 `load_docmesh_settings()`와 `create_service_registry(settings)`를 먼저 호출한 뒤 `DocmeshRAGServiceFactory(settings=settings, registry=registry)`를 구성한다. 따라서 registry는 RAG bootstrap 경로에서 선택적 주변도구가 아니라 [[construction-paths-and-adapter-contracts]]와 [[public-api-surface]]를 잇는 실제 조립 전제조건이다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+
 ## Return contract
 
 API 가이드는 registry의 반환 규칙을 서비스별로 더 구체화한다. `keycloak`, `postgres`, `sqlite`, `minio`, `milvus`, `ollama`는 대체로 `ServiceClientWrapper`를 반환하고, `langfuse`는 비활성화 시 `None`일 수 있으며, `nats`만 `NatsConnectionBuilder`를 반환한다. 또한 지원하지 않는 서비스명은 `UnsupportedServiceError`를, 공통 health check 래핑 중 실패는 `ServiceClientWrapperError`를 통해 표준화한다.^[raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
@@ -34,6 +38,7 @@ API 가이드는 registry의 반환 규칙을 서비스별로 더 구체화한�
 
 ## Related pages
 
+- [[construction-paths-and-adapter-contracts]]
 - [[docmesh-py-core]]
 - [[service-health-orchestration]]
 - [[public-api-surface]]

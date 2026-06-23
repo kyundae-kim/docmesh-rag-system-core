@@ -2,7 +2,7 @@
 
 > Content catalog. Every wiki page listed under its type with a one-line summary.
 > Read this first to find relevant pages for any query.
-> Last updated: 2026-06-23 | Total pages: 21
+> Last updated: 2026-06-23 | Total pages: 22
 
 ## Entities
 - [[docmesh-py-core]] — 설정 로드, 서비스 client 생성, health check, Keycloak 인증을 공통화하는 DocMesh Python SDK 엔티티 페이지.
@@ -10,6 +10,7 @@
 <!-- Alphabetical within section -->
 
 ## Concepts
+- [[construction-paths-and-adapter-contracts]] — RAGCore 직접 조립 경로, bootstrap 경로, helper fallback, adapter 계약을 정리한 개념 페이지.
 - [[ingestion-pipeline]] — 문서 입력, 청킹, 임베딩, progress 추적, vector store 적재까지의 ingest 흐름.
 - [[interface-roadmap]] — SDK 중심 현재 구조에서 API/MCP 등 후속 인터페이스 확장 방향.
 - [[keycloak-auth-service]] — Keycloak 토큰 발급, JWT 검증, provisioning 경계를 정리한 인증 API 개념 페이지.
