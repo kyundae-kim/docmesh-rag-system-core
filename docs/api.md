@@ -12,6 +12,19 @@
 
 설정값은 `docs/config.md`를 함께 보세요.
 
+## 1.1 용어 기준
+
+본 문서는 `docs/prd.md`, `docs/srs.md`, `docs/test.md`와 동일한 용어 기준을 사용합니다.
+
+- **user scope**: 현재 요청에 대해 해석된 사용자 경계
+- **resolved user identity**: token 또는 Keycloak 검증으로부터 해석된 사용자 식별 결과
+- **`user_id`**: persistence 및 filtering에 사용되는 저장된 사용자 식별자
+- **metadata store**: SQLite + SQLAlchemy 기반 document / chunk / ingestion progress persistence 계층
+- **vector store**: Milvus Lite 기반 embedding 저장 및 retrieval 계층
+- **document asset storage**: 문서 원문 자산을 `storage_path`로 추적하는 저장 계층
+- **restart recovery**: 동일한 metadata store 및 vector store 구성을 다시 열어 상태를 재사용하는 동작
+- **health check**: metadata 및 사용 가능한 의존 서비스 상태를 집계하는 점검 동작
+
 ---
 
 ## 2. 첫 호출 전에 필요한 것
@@ -68,7 +81,7 @@ uv pip install ollama
 - Ollama 서버가 접근 가능해야 함
 - embedding 모델이 준비되어 있어야 함
 - generation 모델이 준비되어 있어야 함
-- SQLite / Milvus Lite 파일을 생성할 수 있는 쓰기 가능한 디렉터리가 있어야 함
+- metadata store / vector store 파일을 생성할 수 있는 쓰기 가능한 디렉터리가 있어야 함
 
 문서에서 사용하는 기본 예시 값:
 - Ollama host: `http://ollama:11434`
@@ -208,8 +221,8 @@ RAGCore(
 |---|---|
 | `embedding_client` | `embed(texts)`를 제공하는 embedding adapter |
 | `generation_client` | `generate(prompt)`를 제공하는 generation adapter |
-| `metadata_path` | SQLite metadata DB 파일 경로 |
-| `document_storage_dir` | 문서 자산 저장 디렉터리 |
+| `metadata_path` | metadata store(SQLite) 파일 경로 |
+| `document_storage_dir` | document asset storage 디렉터리 |
 | `storage_mode` | `"memory"` 또는 `"local"` |
 | `chunk_size` | chunk 크기 |
 | `chunk_overlap` | chunk overlap 크기 |
@@ -217,7 +230,7 @@ RAGCore(
 
 중요:
 - `storage_mode` 기본값은 `"memory"`
-- `vector_store`를 직접 주지 않으면 내부에서 Milvus Lite vector store를 생성
+- `vector_store`를 직접 주지 않으면 내부에서 Milvus Lite 기반 vector store를 생성
 - Milvus 설정을 찾지 못하면 `metadata_path.with_suffix(".milvus.db")`, `rag_chunks`, `30.0`을 fallback으로 사용
 
 ### 5.2 `bootstrap_rag_core_from_docmesh`
@@ -440,23 +453,23 @@ health_check() -> object
 ```
 
 의미:
-- metadata store 및 사용 가능한 의존 서비스 상태를 점검
+- metadata store 및 사용 가능한 의존 서비스 상태를 집계한다.
 
 ---
 
-## 8. 사용자 식별 규칙
+## 8. user scope / resolved user identity 규칙
 
 기본 규칙:
 - `token is None` → `single-user`
 - `token.strip() == ""` → `single-user`
-- 그 외 → token 문자열 자체를 `user_id`로 사용
+- 그 외 → token 문자열 자체를 resolved user identity이자 `user_id`로 사용
 
 첫 성공 호출을 목표로 한다면:
 - `DOCMESH_AUTH_MODE`를 설정하지 말고
 - `token`도 생략하는 single-user 흐름이 가장 단순합니다.
 
 Keycloak 모드:
-- `DOCMESH_AUTH_MODE=keycloak`이면 Keycloak 검증을 통해 `user_id`를 해석
+- `DOCMESH_AUTH_MODE=keycloak`이면 Keycloak 검증을 통해 resolved user identity / `user_id`를 해석
 - 관련 설정은 `docs/config.md` 참고
 - 이 경로는 첫 성공 경로가 아니라 고급/통합 경로로 보는 것이 안전함
 
