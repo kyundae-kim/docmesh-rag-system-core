@@ -34,7 +34,7 @@
 - restart recovery
 - document asset storage (`memory`, `local`)
 - document deletion 및 rollback 특성
-- DocMesh composition 계층 동작
+- composition 계층 동작
 - Keycloak 모드 resolved user identity 해석
 - Ollama adapter의 정상/오류/health-check 동작
 - `docs/srs.md` 요구사항 ID 기준 추적성 검증
@@ -82,10 +82,14 @@
 - `health_check()`
 
 ### 4.2 Composition / helper
-- `bootstrap_rag_core_from_docmesh(...)`
+- `bootstrap_rag_core(...)`
+- `DocmeshRAGServiceFactory`
 - `create_rag_embedding_client(...)`
 - `create_rag_generation_client(...)`
 - `create_rag_vector_store(...)`
+- `create_rag_metadata_store(...)`
+- `create_rag_document_storage(...)`
+- `create_rag_chunker(...)`
 - `resolve_user_id(...)`
 
 ### 4.3 Adapter / protocol boundary
@@ -98,7 +102,7 @@
 
 ## 5. 현재 테스트 파일 매핑
 
-현재 테스트는 단일 파일이 아니라 기능별로 분리되어 있다.
+현재 테스트는 기능별로 분리되어 있다.
 
 ### 5.1 Domain API / 동작
 - `test_rag_system_core/domain/test_ingestion_api.py`
@@ -106,7 +110,7 @@
 - `test_rag_system_core/domain/test_metadata_and_progress.py`
 - `test_rag_system_core/domain/test_deletion_and_rollback.py`
 
-### 5.2 Composition / DocMesh integration
+### 5.2 Composition / integration
 - `test_rag_system_core/composition/test_bootstrap.py`
 - `test_rag_system_core/composition/test_docmesh_integration.py`
 - `test_rag_system_core/composition/test_core_configuration.py`
@@ -130,31 +134,28 @@
 
 | SRS ID | 요구사항 요약 | 검증 상태 | 관련 테스트 파일 | 대표 테스트 |
 |---|---|---|---|---|
-| SRS-FR-001 ~ 003 | 기본 token 기반 user scope 및 `single-user` fallback | 검증됨 | `domain/test_ingestion_api.py` | `test_ingest_text_uses_token_as_user_scope`, `test_ingest_text_without_token_uses_single_user_scope`, `test_blank_token_falls_back_to_single_user_scope` |
-| SRS-FR-004 ~ 007 | Keycloak 기반 resolved user identity 해석 | 검증됨 | `composition/test_auth_runtime.py`, `composition/test_docmesh_integration.py` | `test_resolve_user_id_uses_keycloak_when_auth_mode_enabled` |
-| SRS-FR-008 ~ 011 | `user_id` 부착 및 user scope 기반 조회/검색/삭제 제한 | 검증됨 | `domain/test_query.py`, `domain/test_metadata_and_progress.py`, `domain/test_deletion_and_rollback.py` | `test_query_filters_results_by_token_derived_user_id` |
-| SRS-FR-012 ~ 015 | ingestion API 제공 및 stream source 필수성 | 검증됨 | `domain/test_ingestion_api.py` | `test_ingest_file_stream_requires_explicit_source`, `test_ragcore_exposes_explicit_stream_and_path_ingest_methods` |
-| SRS-FR-016 ~ 020 | preprocess, empty text rejection, chunking, pipeline order | 검증됨 | `domain/test_metadata_and_progress.py`, `domain/test_ingestion_api.py` | `test_ingestion_progress_rows_are_persisted_in_pipeline_order` |
-| SRS-FR-021 ~ 023 | `job_id` 및 ingestion progress status 추적 | 검증됨 | `domain/test_metadata_and_progress.py` | `test_ingestion_progress_rows_are_persisted_in_pipeline_order`, `test_ingestion_progress_records_failed_step_when_ingest_errors` |
-| SRS-FR-024 ~ 029 | document asset storage (`memory`, `local`, `storage_path`) | 검증됨 | `domain/test_ingestion_api.py`, `domain/test_metadata_and_progress.py`, `domain/test_deletion_and_rollback.py` | 관련 시나리오 집합으로 검증 |
-| SRS-FR-030 ~ 032 | embedding batch 호출 및 벡터 수 일치 | 검증됨 | `domain/test_deletion_and_rollback.py`, `adapters/test_ollama_embedding_client.py` | `test_embedding_requests_are_batched_for_chunk_ingestion` |
-| SRS-FR-033 ~ 037 | generation 호출 계약 및 prompt 구조 | 검증됨 | `domain/test_query.py`, `adapters/test_ollama_generation_client.py` | `test_query_prompt_includes_system_query_and_context` |
-| SRS-FR-038 ~ 044 | Milvus Lite 기본 vector store 및 fallback 설정 해석 | 검증됨 | `composition/test_core_configuration.py`, `composition/test_docmesh_integration.py` | `test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavailable` |
+| SRS-FR-001 ~ 003 | 기본 token 기반 user scope 및 `single-user` fallback | 검증됨 | `domain/test_ingestion_api.py`, `composition/test_auth_runtime.py` | `test_ingest_text_uses_token_as_user_scope`, `test_ingest_text_without_token_uses_single_user_scope`, `test_blank_token_falls_back_to_single_user_scope`, `test_resolve_user_id_defaults_to_single_user` |
+| SRS-FR-004 ~ 007 | Keycloak 기반 resolved user identity 해석 | 검증됨 | `composition/test_docmesh_integration.py` | `test_resolve_user_id_uses_keycloak_when_auth_mode_enabled` |
+| SRS-FR-008 ~ 011 | `user_id` 부착 및 user scope 기반 조회/검색/삭제 제한 | 검증됨 | `domain/test_query.py`, `domain/test_metadata_and_progress.py`, `domain/test_deletion_and_rollback.py` | `test_query_filters_results_by_token_derived_user_id`, `test_get_document_is_limited_to_current_token_scope` |
+| SRS-FR-012 ~ 023 | ingestion API, pipeline order, progress status | 검증됨 | `domain/test_ingestion_api.py`, `domain/test_metadata_and_progress.py` | `test_ingest_file_stream_requires_explicit_source`, `test_ingestion_progress_rows_are_persisted_in_pipeline_order`, `test_ingestion_progress_records_failed_step_when_ingest_errors` |
+| SRS-FR-024 ~ 029 | document asset storage (`memory`, `local`, `storage_path`) | 검증됨 | `domain/test_ingestion_api.py`, `domain/test_deletion_and_rollback.py` | `test_ingest_text_stores_string_input_as_managed_asset`, `test_ingest_text_memory_storage_uses_logical_asset_path`, `test_ingest_file_stream_copies_input_stream_into_managed_storage` |
+| SRS-FR-030 ~ 037 | embedding batch 호출, generation 호출 계약, prompt 구조 | 검증됨 | `domain/test_query.py`, `domain/test_deletion_and_rollback.py`, `adapters/test_ollama_embedding_client.py`, `adapters/test_ollama_generation_client.py` | `test_embedding_requests_are_batched_for_chunk_ingestion`, `test_query_prompt_includes_system_query_and_context` |
+| SRS-FR-038 ~ 044 | Milvus Lite 기본 vector store 및 fallback 설정 해석 | 검증됨 | `composition/test_core_configuration.py`, `composition/test_docmesh_integration.py` | `test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavailable`, `test_rag_core_reads_milvus_configuration_from_environment` |
 | SRS-FR-045 ~ 052 | metadata store, ORM, restart recovery | 검증됨 | `domain/test_metadata_and_progress.py` | `test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table`, `test_chunk_rows_are_persisted_and_rehydrated_across_restarts`, `test_metadata_persists_across_restarts` |
-| SRS-FR-053 ~ 063 | document management, document deletion, rollback/retry | 검증됨 | `domain/test_deletion_and_rollback.py`, `domain/test_metadata_and_progress.py` | `test_delete_document_removes_metadata_chunks_asset_and_query_visibility`, `test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_allows_retry`, `test_ingestion_service_store_rolls_back_milvus_chunks_when_chunk_persistence_fails`, `test_ingestion_service_store_rolls_back_milvus_chunks_when_generated_id_count_is_mismatched` |
-| SRS-FR-064 ~ 072 | health check 및 DocMesh integration | 검증됨 | `composition/test_bootstrap.py`, `composition/test_docmesh_integration.py`, `composition/test_core_configuration.py`, `composition/test_auth_runtime.py` | `test_bootstrap_rag_core_from_docmesh_uses_docmesh_runtime`, `test_ollama_factories_use_docmesh_service_factory_when_available`, `test_rag_core_health_check_uses_docmesh_aggregate_when_available` |
+| SRS-FR-053 ~ 063 | document management, document deletion, rollback/retry | 검증됨 | `domain/test_deletion_and_rollback.py`, `domain/test_metadata_and_progress.py` | `test_delete_document_removes_metadata_chunks_asset_and_query_visibility`, `test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_allows_retry` |
+| SRS-FR-064 ~ 072 | health check 및 composition / DocMesh integration | 검증됨 | `composition/test_bootstrap.py`, `composition/test_docmesh_integration.py`, `composition/test_core_configuration.py` | `test_bootstrap_rag_core_builds_core_from_service_factory`, `test_package_root_exports_bootstrap_helper`, `test_rag_core_health_check_uses_docmesh_aggregate_when_available`, `test_ollama_factories_use_docmesh_service_factory_when_available` |
 
 ### 6.2 비기능 요구사항 (`SRS-NFR-*`)
 
 | SRS ID | 요구사항 요약 | 검증 상태 | 관련 테스트 파일 | 비고 |
 |---|---|---|---|---|
 | SRS-NFR-001 | ingestion batch embedding | 검증됨 | `domain/test_deletion_and_rollback.py` | `test_embedding_requests_are_batched_for_chunk_ingestion` |
-| SRS-NFR-002 | 단순하고 예측 가능한 top-k retrieval 흐름 | 부분 검증 | `domain/test_query.py` | query 동작은 검증되나 성능적 정량 기준은 없음 |
-| SRS-NFR-003 | health check의 빠른 실패 감지 가능성 | 부분 검증 | `composition/test_docmesh_integration.py` | aggregation/fallback 경로는 검증되나 시간 기준은 없음 |
+| SRS-NFR-002 | 단순하고 예측 가능한 top-k retrieval 흐름 | 부분 검증 | `domain/test_query.py` | 동작은 검증되나 정량 성능 기준은 없음 |
+| SRS-NFR-003 | health check의 빠른 실패 감지 가능성 | 부분 검증 | `composition/test_docmesh_integration.py` | aggregate/fallback 경로는 검증되나 시간 기준은 없음 |
 | SRS-NFR-004 ~ 005 | 단일 public entry point 유지 및 확장 가능한 내부 분리 | 부분 검증 | `domain/*`, `composition/*` | 구조적 성격이 강해 테스트보다 코드 구조/문서 정렬로 보강 |
 | SRS-NFR-006 ~ 007 | cross-user mixing 방지 및 전 과정 user scope 유지 | 검증됨 | `domain/test_query.py`, `domain/test_ingestion_api.py`, `domain/test_deletion_and_rollback.py` | user scope 시나리오로 검증 |
 | SRS-NFR-008 ~ 010 | restart survival 및 부분 삭제 손실 최소화 | 검증됨 | `domain/test_metadata_and_progress.py`, `domain/test_deletion_and_rollback.py` | restart recovery 및 delete failure retry 시나리오로 검증 |
-| SRS-NFR-011 ~ 013 | `RAGCore` 중심 API, explicit types/protocols, 분리된 통합 구조 | 부분 검증 | `domain/test_ingestion_api.py`, `adapters/*`, `composition/*` | interface/adapter/composition 경계는 간접 검증 |
+| SRS-NFR-011 ~ 013 | `RAGCore` 중심 API, explicit types/protocols, 분리된 통합 구조 | 부분 검증 | `domain/*`, `adapters/*`, `composition/*` | interface/adapter/composition 경계는 간접 검증 |
 | SRS-NFR-014 | Python 3.11+ 및 선언된 의존성 환경 | 미검증(문서/환경 전제) | 해당 없음 | 설치/CI 환경 검증으로 별도 관리 필요 |
 
 ### 6.3 데이터 요구사항 (`SRS-DR-*`)
@@ -166,7 +167,7 @@
 | SRS-DR-003 | progress record traceability (`job_id`, `doc_id`, `user_id`, `step_name`, `status`) | 검증됨 | `domain/test_metadata_and_progress.py` | `test_ingestion_progress_rows_are_persisted_in_pipeline_order`, `test_ingestion_progress_records_failed_step_when_ingest_errors` |
 | SRS-DR-004 | `metadata_json` persistence | 검증됨 | `domain/test_metadata_and_progress.py` | `test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table` |
 | SRS-DR-005 | SQLite-backed metadata persistence across restart | 검증됨 | `domain/test_metadata_and_progress.py` | `test_metadata_persists_across_restarts` |
-| SRS-DR-006 | `memory` storage mode 비영속성 | 부분 검증 | `domain/test_deletion_and_rollback.py` | delete 관련 시나리오는 있으나 재시작 기준 비영속성은 추가 보강 여지 있음 |
+| SRS-DR-006 | `memory` storage mode 비영속성 | 부분 검증 | `domain/test_ingestion_api.py`, `domain/test_deletion_and_rollback.py` | memory storage path / delete 동작은 검증되나 restart 기준 명시 테스트는 추가 여지 있음 |
 
 ---
 
@@ -198,8 +199,9 @@
 - `test_ingestion_service_store_rolls_back_milvus_chunks_when_generated_id_count_is_mismatched`
 - `test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_allows_retry`
 
-### 7.5 DocMesh integration / health check
-- `test_bootstrap_rag_core_from_docmesh_uses_docmesh_runtime`
+### 7.5 Composition / health check
+- `test_bootstrap_rag_core_builds_core_from_service_factory`
+- `test_package_root_exports_bootstrap_helper`
 - `test_ollama_factories_use_docmesh_service_factory_when_available`
 - `test_rag_core_health_check_uses_docmesh_aggregate_when_available`
 - `test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavailable`
@@ -246,7 +248,7 @@ uv run pytest test_rag_system_core/composition/test_docmesh_integration.py::test
 1. 기능 요구사항(`SRS-FR-*`)에 대해 문서상 `검증됨`으로 분류된 항목의 자동화 테스트가 통과한다.
 2. user scope, metadata store, vector store, restart recovery, document deletion 관련 핵심 시나리오가 통과한다.
 3. adapter 계약 테스트가 통과한다.
-4. DocMesh integration 및 health check 관련 테스트가 통과한다.
+4. composition / health check 관련 테스트가 통과한다.
 5. cross-user leakage가 발생하지 않는다.
 
 ---
@@ -264,7 +266,7 @@ uv run pytest test_rag_system_core/composition/test_docmesh_integration.py::test
 ### 10.2 향후 추가 권장 테스트
 - Keycloak 응답에 `sub`가 없고 `preferred_username`만 있는 경우 검증
 - Keycloak 응답에 둘 다 없는 경우 실패 검증
-- `health_check()` 로컬 fallback 결과 shape 검증
+- `health_check()` local fallback 결과 shape 검증
 - `memory` storage mode의 재시작 후 비영속성 명시 검증
 - UTF-8 decode 불가 파일 입력 시 실패 동작 명시 검증
 - custom vector store 구현체 contract test 추가

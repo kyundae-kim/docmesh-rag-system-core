@@ -17,7 +17,8 @@ At the software level, the system shall:
 - isolate stored data and retrieval results by resolved user identity
 - persist metadata in SQLite and vector data in Milvus Lite
 - support restart-time recovery by reopening the same metadata and vector storage
-- integrate with DocMesh configuration, service registry, auth, and health-check composition paths
+- support composition through helper factories and service-factory-based bootstrap paths
+- integrate with DocMesh configuration, service registry, auth, and health-check composition paths when used in a DocMesh environment
 
 This SRS covers the current library behavior. It does not define an external HTTP service contract or frontend behavior.
 
@@ -64,7 +65,7 @@ DocMesh RAG Core Service is a library component intended to be embedded inside a
 2. metadata persistence
 3. vector persistence and retrieval
 4. generation of final answers
-5. composition with DocMesh runtime services
+5. composition with helper factories and DocMesh runtime services
 
 A simplified logical view is shown below.
 
@@ -85,10 +86,14 @@ Metadata  Vector   Model Clients
 Document Storage
 
 [Composition Layer]
- - bootstrap_rag_core_from_docmesh
+ - bootstrap_rag_core
+ - DocmeshRAGServiceFactory
  - create_rag_embedding_client
  - create_rag_generation_client
  - create_rag_vector_store
+ - create_rag_metadata_store
+ - create_rag_document_storage
+ - create_rag_chunker
  - load_docmesh_settings
  - resolve_user_id
 ```
@@ -96,7 +101,7 @@ Document Storage
 ### 2.2 Product Functions
 The system provides the following software functions:
 
-- creation of a RAG core instance through direct construction or DocMesh bootstrap
+- creation of a RAG core instance through direct construction or service-factory bootstrap
 - ingestion of plain text, file streams, and file paths
 - preprocessing and chunking of text content
 - batch embedding generation for produced chunks
@@ -122,13 +127,14 @@ The software is expected to run in a Python environment with:
 - `docmesh-py-core`
 - `pydantic-settings`
 - `pymilvus[milvus-lite]`
-- Python package `ollama` when the provided Ollama adapters are used
+- Python package `ollama` when the provided Ollama adapters or Ollama-backed factories are used
 
 The runtime environment shall provide:
 
 - writable directories for SQLite and Milvus Lite files
+- writable directories for local document assets when `storage_mode="local"`
 - accessible embedding and generation model runtime(s)
-- valid DocMesh settings when DocMesh bootstrap or auth-integrated paths are used
+- valid DocMesh settings when DocMesh-integrated paths are used
 
 ### 2.5 Design and Implementation Constraints
 The current implementation imposes the following constraints:
@@ -136,6 +142,7 @@ The current implementation imposes the following constraints:
 - the default vector store is Milvus Lite
 - metadata persistence uses SQLite through SQLAlchemy ORM
 - file ingestion assumes UTF-8-decodable text inputs
+- `RAGCore` is a dependency-injected assembly point, not a convenience constructor over paths/settings alone
 - user identity resolution is token-based, with optional Keycloak-based resolution
 - the system does not provide distributed transaction guarantees across vector, metadata, and asset storage
 
@@ -170,7 +177,7 @@ No special hardware interface is defined by this SRS.
 The system shall expose the following public construction paths:
 
 - `RAGCore(...)`
-- `bootstrap_rag_core_from_docmesh(...)`
+- `bootstrap_rag_core(...)`
 
 #### 3.3.2 Public Operational Interfaces
 The system shall expose the following public operational interfaces:
@@ -201,7 +208,21 @@ The system shall support the following protocol contracts:
 - `EmbeddingClient.embed(texts: list[str]) -> list[list[float]]`
 - `GenerationClient.generate(prompt: str) -> str`
 
-#### 3.3.5 External Runtime Integrations
+#### 3.3.5 Composition Interfaces
+The system shall support composition helpers including:
+
+- `DocmeshRAGServiceFactory`
+- `create_rag_embedding_client(...)`
+- `create_rag_generation_client(...)`
+- `create_rag_vector_store(...)`
+- `create_rag_metadata_store(...)`
+- `create_rag_document_storage(...)`
+- `create_rag_chunker(...)`
+- `load_docmesh_settings(...)`
+- `create_service_registry(...)`
+- `resolve_user_id(...)`
+
+#### 3.3.6 External Runtime Integrations
 The system may integrate with the following external software services or packages:
 
 - DocMesh settings and service registry
@@ -364,10 +385,10 @@ This feature allows callers to inspect and remove previously ingested documents 
 - **SRS-FR-062** If vector store deletion fails, the system shall not proceed with metadata or asset deletion.
 - **SRS-FR-063** After a deletion failure caused by vector-store deletion failure, the system shall permit retry.
 
-### 4.8 Feature: Health Check and DocMesh Integration
+### 4.8 Feature: Health Check and Composition / DocMesh Integration
 
 #### 4.8.1 Description and Priority
-This feature reports operational status and supports composition with the surrounding DocMesh runtime.
+This feature reports operational status and supports composition with helper factories and the surrounding DocMesh runtime.
 
 **Priority:** Medium
 
@@ -380,8 +401,8 @@ This feature reports operational status and supports composition with the surrou
 - **SRS-FR-068** The system shall prefer a DocMesh-provided aggregate health path when available.
 - **SRS-FR-069** If the aggregate health path is unavailable or fails, the system shall fall back to local health aggregation.
 - **SRS-FR-070** The system shall support composition through `docmesh_py_core.load_settings()`.
-- **SRS-FR-071** The system shall support composition through `ServiceFactoryRegistry`.
-- **SRS-FR-072** `bootstrap_rag_core_from_docmesh(...)` shall provide a simplified assembly path for DocMesh-integrated environments.
+- **SRS-FR-071** The system shall support composition through `ServiceFactoryRegistry` and `DocmeshRAGServiceFactory`.
+- **SRS-FR-072** `bootstrap_rag_core(...)` shall provide a simplified service-factory-based assembly path.
 
 ---
 
@@ -413,7 +434,7 @@ This feature reports operational status and supports composition with the surrou
 
 - **SRS-NFR-011** The public API shall remain centered on `RAGCore`.
 - **SRS-NFR-012** Types and protocol boundaries shall remain explicit and separable.
-- **SRS-NFR-013** DocMesh integration code and domain logic shall remain separable.
+- **SRS-NFR-013** Composition/integration code and domain logic shall remain separable.
 
 ### 5.6 Portability Requirements
 
@@ -498,49 +519,32 @@ The implementation shall be considered conformant to this SRS when the following
 12. Chunk listings and ingestion progress listings are available per document.
 13. Successful deletion removes document metadata, chunk metadata, progress metadata, stored assets, and Milvus entries.
 14. Failed vector-store deletion preserves metadata for retry.
-15. Health checks aggregate metadata and available dependent-service status.
-16. The DocMesh bootstrap helper can assemble the core through DocMesh settings and service registry paths.
+15. Health checking aggregates metadata and available dependency checks.
+16. `bootstrap_rag_core(...)` assembles a core through a service factory.
 
-### 7.2 Test Alignment
-This SRS is expected to align with the verification areas documented in `docs/test.md`, including:
+### 7.2 Traceability Source
+The canonical automated traceability mapping for these requirement IDs is maintained in `docs/test.md`.
 
-- user scope and authentication
-- document ingestion APIs
-- document asset storage
-- SQLite/ORM persistence
-- ingestion progress tracking
-- embedding, query, and prompt behavior
-- restart recovery
-- deletion and rollback behavior
-- DocMesh integration
-- Ollama adapter contracts
+### 7.3 Verification Approach
+Verification of this SRS is performed primarily through:
 
-### 7.3 Requirements Traceability Matrix
-
-| PRD requirement range | SRS requirement range | Subject |
-|---|---|---|
-| PRD-FR-1 ~ PRD-FR-3 | SRS-FR-001 ~ SRS-FR-011 | user identification and isolation |
-| PRD-FR-4 ~ PRD-FR-9 | SRS-FR-012 ~ SRS-FR-029 | ingestion, storage mode, and progress |
-| PRD-FR-10 ~ PRD-FR-12 | SRS-FR-030 ~ SRS-FR-037 | embedding, generation, and prompt structure |
-| PRD-FR-13 ~ PRD-FR-14 | SRS-FR-038 ~ SRS-FR-044 | vector storage and settings resolution |
-| PRD-FR-15 ~ PRD-FR-17 | SRS-FR-045 ~ SRS-FR-063 | persistence, recovery, and deletion |
-| PRD-FR-18 ~ PRD-FR-19 | SRS-FR-064 ~ SRS-FR-072 | health check and DocMesh integration |
+- automated pytest scenarios under `test_rag_system_core/`
+- code-level inspection of public exports and composition helpers
+- document synchronization across `docs/prd.md`, `docs/api.md`, and `docs/test.md`
 
 ---
 
-## 8. Appendix: Constraints and Risks
+## 8. Constraints and Risks Summary
 
-### 8.1 File-Type Limitation
-The current implementation supports UTF-8-decodable text input paths and does not directly support binary documents, PDFs, or images.
+- The current implementation depends on Milvus Lite as the default vector store.
+- File ingestion assumes UTF-8 text inputs.
+- `RAGCore` requires assembled dependencies rather than path-only convenience construction.
+- Keycloak mode depends on external auth configuration correctness.
+- Deletion ordering minimizes metadata loss on vector-store failure but does not provide distributed transaction semantics.
+- `memory` asset storage is intentionally non-persistent across restart.
 
-### 8.2 Keycloak Configuration Dependency
-When Keycloak mode is enabled, invalid external auth configuration may prevent user identity resolution.
+---
 
-### 8.3 Milvus Lite Operational Limit
-The default vector store is local/lightweight Milvus Lite and is not intended as a production-grade distributed vector database.
+## 9. Summary
 
-### 8.4 Transactional Limitation
-The system does not provide strong distributed atomicity across vector storage, metadata persistence, and asset storage.
-
-### 8.5 Volatility of `memory` Asset Mode
-Assets stored in `memory` mode are not durable across process restarts.
+The current implementation of DocMesh RAG Core Service is a **composition-oriented Python RAG library** centered on `RAGCore`. Its software requirements emphasize user-scope isolation, explicit composition boundaries, SQLite + Milvus Lite persistence, predictable ingestion and retrieval flow, and optional DocMesh-integrated runtime behavior. This SRS documents only behavior that is presently supported by code and companion tests.
