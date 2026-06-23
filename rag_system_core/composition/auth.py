@@ -23,6 +23,9 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in minimal test envs
         return dict(kwargs)
 
 
+DEFAULT_SINGLE_USER_ID = "single-user"
+
+
 class AuthSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DOCMESH_", env_file=".env", extra="ignore")
 
@@ -31,11 +34,11 @@ class AuthSettings(BaseSettings):
 
 def resolve_user_id(token: str | None) -> str:
     if token is None:
-        return "single-user"
+        return DEFAULT_SINGLE_USER_ID
 
     normalized = token.strip()
     if not normalized:
-        return "single-user"
+        return DEFAULT_SINGLE_USER_ID
 
     auth_mode = AuthSettings().auth_mode.strip().lower()
     if auth_mode != "keycloak":
@@ -43,7 +46,7 @@ def resolve_user_id(token: str | None) -> str:
 
     import rag_system_core.infrastructure as infrastructure_module
 
-    settings = infrastructure_module.load_settings()
+    settings = infrastructure_module.load_settings(os.environ)
     auth_service = infrastructure_module.KeycloakAuthService(settings, allowed_algorithms=["RS256"])
     user = auth_service.extract_user_info(normalized)
     subject = getattr(user, "sub", None)
