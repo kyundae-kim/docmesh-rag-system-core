@@ -5,11 +5,24 @@
 이 문서는 `DocMesh RAG Core`의 **현재 구현**을 검증하기 위한 테스트 목적, 범위, 시나리오, 실행 방법을 정의한다.
 
 핵심 목적:
-- 사용자 scope 해석이 올바른지 검증
+- user scope 해석이 올바른지 검증
 - ingestion/query/document management public API가 의도대로 동작하는지 검증
-- SQLite metadata 및 Milvus Lite 기반 retrieval 복원이 동작하는지 검증
+- SQLite metadata store 및 Milvus Lite vector store 기반 restart recovery가 동작하는지 검증
 - DocMesh 통합(설정, factory, bootstrap, health check, Keycloak auth)이 올바르게 연결되는지 검증
 - 기본 제공 Ollama adapter의 계약과 오류 처리 방식이 코드와 일치하는지 검증
+
+### 1.1 용어 기준
+
+본 문서는 `docs/prd.md`, `docs/srs.md`와 동일한 용어 기준을 사용한다.
+
+- **user scope**: 현재 요청에 대해 해석된 사용자 경계
+- **resolved user identity**: token 또는 Keycloak 검증으로부터 해석된 사용자 식별 결과
+- **`user_id`**: persistence 및 filtering에 사용되는 저장된 사용자 식별자
+- **metadata store**: SQLite + SQLAlchemy 기반 document / chunk / ingestion progress persistence 계층
+- **vector store**: Milvus Lite 기반 embedding 저장 및 retrieval 계층
+- **document asset storage**: 문서 원문 자산을 `storage_path`로 추적하는 저장 계층
+- **restart recovery**: 동일한 metadata store 및 vector store 구성을 다시 열어 상태를 재사용하는 동작
+- **health check**: metadata 및 사용 가능한 의존 서비스 상태를 집계하는 점검 동작
 
 ---
 
@@ -18,9 +31,9 @@
 ### 2.1 포함 범위
 - `RAGCore` public API 동작
 - `IngestionService`, `RetrievalService`, `GenerationService` 통합 동작
-- SQLAlchemy ORM + SQLite persistence
-- 재시작 후 retrieval 복원
-- 문서 자산 저장 (`memory`, `local`)
+- SQLAlchemy ORM + SQLite metadata store persistence
+- restart recovery
+- document asset storage (`memory`, `local`)
 - 문서 삭제 및 rollback 성격 검증
 - DocMesh composition 계층 동작
 - Keycloak 모드 user id 해석
@@ -43,8 +56,8 @@
    - SQLite 파일, ORM 테이블, 재초기화 후 조회/검색까지 확인한다.
 3. **사용자 격리 우선**
    - token 또는 Keycloak 기반 user scope 간 데이터 혼합이 없어야 한다.
-4. **재시작 시나리오 포함**
-   - 저장 성공뿐 아니라 재초기화 후 retrieval 복원까지 확인한다.
+4. **restart recovery 시나리오 포함**
+   - 저장 성공뿐 아니라 재초기화 후 restart recovery까지 확인한다.
 5. **실패 경로 검증**
    - malformed adapter response, Milvus chunk id mismatch, chunk persistence 실패, delete 실패 등 오류 경로를 검증한다.
 6. **DocMesh 통합 검증**
@@ -98,7 +111,7 @@
 - `RAGCore`, `IngestionService`, `DocumentStorage`가 각 경로에 대한 명시적 메서드를 가져야 한다.
 - `ingest_file` 또는 `store_bytes` 같은 legacy-style 단일 메서드에 의존하지 않아야 한다.
 
-### 5.3 문서 자산 저장
+### 5.3 document asset storage
 - `local` 모드에서는 managed asset 파일이 실제로 저장되어야 한다.
 - `memory` 모드에서는 `memory://...` 논리 경로가 기록되어야 한다.
 - metadata는 문서 본문 대신 `storage_path`를 저장해야 한다.
@@ -123,12 +136,12 @@
 - prompt에는 `[System Prompt]`, `[Retrieved Context]`, `[User Query]`가 포함되어야 한다.
 - generation 결과는 `QueryResult.answer`로 반환되어야 한다.
 
-### 5.7 재시작 복원
-- 재초기화 후에도 문서 metadata가 조회되어야 한다.
+### 5.7 restart recovery
+- 재초기화 후에도 문서 metadata store가 조회 가능해야 한다.
 - 동일한 Milvus 저장소/collection을 사용할 때 query가 계속 가능해야 한다.
 - fallback Milvus 설정과 환경 변수 기반 설정 둘 다 검증해야 한다.
 
-### 5.8 삭제 및 rollback 특성
+### 5.8 document deletion 및 rollback 특성
 - 문서 삭제 성공 시 metadata, chunk, progress, asset, 검색 결과 가시성이 함께 제거되어야 한다.
 - chunk persistence 실패 시 이미 생성된 Milvus chunk id는 rollback 삭제되어야 한다.
 - Milvus가 chunk id 개수를 잘못 반환하면 metadata 저장 전에 rollback 되어야 한다.

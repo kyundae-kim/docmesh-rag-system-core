@@ -9,6 +9,19 @@
 
 이 문서는 미래 희망사항보다 **현재 실제 코드가 보장하는 것**을 우선 서술한다.
 
+### 1.1 용어 기준
+
+본 문서는 `docs/srs.md`, `docs/test.md`와 동일한 용어 기준을 사용한다.
+
+- **user scope**: 현재 요청에 대해 해석된 사용자 경계
+- **resolved user identity**: token 또는 Keycloak 검증으로부터 해석된 사용자 식별 결과
+- **`user_id`**: persistence 및 filtering에 사용되는 저장된 사용자 식별자
+- **metadata store**: SQLite + SQLAlchemy 기반 document / chunk / ingestion progress persistence 계층
+- **vector store**: Milvus Lite 기반 embedding 저장 및 retrieval 계층
+- **document asset storage**: 문서 원문 자산을 `storage_path`로 추적하는 저장 계층
+- **restart recovery**: 동일한 metadata store 및 vector store 구성을 다시 열어 상태를 재사용하는 동작
+- **health check**: metadata 및 사용 가능한 의존 서비스 상태를 집계하는 점검 동작
+
 ---
 
 ## 2. 제품 배경
@@ -102,16 +115,16 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 검색은 해당 user scope의 chunk만 대상으로 수행된다.
 - generation은 검색된 context만을 포함한 prompt를 기반으로 수행된다.
 
-#### 시나리오 3: 재시작 이후 검색 복원
+#### 시나리오 3: restart recovery
 - 프로세스가 재시작되어도 SQLite metadata는 유지된다.
 - 동일한 Milvus URI/collection을 다시 열면 기존 벡터 검색을 재사용할 수 있다.
 
-#### 시나리오 4: 문서 단위 관리
+#### 시나리오 4: document management
 - 사용자는 문서 목록, 특정 문서, 특정 문서의 chunk, ingestion progress를 조회할 수 있다.
 - 사용자는 문서를 삭제할 수 있다.
 - 삭제 성공 시 문서 metadata, chunk metadata, progress metadata, stored asset, Milvus 엔트리가 함께 제거된다.
 
-#### 시나리오 5: 운영 상태 확인
+#### 시나리오 5: health check
 - 사용자는 `health_check()`를 호출해 metadata/vector store/model adapter의 상태를 확인할 수 있다.
 - DocMesh 공통 health aggregator가 있으면 이를 사용하고, 없으면 로컬 집계를 사용한다.
 
@@ -146,7 +159,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
   - `ingest_file_path(...)`
 - `ingest_file_stream(...)`는 `source`가 없거나 공백이면 실패해야 한다.
 
-#### PRD-FR-5. 문서 자산 저장
+#### PRD-FR-5. document asset storage
 - 시스템은 `memory`와 `local` 두 가지 asset storage mode를 지원해야 한다.
 - 문서 본문은 metadata row에 직접 저장하지 않고 `storage_path`를 통해 추적해야 한다.
 - `local` 모드에서는 자산 파일명이 원본 파일명 그대로가 아니라 `doc_id + suffix` 형식이 될 수 있다.
@@ -226,12 +239,12 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - SQLite + SQLAlchemy ORM을 사용해야 한다.
 - `documents`, `chunks`, `ingestion_progress` 테이블을 유지해야 한다.
 
-#### PRD-FR-16. 재시작 복원
+#### PRD-FR-16. restart recovery
 - metadata는 재시작 이후에도 유지되어야 한다.
 - retrieval 복원은 동일한 Milvus 저장소/collection을 다시 여는 방식으로 가능해야 한다.
 - SQLite가 embedding 벡터를 직접 재생성하지는 않아야 한다.
 
-#### PRD-FR-17. 문서 삭제
+#### PRD-FR-17. document deletion
 - 성공 경로에서 문서 삭제는 다음 데이터를 정리해야 한다.
   - document metadata
   - chunk metadata
@@ -271,9 +284,9 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - 저장, 검색, 조회, 삭제 전 과정에서 user scope가 유지되어야 한다.
 
 ### 7.4 안정성
-- metadata persistence는 재시작 후에도 유지되어야 한다.
-- Milvus 설정이 동일하면 retrieval이 재개 가능해야 한다.
-- 삭제 실패 시 부분 삭제로 인한 metadata 손실이 최소화되어야 한다.
+- metadata store persistence는 재시작 후에도 유지되어야 한다.
+- 동일한 vector store 구성을 재사용하면 restart recovery가 가능해야 한다.
+- document deletion 실패 시 부분 삭제로 인한 metadata 손실이 최소화되어야 한다.
 
 ### 7.5 유지보수성
 - public API는 `RAGCore` 중심으로 단순해야 한다.
