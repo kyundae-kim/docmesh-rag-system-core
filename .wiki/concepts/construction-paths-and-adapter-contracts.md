@@ -4,7 +4,7 @@ created: 2026-06-23
 updated: 2026-06-23
 type: concept
 tags: [sdk, api, python, integration, decision]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md]
+sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md]
 confidence: medium
 ---
 
@@ -18,11 +18,11 @@ confidence: medium
 
 ## Bootstrap path
 
-대안 경로는 `bootstrap_rag_core(...)`다. 이 helper는 settings를 직접 로드하지 않고, `service_factory`가 embedding/generation/vector store/metadata store/storage/chunker를 생성하는 구조를 취한다. 따라서 [[public-api-surface]]에서 보이는 bootstrap 경로는 실제로는 [[service-factory-registry]]와 DocMesh runtime helper를 경유하는 composition contract로 이해하는 편이 맞다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+대안 경로는 `bootstrap_rag_core(...)`다. 이 helper는 settings를 직접 로드하지 않고, `service_factory`가 embedding/generation/vector store/metadata store/storage/chunker를 생성하는 구조를 취한다. config guide는 이 경로를 `load_docmesh_settings()` → `create_service_registry(settings)` → `DocmeshRAGServiceFactory(settings=settings, registry=registry)` → `bootstrap_rag_core(...)` 순서의 **이미 설정/registry 계약이 준비된 환경**으로 해석해야 한다고 정리한다. 따라서 [[public-api-surface]]에서 보이는 bootstrap 경로는 실제로는 [[service-factory-registry]]와 DocMesh runtime helper를 경유하는 composition contract로 이해하는 편이 맞다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]^[raw/articles/docmesh-rag-core-config-guide-2026-06-23.md]
 
 ## Composition helper behavior
 
-API 문서는 `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store`, `create_rag_metadata_store`, `create_rag_document_storage`, `create_rag_chunker`의 시그니처와 fallback 동작을 구체적으로 문서화한다. 특히 vector store factory는 가능하면 DocMesh settings에서 Milvus runtime 설정을 읽고, 실패하면 `metadata_path.with_suffix('.milvus.db')`, `rag_chunks`, `30.0`을 fallback으로 사용한다. 이 동작은 [[persistence-and-restart-recovery]]와 [[service-factory-registry]]를 연결하는 구현 지점이다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+API 문서는 `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store`, `create_rag_metadata_store`, `create_rag_document_storage`, `create_rag_chunker`의 시그니처와 fallback 동작을 구체적으로 문서화한다. 특히 vector store factory는 가능하면 DocMesh settings에서 Milvus runtime 설정을 읽고, 실패하면 `metadata_path.with_suffix('.milvus.db')`, `rag_chunks`, `30.0`을 fallback으로 사용한다. config guide는 이 fallback 때문에 첫 성공 호출의 핵심 필수값이 Milvus env 전체가 아니라 writable `metadata_path`와 Ollama model 설정 쪽에 더 가깝다고 설명한다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]^[raw/articles/docmesh-rag-core-config-guide-2026-06-23.md]
 
 ## Protocol and record contracts
 
@@ -30,10 +30,11 @@ API 문서는 `create_rag_embedding_client`, `create_rag_generation_client`, `cr
 
 ## Ollama adapters
 
-API 문서는 `OllamaEmbeddingClient`와 `OllamaGenerationClient`도 root export로 공개하고, 각각의 transport/malformed response 오류 모델까지 명시한다. 또한 해당 adapter나 factory를 쓰려면 Python 패키지 `ollama`가 필요하다고 적시하므로, 런타임 전제조건은 [[public-api-surface]]와 별개로 실제 소비 환경 구성의 일부다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+API 문서는 `OllamaEmbeddingClient`와 `OllamaGenerationClient`도 root export로 공개하고, 각각의 transport/malformed response 오류 모델까지 명시한다. 또한 해당 adapter나 factory를 쓰려면 Python 패키지 `ollama`가 필요하다고 적시하므로, 런타임 전제조건은 [[public-api-surface]]와 별개로 실제 소비 환경 구성의 일부다. config guide는 여기서 더 나아가 `OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_GENERATION_MODEL`을 first-success 경로의 핵심 env로 묶는다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]^[raw/articles/docmesh-rag-core-config-guide-2026-06-23.md]
 
 ## Related pages
 
+- [[first-success-configuration]]
 - [[public-api-surface]]
 - [[ragcore]]
 - [[service-factory-registry]]

@@ -190,3 +190,15 @@
   - concepts/user-scope-isolation.md
 - Navigation updated:
   - index.md
+
+## [2026-06-23] ingest | docs/config.md
+- Source captured:
+  - raw/articles/docmesh-rag-core-config-guide-2026-06-23.md
+- Wiki pages created:
+  - concepts/first-success-configuration.md
+- Wiki pages updated:
+  - concepts/settings-loading-and-validation.md
+  - concepts/service-configuration-topology.md
+  - concepts/construction-paths-and-adapter-contracts.md
+- Navigation updated:
+  - index.md
