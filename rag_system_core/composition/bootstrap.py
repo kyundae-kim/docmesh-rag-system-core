@@ -27,10 +27,10 @@ def bootstrap_rag_core_from_docmesh(
     return RAGCore(
         embedding_client=embedding_client,
         generation_client=generation_client,
+        vector_store=vector_store,
         metadata_path=metadata_path,
         document_storage_dir=document_storage_dir,
         storage_mode=storage_mode,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        vector_store=vector_store,
     )

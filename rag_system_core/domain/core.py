@@ -5,15 +5,13 @@ from typing import BinaryIO, Callable
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.auth import resolve_user_id
-from rag_system_core.composition.docmesh_runtime import create_docmesh_service_client
 from rag_system_core.composition.health import run_health_checks
-from rag_system_core.composition.docmesh_runtime import resolve_milvus_runtime_settings
 from rag_system_core.domain.generation import GenerationService
 from rag_system_core.domain.ingestion import IngestionService
 from rag_system_core.domain.retrieval import RetrievalService
 from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import ChunkModel, DocumentModel, IngestionProgressModel, MetadataStore
-from rag_system_core.storage.vector_store import MilvusClient, MilvusLiteVectorStore, VectorStore
+from rag_system_core.storage.vector_store import VectorStore
 from rag_system_core.types import (
     ChunkRecord,
     DocumentRecord,
@@ -36,25 +34,13 @@ class RAGCore:
         storage_mode: str = "memory",
         chunk_size: int = 512,
         chunk_overlap: int = 64,
-        vector_store: VectorStore | None = None,
+        vector_store: VectorStore,
     ) -> None:
         self.embedding_client = embedding_client
         self.generation_client = generation_client
         metadata_path = Path(metadata_path)
         self.metadata_store = MetadataStore(metadata_path)
         self.document_storage = DocumentStorage(storage_mode, Path(document_storage_dir))
-        if vector_store is None:
-            milvus_uri, milvus_collection_name, milvus_timeout = resolve_milvus_runtime_settings(
-                fallback_uri=str(metadata_path.with_suffix(".milvus.db"))
-            )
-            milvus_client = create_docmesh_service_client("milvus")
-            if milvus_client is None:
-                milvus_client = MilvusClient(uri=milvus_uri, timeout=milvus_timeout)
-            vector_store = MilvusLiteVectorStore(
-                collection_name=milvus_collection_name,
-                timeout=milvus_timeout,
-                client=milvus_client,
-            )
         self.vector_store = vector_store
         self.ingestor = IngestionService(
             chunker=FixedWindowChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
@@ -174,8 +160,6 @@ __all__ = [
     "IngestionService",
     "IngestResult",
     "MetadataStore",
-    "MilvusClient",
-    "MilvusLiteVectorStore",
     "QueryResult",
     "RAGCore",
     "RetrievalService",

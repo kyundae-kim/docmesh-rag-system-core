@@ -4,7 +4,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import rag_system_core.domain.core as domain_core_module
 from rag_system_core import RAGCore
 from rag_system_core.composition.factories import create_rag_embedding_client, create_rag_generation_client, create_rag_vector_store
 
@@ -28,6 +27,7 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
     restarted = RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
+        vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
         metadata_path=tmp_path / "metadata.db",
         document_storage_dir=tmp_path / "documents",
         storage_mode="local",
@@ -71,6 +71,7 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     core = RAGCore(
         embedding_client=create_rag_embedding_client(settings=settings),
         generation_client=create_rag_generation_client(settings=settings),
+        vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
         metadata_path=tmp_path / "metadata.db",
         document_storage_dir=tmp_path / "documents",
         storage_mode="local",
@@ -95,7 +96,7 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     ]
 
 
-def test_rag_core_constructs_milvus_client_externally_from_resolved_settings(monkeypatch, tmp_path: Path) -> None:
+def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path: Path) -> None:
     records: dict[str, object] = {}
 
     class FakeMilvusClient:
@@ -103,17 +104,21 @@ def test_rag_core_constructs_milvus_client_externally_from_resolved_settings(mon
             records["uri"] = uri
             records["timeout"] = timeout
 
-    monkeypatch.setattr(domain_core_module, "MilvusClient", FakeMilvusClient)
-    monkeypatch.setattr(domain_core_module, "create_docmesh_service_client", lambda service_name: None)
+    monkeypatch.setattr("rag_system_core.composition.factories.MilvusClient", FakeMilvusClient)
     monkeypatch.setattr(
-        domain_core_module,
-        "resolve_milvus_runtime_settings",
-        lambda *, fallback_uri: (str(tmp_path / "external-milvus.db"), "resolved_chunks", 7.25),
+        "rag_system_core.composition.factories.resolve_milvus_runtime_settings",
+        lambda *, fallback_uri, settings=None: (str(tmp_path / "external-milvus.db"), "resolved_chunks", 7.25),
+    )
+    monkeypatch.setattr(
+        "rag_system_core.composition.factories.create_docmesh_service_client",
+        lambda service_name, *, settings=None, registry=None: None,
     )
 
+    vector_store = create_rag_vector_store(metadata_path=tmp_path / "metadata.db")
     core = RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
+        vector_store=vector_store,
         metadata_path=tmp_path / "metadata.db",
         document_storage_dir=tmp_path / "documents",
         storage_mode="local",

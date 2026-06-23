@@ -1,6 +1,26 @@
 from __future__ import annotations
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
+
+try:
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+except ModuleNotFoundError:  # pragma: no cover - exercised in minimal test envs
+    class BaseSettings:
+        model_config: dict[str, object] = {}
+
+        def __init__(self, **overrides) -> None:
+            prefix = str(getattr(self, "model_config", {}).get("env_prefix", ""))
+            annotations = getattr(type(self), "__annotations__", {})
+            for field_name in annotations:
+                if field_name in overrides:
+                    value = overrides[field_name]
+                else:
+                    env_name = f"{prefix}{field_name}".upper()
+                    value = os.environ.get(env_name, getattr(type(self), field_name))
+                setattr(self, field_name, value)
+
+    def SettingsConfigDict(**kwargs):
+        return dict(kwargs)
 
 
 class AuthSettings(BaseSettings):

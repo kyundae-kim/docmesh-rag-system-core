@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rag_system_core import RAGCore
+from rag_system_core.composition.factories import create_rag_vector_store
 
 
 class FakeEmbeddingClient:
@@ -52,10 +53,12 @@ class TestRig:
 def create_test_rig(tmp_path: Path, *, storage_mode: str = "memory") -> TestRig:
     embedding_client = FakeEmbeddingClient()
     generation_client = FakeGenerationClient()
+    metadata_path = tmp_path / "metadata.db"
     core = RAGCore(
         embedding_client=embedding_client,
         generation_client=generation_client,
-        metadata_path=tmp_path / "metadata.db",
+        vector_store=create_rag_vector_store(metadata_path=metadata_path),
+        metadata_path=metadata_path,
         document_storage_dir=tmp_path / "documents",
         storage_mode=storage_mode,
         chunk_size=32,

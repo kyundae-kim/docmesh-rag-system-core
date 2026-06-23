@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import inspect
 
-import rag_system_core.domain.core as domain_core_module
+from rag_system_core.composition.factories import create_rag_vector_store
 
 from test_rag_system_core.support import create_test_rig
 
@@ -67,17 +67,32 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
         def delete(self, *args, **kwargs) -> None:
             del args, kwargs
 
-    original_client = domain_core_module.MilvusClient
-    domain_core_module.MilvusClient = FakeMilvusClient
+    from rag_system_core import RAGCore
+
+    import rag_system_core.composition.factories as factories_module
+
+    original_client = factories_module.MilvusClient
+    factories_module.MilvusClient = FakeMilvusClient
     try:
+        vector_store = create_rag_vector_store(metadata_path=tmp_path / "metadata.db")
         rig = create_test_rig(tmp_path)
+        rig.core = RAGCore(
+            embedding_client=rig.embedding_client,
+            generation_client=rig.generation_client,
+            vector_store=vector_store,
+            metadata_path=tmp_path / "metadata.db",
+            document_storage_dir=tmp_path / "documents",
+            storage_mode="memory",
+            chunk_size=32,
+            chunk_overlap=4,
+        )
         result = rig.core.ingest_text(
             token="token-a",
             text="alpha one. beta two. gamma three. delta four. epsilon five.",
             source="milvus-ids.txt",
         )
     finally:
-        domain_core_module.MilvusClient = original_client
+        factories_module.MilvusClient = original_client
 
     assert result.chunk_count == 2
     assert all("chunk_id" not in payload for payload in FakeMilvusClient.inserted_payload)

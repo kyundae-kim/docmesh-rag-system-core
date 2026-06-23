@@ -7,7 +7,7 @@ import pytest
 
 import rag_system_core.infrastructure as infrastructure_module
 from rag_system_core import RAGCore
-from rag_system_core.composition.factories import create_rag_embedding_client, create_rag_generation_client
+from rag_system_core.composition.factories import create_rag_embedding_client, create_rag_generation_client, create_rag_vector_store
 from rag_system_core.infrastructure import resolve_user_id
 
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
@@ -149,6 +149,7 @@ def test_rag_core_health_check_uses_docmesh_aggregate_when_available(monkeypatch
     core = RAGCore(
         embedding_client=embedding_client,
         generation_client=generation_client,
+        vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
         metadata_path=tmp_path / "metadata.db",
         document_storage_dir=tmp_path / "documents",
         storage_mode="local",
@@ -186,11 +187,12 @@ def test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavai
             records["timeout"] = timeout
 
     monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
-    monkeypatch.setattr("rag_system_core.domain.core.MilvusClient", FakeMilvusClient)
+    monkeypatch.setattr("rag_system_core.composition.factories.MilvusClient", FakeMilvusClient)
 
     core = RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
+        vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
         metadata_path=tmp_path / "metadata.db",
         document_storage_dir=tmp_path / "documents",
         storage_mode="local",

@@ -7,19 +7,56 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, BinaryIO
 
-from docmesh_py_core import KeycloakAuthService, ServiceFactoryRegistry, check_all_services, load_settings
-from pydantic_settings import BaseSettings, SettingsConfigDict
+try:
+    from docmesh_py_core import KeycloakAuthService, ServiceFactoryRegistry, check_all_services, load_settings, Settings
+except ModuleNotFoundError as exc:  # pragma: no cover - exercised in environments without docmesh_py_core
+    _DOCMESH_IMPORT_ERROR = exc
+
+    class _MissingDocmeshDependency:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+            raise ModuleNotFoundError("docmesh_py_core is required for this operation") from _DOCMESH_IMPORT_ERROR
+
+    def _missing_docmesh_function(*args, **kwargs):
+        del args, kwargs
+        raise ModuleNotFoundError("docmesh_py_core is required for this operation") from _DOCMESH_IMPORT_ERROR
+
+    KeycloakAuthService = _MissingDocmeshDependency
+    ServiceFactoryRegistry = _MissingDocmeshDependency
+    check_all_services = _missing_docmesh_function
+    load_settings = _missing_docmesh_function
+    Settings = Any
+
+try:
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+except ModuleNotFoundError:  # pragma: no cover - exercised in minimal test envs
+    class BaseSettings:
+        model_config: dict[str, object] = {}
+
+        def __init__(self, **overrides) -> None:
+            prefix = str(getattr(self, "model_config", {}).get("env_prefix", ""))
+            annotations = getattr(type(self), "__annotations__", {})
+            for field_name in annotations:
+                if field_name in overrides:
+                    value = overrides[field_name]
+                else:
+                    env_name = f"{prefix}{field_name}".upper()
+                    value = os.environ.get(env_name, getattr(type(self), field_name))
+                setattr(self, field_name, value)
+
+    def SettingsConfigDict(**kwargs):
+        return dict(kwargs)
 
 from rag_system_core.types import DocumentRecord
 
 DEFAULT_SINGLE_USER_ID = "single-user"
 
 
-def _load_docmesh_settings(env: dict[str, str] | None = None) -> Any:
+def _load_docmesh_settings(env: dict[str, str] | None = None) -> Settings:
     return load_settings(env or os.environ)
 
 
-def _read_docmesh_milvus_settings(settings: Any | None = None) -> tuple[str | None, str | None, float | None]:
+def _read_docmesh_milvus_settings(settings: Settings | None = None) -> tuple[str | None, str | None, float | None]:
     resolved_settings = settings if settings is not None else _load_docmesh_settings()
     milvus_settings = getattr(resolved_settings, "milvus", None)
     if milvus_settings is None:
