@@ -4,7 +4,7 @@ created: 2026-06-23
 updated: 2026-06-23
 type: concept
 tags: [rag, architecture, sdk, decision, api]
-sources: [raw/articles/docmesh-rag-core-prd-2026-06-23.md]
+sources: [raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md]
 confidence: medium
 ---
 
@@ -28,12 +28,17 @@ PRD는 외부 공개 HTTP API 서버, UI/Frontend, 비동기 job queue, 고급 r
 
 운영 측면에서 중요한 계약은 세 가지다. 첫째, query와 조회/삭제는 항상 현재 user scope에 제한되어야 한다. 둘째, restart recovery는 동일한 SQLite metadata와 Milvus 저장소 구성을 다시 열어 retrieval을 복원하는 방식이어야 한다. 셋째, document deletion은 vector store 삭제 성공 시에만 metadata / progress / asset 정리를 이어서 수행해야 하며, 실패 시에는 재시도를 위해 metadata를 보존해야 한다.^[raw/articles/docmesh-rag-core-prd-2026-06-23.md]
 
+## PRD versus SRS
+
+현재 위키에서 PRD만 보면 제품의 약속은 이해할 수 있지만, 어떤 항목이 구현/테스트 가능한 요구사항 ID로 분해되는지는 드러나지 않는다. SRS는 같은 내용을 public interface, feature-level functional requirements, nonfunctional requirements, data requirements, verification/traceability로 재구성하므로, 요구사항 추적이 필요할 때는 [[software-requirements-and-traceability]]를 기준 문서로 함께 봐야 한다.^[raw/articles/docmesh-rag-core-srs-2026-06-23.md]
+
 ## Acceptance-oriented reading
 
 이 문서를 위키에서 특히 중요하게 봐야 하는 이유는 acceptance criteria가 구조적 기대를 매우 구체적으로 고정하기 때문이다. 예를 들어 ingestion 단계 순서, file stream ingestion의 `source` 필수성, prompt의 `[System Prompt] / [Retrieved Context] / [User Query]` 섹션, `bootstrap_rag_core(...)`의 service factory 조립 가능성은 모두 구현 세부가 아니라 제품 계약에 해당한다. 이 점은 [[public-api-surface]]와 [[ingestion-pipeline]]의 내용을 해석할 때 우선순위를 정해 준다.^[raw/articles/docmesh-rag-core-prd-2026-06-23.md]
 
 ## Related pages
 
+- [[software-requirements-and-traceability]]
 - [[ragcore]]
 - [[public-api-surface]]
 - [[rag-service-architecture]]

@@ -161,3 +161,17 @@
   - concepts/persistence-and-restart-recovery.md
 - Navigation updated:
   - index.md
+
+## [2026-06-23] ingest | docs/srs.md
+- Source captured:
+  - raw/articles/docmesh-rag-core-srs-2026-06-23.md
+- Wiki pages created:
+  - concepts/software-requirements-and-traceability.md
+- Wiki pages updated:
+  - concepts/product-scope-and-requirements.md
+  - concepts/public-api-surface.md
+  - concepts/persistence-and-restart-recovery.md
+  - concepts/service-health-orchestration.md
+  - concepts/rag-service-architecture.md
+- Navigation updated:
+  - index.md

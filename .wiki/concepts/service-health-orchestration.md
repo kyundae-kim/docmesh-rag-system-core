@@ -1,10 +1,10 @@
 ---
 title: Service Health Orchestration
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-23
 type: concept
 tags: [sdk, integration, testing, deployment, observability]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
+sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md]
 confidence: medium
 ---
 
@@ -20,16 +20,22 @@ confidence: medium
 
 API 가이드는 `check_all_services()`의 반환/예외 모델도 명시한다. 반환값은 전체 성공 여부를 나타내는 `HealthCheckResult.ok`와 서비스별 상태 목록인 `HealthCheckResult.services`를 포함하며, 필수 서비스 실패 시에는 실패한 서비스명과 마스킹된 오류 메시지를 담은 `HealthCheckError`가 발생한다. 따라서 호출자는 단순 boolean만 볼 것이 아니라 필수 실패와 부분 실패를 분리해 관측/응답 정책을 설계해야 한다.^[raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
 
+## How the RAG SRS uses this pattern
+
+RAG Core의 SRS는 모든 health-check 결과에 metadata health를 포함해야 하고, vector store / embedding client / generation client가 `check()`를 제공하면 그 정보도 포함해야 한다고 규정한다. 또한 DocMesh aggregate health path를 우선 시도하고 실패 시 local aggregation으로 fallback 해야 하므로, 이 페이지는 generic SDK 패턴이 아니라 현재 RAG 라이브러리의 명시적 요구사항 해석에도 직접 연결된다.^[raw/articles/docmesh-rag-core-srs-2026-06-23.md]^[raw/articles/docmesh-rag-core-prd-2026-06-23.md]
+
 ## Parallelism and lifecycle
 
 문서는 병렬 점검이 필요하면 `parallel=True`를 사용하라고 안내한다. 또한 FastAPI lifespan 예제처럼 시작 시점에 check를 수행하고 종료 시점에 registry close를 보장하는 구조를 제시하므로, health orchestration은 [[service-factory-registry]]의 생성/정리 수명주기와 분리해서 볼 수 없다.^[raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md]
 
 ## Risk points
 
-서비스별 health check semantics가 서로 다르기 때문에 소비 프로젝트는 성공 기준을 동일하게 가정하면 안 된다. 특히 NATS는 비동기 builder 계약을 이해하지 못하면 readiness 코드에서 오용하기 쉽고, optional 서비스를 required로 잘못 분류하면 배포 가용성을 불필요하게 떨어뜨릴 수 있다.^[raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md]
+서비스별 health check semantics가 서로 다르기 때문에 소비 프로젝트는 성공 기준을 동일하게 가정하면 안 된다. 특히 NATS는 비동기 builder 계약을 이해하지 못하면 readiness 코드에서 오용하기 쉽고, optional 서비스를 required로 잘못 분류하면 배포 가용성을 불필요하게 떨어뜨릴 수 있다. RAG Core 쪽에서는 이 리스크가 [[software-requirements-and-traceability]]의 health/composition 요구사항과 충돌하지 않도록 조정되어야 한다.
 
 ## Related pages
 
+- [[software-requirements-and-traceability]]
 - [[docmesh-py-core]]
 - [[service-factory-registry]]
+- [[product-scope-and-requirements]]
 - [[project-roadmap]]

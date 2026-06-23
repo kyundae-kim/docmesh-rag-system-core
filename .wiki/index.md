@@ -2,7 +2,7 @@
 
 > Content catalog. Every wiki page listed under its type with a one-line summary.
 > Read this first to find relevant pages for any query.
-> Last updated: 2026-06-23 | Total pages: 20
+> Last updated: 2026-06-23 | Total pages: 21
 
 ## Entities
 - [[docmesh-py-core]] — 설정 로드, 서비스 client 생성, health check, Keycloak 인증을 공통화하는 DocMesh Python SDK 엔티티 페이지.
@@ -22,6 +22,7 @@
 - [[service-factory-registry]] — load_settings와 create_client 패턴을 중심으로 한 서비스 초기화/선택 조정 계층.
 - [[service-health-orchestration]] — check/check_all_services 기반 startup readiness와 required/optional 서비스 정책.
 - [[settings-loading-and-validation]] — 환경변수 로드, 조건부 필수값 검증, 운영/테스트 분리 규칙을 정리한 설정 개념 페이지.
+- [[software-requirements-and-traceability]] — SRS 기준 기능/비기능/데이터 요구사항과 docs/test 추적성 경계를 정리한 개념 페이지.
 - [[user-scope-isolation]] — token 기반 user scope와 데이터 격리 계약, 적용 지점, 향후 인증 확장 고려사항.
 
 ## Comparisons
