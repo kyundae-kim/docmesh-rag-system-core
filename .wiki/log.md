@@ -202,3 +202,25 @@
   - concepts/construction-paths-and-adapter-contracts.md
 - Navigation updated:
   - index.md
+
+## [2026-06-23] lint | 4 issues found
+- Pages scanned: 23
+- Raw sources scanned: 10
+- Broken links: 0
+- Orphans: 3
+- Source drift/hash mismatches: 0
+- Frontmatter issues: 0
+- Tag issues: 1
+- Index issues: 0
+- Quality issues: 0
+- Oversized pages: 0
+
+## [2026-06-23] update | lint remediation
+- Schema updated:
+  - Added `persistence` to tag taxonomy in SCHEMA.md
+- Inbound links added:
+  - concepts/service-configuration-topology.md -> [[keycloak-auth-service]]
+  - concepts/settings-loading-and-validation.md -> [[keycloak-auth-service]]
+  - entities/docmesh-py-core.md -> [[developing-with-docmesh-py-core]]
+  - concepts/rag-service-architecture.md -> [[directory-refactoring-plan-for-docmesh-runtime-integration]]
+  - concepts/interface-roadmap.md -> [[directory-refactoring-plan-for-docmesh-runtime-integration]]

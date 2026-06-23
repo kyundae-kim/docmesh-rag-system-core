@@ -40,4 +40,5 @@ DocMesh RAG Core의 현재 구조는 외부에 `RAGCore` 단일 진입점을 유
 - [[ingestion-pipeline]]
 - [[persistence-and-restart-recovery]]
 - [[service-factory-registry]]
+- [[directory-refactoring-plan-for-docmesh-runtime-integration]]
 - [[interface-roadmap]]

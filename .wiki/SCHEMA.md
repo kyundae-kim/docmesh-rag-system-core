@@ -67,6 +67,7 @@ Architecture / system
 - ingestion
 - chunking
 - embeddings
+- persistence
 - reranking
 - vector-store
 

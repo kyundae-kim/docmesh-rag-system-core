@@ -28,5 +28,6 @@ API/MCP 계층이 추가되더라도 [[user-scope-isolation]]과 [[persistence-a
 
 - [[public-api-surface]]
 - [[rag-service-architecture]]
+- [[directory-refactoring-plan-for-docmesh-runtime-integration]]
 - [[user-scope-isolation]]
 - [[ragcore]]

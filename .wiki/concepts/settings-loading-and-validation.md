@@ -27,6 +27,7 @@ RAG Core의 config guide는 모든 설정이 항상 필요한 것이 아니라, 
 ## Related pages
 
 - [[first-success-configuration]]
+- [[keycloak-auth-service]]
 - [[docmesh-py-core]]
 - [[service-factory-registry]]
 - [[service-configuration-topology]]

@@ -28,6 +28,7 @@ RAG Core config guide는 이 topology 중 첫 성공 호출에 실제로 자주 
 
 - [[first-success-configuration]]
 - [[settings-loading-and-validation]]
+- [[keycloak-auth-service]]
 - [[construction-paths-and-adapter-contracts]]
 - [[docmesh-py-core]]
 - [[service-health-orchestration]]

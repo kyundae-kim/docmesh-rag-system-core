@@ -30,6 +30,7 @@ API 가이드는 패키지 루트 import 경계를 보다 명시적으로 정의
 
 ## Related pages
 
+- [[developing-with-docmesh-py-core]]
 - [[service-factory-registry]]
 - [[service-health-orchestration]]
 - [[interface-roadmap]]
