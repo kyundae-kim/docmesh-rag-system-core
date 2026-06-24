@@ -1,26 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
-
-try:
-    from docmesh_py_core import KeycloakAuthService, ServiceFactoryRegistry, check_all_services, load_settings, Settings
-except ModuleNotFoundError as exc:  # pragma: no cover - exercised in environments without docmesh_py_core
-    _DOCMESH_IMPORT_ERROR = exc
-
-    class _MissingDocmeshDependency:
-        def __init__(self, *args, **kwargs) -> None:
-            del args, kwargs
-            raise ModuleNotFoundError("docmesh_py_core is required for this operation") from _DOCMESH_IMPORT_ERROR
-
-    def _missing_docmesh_function(*args, **kwargs):
-        del args, kwargs
-        raise ModuleNotFoundError("docmesh_py_core is required for this operation") from _DOCMESH_IMPORT_ERROR
-
-    KeycloakAuthService = _MissingDocmeshDependency
-    ServiceFactoryRegistry = _MissingDocmeshDependency
-    check_all_services = _missing_docmesh_function
-    load_settings = _missing_docmesh_function
-    Settings = Any
+from rag_system_core.runtime.docmesh_sdk import (
+    KeycloakAuthService,
+    ServiceFactoryRegistry,
+    Settings,
+    check_all_services,
+    load_settings,
+)
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.auth import AuthSettings, DEFAULT_SINGLE_USER_ID, resolve_user_id

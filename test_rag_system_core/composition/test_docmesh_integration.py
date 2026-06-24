@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import rag_system_core.infrastructure as infrastructure_module
 from rag_system_core import RAGCore
 from rag_system_core.composition.factories import (
     create_rag_chunker,
@@ -16,6 +15,7 @@ from rag_system_core.composition.factories import (
     create_rag_vector_store,
 )
 from rag_system_core.infrastructure import resolve_user_id
+from rag_system_core.runtime import docmesh_sdk
 
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
 
@@ -102,16 +102,16 @@ def install_fake_docmesh(monkeypatch, *, ollama_wrapper: FakeDocmeshOllamaWrappe
             records["validated_token"] = token
             return SimpleNamespace(sub="user-from-keycloak", preferred_username="alice")
 
-    monkeypatch.setattr(infrastructure_module, "load_settings", fake_load_settings)
-    monkeypatch.setattr(infrastructure_module, "ServiceFactoryRegistry", FakeRegistry)
-    monkeypatch.setattr(infrastructure_module, "check_all_services", fake_check_all_services)
-    monkeypatch.setattr(infrastructure_module, "KeycloakAuthService", FakeKeycloakAuthService)
+    monkeypatch.setattr(docmesh_sdk, "load_settings", fake_load_settings)
+    monkeypatch.setattr(docmesh_sdk, "ServiceFactoryRegistry", FakeRegistry)
+    monkeypatch.setattr(docmesh_sdk, "check_all_services", fake_check_all_services)
+    monkeypatch.setattr(docmesh_sdk, "KeycloakAuthService", FakeKeycloakAuthService)
     return records, fake_milvus, settings
 
 
 def test_ollama_factories_use_docmesh_service_factory_when_available(monkeypatch) -> None:
     records, _, settings = install_fake_docmesh(monkeypatch)
-    registry = infrastructure_module.ServiceFactoryRegistry(settings)
+    registry = docmesh_sdk.ServiceFactoryRegistry(settings)
 
     embedding_client = create_rag_embedding_client(settings=settings, registry=registry)
     generation_client = create_rag_generation_client(settings=settings, registry=registry)
@@ -196,7 +196,7 @@ def test_rag_core_uses_milvus_fallback_settings_when_docmesh_settings_are_unavai
             records["uri"] = uri
             records["timeout"] = timeout
 
-    monkeypatch.setattr(infrastructure_module, "load_settings", broken_load_settings)
+    monkeypatch.setattr(docmesh_sdk, "load_settings", broken_load_settings)
     monkeypatch.setattr("rag_system_core.composition.factories.MilvusClient", FakeMilvusClient)
 
     core = RAGCore(

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import rag_system_core.infrastructure as infrastructure_module
+from rag_system_core.runtime import docmesh_sdk
 
 
 def _optional_float(value: str | None) -> float | None:
@@ -51,5 +51,5 @@ def isolate_docmesh_environment(monkeypatch: pytest.MonkeyPatch, tmp_path) -> No
         def close_all(self) -> None:
             return None
 
-    monkeypatch.setattr(infrastructure_module, "load_settings", fake_load_settings)
-    monkeypatch.setattr(infrastructure_module, "ServiceFactoryRegistry", FakeRegistry)
+    monkeypatch.setattr(docmesh_sdk, "load_settings", fake_load_settings)
+    monkeypatch.setattr(docmesh_sdk, "ServiceFactoryRegistry", FakeRegistry)

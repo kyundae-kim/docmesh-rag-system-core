@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 
+from rag_system_core.runtime import docmesh_sdk
+
 try:
     from pydantic_settings import BaseSettings, SettingsConfigDict
 except ModuleNotFoundError:  # pragma: no cover - exercised in minimal test envs
@@ -44,10 +46,8 @@ def resolve_user_id(token: str | None) -> str:
     if auth_mode != "keycloak":
         return normalized
 
-    import rag_system_core.infrastructure as infrastructure_module
-
-    settings = infrastructure_module.load_settings(os.environ)
-    auth_service = infrastructure_module.KeycloakAuthService(settings, allowed_algorithms=["RS256"])
+    settings = docmesh_sdk.load_settings(os.environ)
+    auth_service = docmesh_sdk.KeycloakAuthService(settings, allowed_algorithms=["RS256"])
     user = auth_service.extract_user_info(normalized)
     subject = getattr(user, "sub", None)
     if subject is not None and str(subject).strip():

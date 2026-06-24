@@ -3,16 +3,10 @@ from __future__ import annotations
 import os
 from typing import Any
 
-
-def _infrastructure_module():
-    import rag_system_core.infrastructure as infrastructure_module
-
-    return infrastructure_module
-
+from rag_system_core.runtime import docmesh_sdk
 
 def load_docmesh_settings(env: dict[str, str] | None = None) -> Any:
-    infrastructure_module = _infrastructure_module()
-    return infrastructure_module.load_settings(env or os.environ)
+    return docmesh_sdk.load_settings(env or os.environ)
 
 
 def try_load_docmesh_settings(env: dict[str, str] | None = None) -> Any | None:
@@ -23,8 +17,7 @@ def try_load_docmesh_settings(env: dict[str, str] | None = None) -> Any | None:
 
 
 def create_service_registry(settings: Any) -> Any:
-    infrastructure_module = _infrastructure_module()
-    return infrastructure_module.ServiceFactoryRegistry(settings)
+    return docmesh_sdk.ServiceFactoryRegistry(settings)
 
 
 def create_docmesh_service_client(service_name: str, *, settings: Any | None = None, registry: Any | None = None) -> Any | None:
