@@ -74,31 +74,27 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
 
     from rag_system_core import RAGCore
 
-    import rag_system_core.composition.factories as factories_module
-
-    original_client = factories_module.MilvusClient
-    factories_module.MilvusClient = FakeMilvusClient
-    try:
-        vector_store = create_rag_vector_store(metadata_path=tmp_path / "metadata.db")
-        rig = create_test_rig(tmp_path)
-        rig.core = RAGCore(
-            embedding_client=rig.embedding_client,
-            generation_client=rig.generation_client,
-            vector_store=vector_store,
-            metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
-            document_storage=create_rag_document_storage(
-                storage_mode="memory",
-                document_storage_dir=tmp_path / "documents",
-            ),
-            chunker=create_rag_chunker(chunk_size=32, chunk_overlap=4),
-        )
-        result = rig.core.ingest_text(
-            token="token-a",
-            text="alpha one. beta two. gamma three. delta four. epsilon five.",
-            source="milvus-ids.txt",
-        )
-    finally:
-        factories_module.MilvusClient = original_client
+    vector_store = create_rag_vector_store(
+        metadata_path=tmp_path / "metadata.db",
+        client=FakeMilvusClient(uri="unused", timeout=30.0),
+    )
+    rig = create_test_rig(tmp_path)
+    rig.core = RAGCore(
+        embedding_client=rig.embedding_client,
+        generation_client=rig.generation_client,
+        vector_store=vector_store,
+        metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
+        document_storage=create_rag_document_storage(
+            storage_mode="memory",
+            document_storage_dir=tmp_path / "documents",
+        ),
+        chunker=create_rag_chunker(chunk_size=32, chunk_overlap=4),
+    )
+    result = rig.core.ingest_text(
+        token="token-a",
+        text="alpha one. beta two. gamma three. delta four. epsilon five.",
+        source="milvus-ids.txt",
+    )
 
     assert result.chunk_count == 2
     assert all("chunk_id" not in payload for payload in FakeMilvusClient.inserted_payload)

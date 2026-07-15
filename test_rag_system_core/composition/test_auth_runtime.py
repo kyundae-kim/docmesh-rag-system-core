@@ -6,7 +6,7 @@ from types import SimpleNamespace
 def test_auth_and_runtime_modules_exist_and_export_expected_symbols():
     from rag_system_core.composition.auth import resolve_user_id
     from rag_system_core.composition.docmesh_runtime import (
-        create_service_registry,
+        assemble_docmesh_services,
         load_docmesh_settings,
         resolve_milvus_runtime_settings,
     )
@@ -14,7 +14,7 @@ def test_auth_and_runtime_modules_exist_and_export_expected_symbols():
 
     assert callable(resolve_user_id)
     assert callable(load_docmesh_settings)
-    assert callable(create_service_registry)
+    assert callable(assemble_docmesh_services)
     assert callable(resolve_milvus_runtime_settings)
     assert callable(run_health_checks)
 

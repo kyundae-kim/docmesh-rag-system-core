@@ -8,6 +8,7 @@ from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
 from rag_system_core.composition.docmesh_runtime import (
     create_docmesh_service_client,
+    load_docmesh_settings,
     read_docmesh_ollama_settings,
     resolve_milvus_runtime_settings,
 )
@@ -17,44 +18,61 @@ from rag_system_core.storage.vector_store import MilvusClient, MilvusLiteVectorS
 from rag_system_core.types import EmbeddingClient, GenerationClient
 
 
-def _require_ollama_client(*, settings: Any | None = None, registry: Any | None = None, client: Any | None = None) -> Any:
+def _require_ollama_client(*, settings: Any | None = None, bundle: Any | None = None, client: Any | None = None) -> Any:
     if client is not None:
         return client
-    resolved_client = create_docmesh_service_client("ollama", settings=settings, registry=registry)
+    resolved_client = create_docmesh_service_client("ollama", settings=settings, bundle=bundle)
     if resolved_client is None:
         raise RuntimeError("Failed to create Ollama service client")
     return resolved_client
 
 
-def create_rag_embedding_client(*, settings: Any | None = None, registry: Any | None = None, **overrides):
+def create_rag_embedding_client(*, settings: Any | None = None, bundle: Any | None = None, **overrides):
     model = overrides.pop("model", None)
     client = overrides.pop("client", None)
-    _, configured_model, _, _ = read_docmesh_ollama_settings(settings)
+    resolved_settings = settings
+    if resolved_settings is None and bundle is not None:
+        resolved_settings = bundle.configs
+    if resolved_settings is None and (model is None or client is None):
+        resolved_settings = load_docmesh_settings(services={"ollama"})
+    _, configured_model, _, _ = read_docmesh_ollama_settings(resolved_settings)
     resolved_model = model or configured_model
     return OllamaEmbeddingClient(
-        client=_require_ollama_client(settings=settings, registry=registry, client=client),
+        client=_require_ollama_client(settings=resolved_settings, bundle=bundle, client=client),
         model=resolved_model or "",
     )
 
 
-def create_rag_generation_client(*, settings: Any | None = None, registry: Any | None = None, **overrides):
+def create_rag_generation_client(*, settings: Any | None = None, bundle: Any | None = None, **overrides):
     model = overrides.pop("model", None)
     client = overrides.pop("client", None)
-    _, _, configured_model, _ = read_docmesh_ollama_settings(settings)
+    resolved_settings = settings
+    if resolved_settings is None and bundle is not None:
+        resolved_settings = bundle.configs
+    if resolved_settings is None and (model is None or client is None):
+        resolved_settings = load_docmesh_settings(services={"ollama"})
+    _, _, configured_model, _ = read_docmesh_ollama_settings(resolved_settings)
     resolved_model = model or configured_model
     return OllamaGenerationClient(
-        client=_require_ollama_client(settings=settings, registry=registry, client=client),
+        client=_require_ollama_client(settings=resolved_settings, bundle=bundle, client=client),
         model=resolved_model or "",
     )
 
 
-def create_rag_vector_store(*, metadata_path: str | Path, settings: Any | None = None, registry: Any | None = None, **overrides):
-    del registry
+def create_rag_vector_store(*, metadata_path: str | Path, settings: Any | None = None, bundle: Any | None = None, **overrides):
     fallback_uri = str(Path(metadata_path).with_suffix('.milvus.db'))
-    uri, collection_name, timeout = resolve_milvus_runtime_settings(fallback_uri=fallback_uri, settings=settings)
+    resolved_settings = settings
+    if resolved_settings is None and bundle is not None:
+        resolved_settings = bundle.configs
+    if resolved_settings is None:
+        resolved_settings = load_docmesh_settings(services={"milvus"})
+    uri, collection_name, timeout = resolve_milvus_runtime_settings(
+        fallback_uri=fallback_uri,
+        settings=resolved_settings,
+    )
     client = overrides.pop('client', None)
     if client is None:
-        client = create_docmesh_service_client('milvus', settings=settings)
+        client = create_docmesh_service_client('milvus', settings=resolved_settings, bundle=bundle)
     if client is None:
         client = MilvusClient(
             uri=overrides.get('uri', uri),
@@ -96,16 +114,36 @@ class RAGServiceFactory(Protocol):
 @dataclass(slots=True)
 class DocmeshRAGServiceFactory:
     settings: Any
-    registry: Any | None = None
+    bundle: Any | None = None
+
+    @classmethod
+    def from_env(
+        cls,
+        env: dict[str, str] | None = None,
+        *,
+        check_on_startup: bool = False,
+    ) -> "DocmeshRAGServiceFactory":
+        from rag_system_core.composition.docmesh_runtime import assemble_docmesh_services
+
+        bundle = assemble_docmesh_services(
+            env,
+            required={"ollama"},
+            check_on_startup=check_on_startup,
+        )
+        return cls(settings=bundle.configs, bundle=bundle)
+
+    def close(self) -> None:
+        if self.bundle is not None:
+            self.bundle.close()
 
     def create_embedding_client(self) -> EmbeddingClient:
-        return create_rag_embedding_client(settings=self.settings, registry=self.registry)
+        return create_rag_embedding_client(settings=self.settings, bundle=self.bundle)
 
     def create_generation_client(self) -> GenerationClient:
-        return create_rag_generation_client(settings=self.settings, registry=self.registry)
+        return create_rag_generation_client(settings=self.settings, bundle=self.bundle)
 
     def create_vector_store(self, *, metadata_path: str | Path) -> VectorStore:
-        return create_rag_vector_store(metadata_path=metadata_path, settings=self.settings, registry=self.registry)
+        return create_rag_vector_store(metadata_path=metadata_path, settings=self.settings, bundle=self.bundle)
 
     def create_document_storage(self, *, storage_mode: str, document_storage_dir: str | Path) -> DocumentStorage:
         return create_rag_document_storage(storage_mode=storage_mode, document_storage_dir=document_storage_dir)

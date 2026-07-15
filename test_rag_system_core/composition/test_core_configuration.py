@@ -21,14 +21,14 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
     milvus_uri = tmp_path / "configured-milvus.db"
     monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
     monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
-    monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9.5")
+    monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
 
     rig = create_test_rig(tmp_path)
     ingested = rig.core.ingest_text(token="token-a", text="alpha beta gamma", source="configured.txt")
 
     assert ingested.chunk_count == 1
     assert rig.core.vector_store.collection_name == "configured_chunks"
-    assert rig.core.vector_store.timeout == 9.5
+    assert rig.core.vector_store.timeout == 9.0
     assert milvus_uri.exists()
 
     restarted = RAGCore(
@@ -72,10 +72,10 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     milvus_uri = tmp_path / "configured-milvus.db"
     monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
     monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
-    monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9.5")
+    monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
     monkeypatch.setattr(
         "rag_system_core.composition.factories.create_docmesh_service_client",
-        lambda service_name, *, settings, registry=None: FakeOllamaClient() if service_name == "ollama" else None,
+        lambda service_name, *, settings, bundle=None: FakeOllamaClient() if service_name == "ollama" else None,
     )
 
     core = RAGCore(
@@ -96,7 +96,7 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     assert ingested.chunk_count == 1
     assert response.answer == "generated::Where is alpha?"
     assert core.vector_store.collection_name == "configured_chunks"
-    assert core.vector_store.timeout == 9.5
+    assert core.vector_store.timeout == 9.0
     assert embed_calls == [
         {"model": "bge-m3", "input": ["alpha beta gamma"]},
         {"model": "bge-m3", "input": ["Where is alpha?"]},
@@ -124,7 +124,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
     )
     monkeypatch.setattr(
         "rag_system_core.composition.factories.create_docmesh_service_client",
-        lambda service_name, *, settings=None, registry=None: None,
+        lambda service_name, *, settings=None, bundle=None: None,
     )
 
     vector_store = create_rag_vector_store(metadata_path=tmp_path / "metadata.db")
@@ -155,7 +155,10 @@ def test_create_rag_vector_store_requires_external_client_construction(monkeypat
             records["timeout"] = timeout
 
     monkeypatch.setattr("rag_system_core.composition.factories.MilvusClient", FakeMilvusClient)
-    monkeypatch.setattr("rag_system_core.composition.factories.create_docmesh_service_client", lambda service_name, *, settings=None: None)
+    monkeypatch.setattr(
+        "rag_system_core.composition.factories.create_docmesh_service_client",
+        lambda service_name, *, settings=None, bundle=None: None,
+    )
 
     store = create_rag_vector_store(
         metadata_path=tmp_path / "metadata.db",

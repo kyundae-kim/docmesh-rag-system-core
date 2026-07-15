@@ -1,70 +1,94 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from rag_system_core.runtime import docmesh_sdk
 
-def load_docmesh_settings(env: dict[str, str] | None = None) -> Any:
-    return docmesh_sdk.load_settings(env or os.environ)
+RAG_SERVICES = {"milvus", "ollama"}
 
 
-def try_load_docmesh_settings(env: dict[str, str] | None = None) -> Any | None:
-    try:
-        return load_docmesh_settings(env)
-    except Exception:
-        return None
+def load_docmesh_settings(
+    env: Mapping[str, str] | None = None,
+    *,
+    services: set[str] | None = None,
+) -> Any:
+    source = os.environ if env is None else env
+    return docmesh_sdk.load_available_service_configs(
+        source,
+        services=RAG_SERVICES if services is None else services,
+    )
 
 
-def create_service_registry(settings: Any) -> Any:
-    return docmesh_sdk.ServiceFactoryRegistry(settings)
+def assemble_docmesh_services(
+    env: Mapping[str, str] | None = None,
+    *,
+    services: set[str] | None = None,
+    required: set[str] | None = None,
+    check_on_startup: bool = False,
+    parallel_healthchecks: bool = False,
+) -> Any:
+    source = os.environ if env is None else env
+    return docmesh_sdk.assemble_services(
+        source,
+        services=RAG_SERVICES if services is None else services,
+        required=required,
+        check_on_startup=check_on_startup,
+        parallel_healthchecks=parallel_healthchecks,
+    )
 
 
-def create_docmesh_service_client(service_name: str, *, settings: Any | None = None, registry: Any | None = None) -> Any | None:
-    if registry is not None:
-        return registry.create_client(service_name)
-    resolved_settings = settings if settings is not None else try_load_docmesh_settings()
+def create_docmesh_service_client(
+    service_name: str,
+    *,
+    settings: Any | None = None,
+    bundle: Any | None = None,
+) -> Any | None:
+    if bundle is not None:
+        return bundle.clients.get(service_name)
+
+    resolved_settings = settings
     if resolved_settings is None:
+        resolved_settings = load_docmesh_settings(services={service_name})
+    config = getattr(resolved_settings, service_name, None)
+    if config is None:
         return None
-    resolved_registry = create_service_registry(resolved_settings)
-    return resolved_registry.create_client(service_name)
+    if service_name == "ollama":
+        return docmesh_sdk.create_ollama_client(config)
+    if service_name == "milvus":
+        return docmesh_sdk.create_milvus_client(config)
+    raise ValueError(f"Unsupported RAG service: {service_name}")
 
 
 def read_docmesh_ollama_settings(settings: Any | None = None) -> tuple[str | None, str | None, str | None, float | None]:
-    if settings is None:
+    if settings is None or getattr(settings, "ollama", None) is None:
         return None, None, None, None
-    ollama_settings = getattr(settings, "ollama", None)
-    if ollama_settings is None:
-        return None, None, None, None
-
-    host = getattr(ollama_settings, "host", None)
-    embedding_model = getattr(ollama_settings, "embedding_model", None)
-    generation_model = getattr(ollama_settings, "generation_model", None)
-    timeout = getattr(ollama_settings, "request_timeout_seconds", None)
-    return host, embedding_model, generation_model, float(timeout) if timeout is not None else None
+    ollama_settings = settings.ollama
+    return (
+        ollama_settings.host,
+        ollama_settings.embedding_model,
+        ollama_settings.generation_model,
+        float(ollama_settings.request_timeout_seconds),
+    )
 
 
 def read_docmesh_milvus_settings(settings: Any | None = None) -> tuple[str | None, str | None, float | None]:
-    if settings is None:
+    if settings is None or getattr(settings, "milvus", None) is None:
         return None, None, None
-    milvus_settings = getattr(settings, "milvus", None)
-    if milvus_settings is None:
-        return None, None, None
-
-    uri = getattr(milvus_settings, "uri", None)
-    collection_name = getattr(milvus_settings, "collection", None) or getattr(
-        milvus_settings, "collection_name", None
+    milvus_settings = settings.milvus
+    return (
+        milvus_settings.uri,
+        milvus_settings.collection,
+        float(milvus_settings.request_timeout_seconds),
     )
-    timeout = getattr(milvus_settings, "request_timeout_seconds", None)
-    if timeout is None:
-        timeout = getattr(milvus_settings, "connect_timeout_seconds", None)
-    return uri, collection_name, float(timeout) if timeout is not None else None
 
 
 def resolve_milvus_runtime_settings(*, fallback_uri: str, settings: Any | None = None) -> tuple[str, str, float]:
-    resolved_settings = settings if settings is not None else try_load_docmesh_settings()
+    resolved_settings = settings if settings is not None else load_docmesh_settings(services={"milvus"})
     docmesh_uri, docmesh_collection_name, docmesh_timeout = read_docmesh_milvus_settings(resolved_settings)
-    resolved_uri = docmesh_uri or fallback_uri
-    resolved_collection_name = docmesh_collection_name or "rag_chunks"
-    resolved_timeout = docmesh_timeout or 30.0
-    return resolved_uri, resolved_collection_name, resolved_timeout
+    return (
+        docmesh_uri or fallback_uri,
+        docmesh_collection_name or "rag_chunks",
+        docmesh_timeout or 30.0,
+    )

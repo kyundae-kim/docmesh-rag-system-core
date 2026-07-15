@@ -1,15 +1,23 @@
 from docmesh_py_core import (
     KeycloakAuthService,
-    ServiceFactoryRegistry,
-    Settings,
+    ServiceBundle,
+    ServiceConfigs,
+    assemble_services,
     check_all_services,
-    load_settings,
+    create_milvus_client,
+    create_ollama_client,
+    load_available_service_configs,
+    load_service_configs,
 )
 
 __all__ = [
     "KeycloakAuthService",
-    "ServiceFactoryRegistry",
-    "Settings",
+    "ServiceBundle",
+    "ServiceConfigs",
+    "assemble_services",
     "check_all_services",
-    "load_settings",
+    "create_milvus_client",
+    "create_ollama_client",
+    "load_available_service_configs",
+    "load_service_configs",
 ]

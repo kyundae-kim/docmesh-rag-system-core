@@ -20,20 +20,7 @@ class LocalHealthCheckResult:
 
 
 def run_health_checks(service_checks: dict[str, Any], required_services: set[str] | None = None) -> Any:
-    try:
-        return docmesh_sdk.check_all_services(service_checks, required_services=required_services)
-    except Exception:
-        pass
-
-    services: list[LocalHealthServiceResult] = []
-    ok = True
-    for service_name, check in service_checks.items():
-        try:
-            check()
-            services.append(LocalHealthServiceResult(service=service_name, ok=True, error=None))
-        except Exception as exc:
-            ok = False
-            services.append(LocalHealthServiceResult(service=service_name, ok=False, error=str(exc)))
-            if required_services is not None and service_name in required_services:
-                break
-    return LocalHealthCheckResult(ok=ok, services=services)
+    return docmesh_sdk.check_all_services(
+        service_checks,
+        required_services=required_services,
+    )

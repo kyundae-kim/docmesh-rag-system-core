@@ -46,8 +46,11 @@ def resolve_user_id(token: str | None) -> str:
     if auth_mode != "keycloak":
         return normalized
 
-    settings = docmesh_sdk.load_settings(os.environ)
-    auth_service = docmesh_sdk.KeycloakAuthService(settings, allowed_algorithms=["RS256"])
+    settings = docmesh_sdk.load_service_configs(os.environ, services={"keycloak"})
+    auth_service = docmesh_sdk.KeycloakAuthService(
+        settings.require_keycloak(),
+        allowed_algorithms=["RS256"],
+    )
     user = auth_service.extract_user_info(normalized)
     subject = getattr(user, "sub", None)
     if subject is not None and str(subject).strip():
