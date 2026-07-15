@@ -11,13 +11,16 @@ from rag_system_core.composition.factories import (
     create_rag_vector_store,
 )
 
-from test_rag_system_core.support import create_test_rig
+from test_rag_system_core.support import authenticated_user, create_test_rig
+
+USER_A = authenticated_user("user-a")
+USER_B = authenticated_user("user-b")
 
 
 def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path)
-    result = rig.core.ingest_text(token="token-a", text="alpha sqlite", source="sqlite.txt")
-    stored = rig.core.get_document(result.doc_id, token="token-a")
+    result = rig.core.ingest_text(user=USER_A, text="alpha sqlite", source="sqlite.txt")
+    stored = rig.core.get_document(result.doc_id, user=USER_A)
     assert stored is not None
 
     assert hasattr(rig.core.metadata_store, "engine")
@@ -37,7 +40,7 @@ def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Pat
 
     assert row is not None
     assert row.doc_id == result.doc_id
-    assert row.user_id == "token-a"
+    assert row.user_id == "user-a"
     assert row.source == "sqlite.txt"
     assert row.storage_path == stored.storage_path
 
@@ -91,7 +94,7 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
         chunker=create_rag_chunker(chunk_size=32, chunk_overlap=4),
     )
     result = rig.core.ingest_text(
-        token="token-a",
+        user=USER_A,
         text="alpha one. beta two. gamma three. delta four. epsilon five.",
         source="milvus-ids.txt",
     )
@@ -114,12 +117,12 @@ def test_ingestion_progress_rows_are_persisted_in_pipeline_order(tmp_path: Path)
     rig = create_test_rig(tmp_path)
 
     result = rig.core.ingest_text(
-        token="token-a",
+        user=USER_A,
         text="alpha one. beta two. gamma three. delta four. epsilon five.",
         source="pipeline.txt",
     )
 
-    progress_rows = rig.core.list_ingestion_progress(result.doc_id, token="token-a", job_id=result.job_id)
+    progress_rows = rig.core.list_ingestion_progress(result.doc_id, user=USER_A, job_id=result.job_id)
     completed_rows = [row for row in progress_rows if row.status == "completed"]
 
     assert [row.step_name for row in completed_rows] == [
@@ -131,7 +134,7 @@ def test_ingestion_progress_rows_are_persisted_in_pipeline_order(tmp_path: Path)
         "chunk_persistence",
     ]
     assert all(row.doc_id == result.doc_id for row in progress_rows)
-    assert all(row.user_id == "token-a" for row in progress_rows)
+    assert all(row.user_id == "user-a" for row in progress_rows)
     assert len({row.job_id for row in progress_rows}) == 1
 
 
@@ -139,12 +142,12 @@ def test_ingestion_progress_records_running_and_completed_statuses_per_job(tmp_p
     rig = create_test_rig(tmp_path)
 
     result = rig.core.ingest_text(
-        token="token-a",
+        user=USER_A,
         text="alpha progress state tracking",
         source="stateful.txt",
     )
 
-    progress_rows = rig.core.list_ingestion_progress(result.doc_id, token="token-a")
+    progress_rows = rig.core.list_ingestion_progress(result.doc_id, user=USER_A)
 
     assert any(row.status == "running" for row in progress_rows)
     assert any(row.status == "completed" for row in progress_rows)
@@ -155,16 +158,16 @@ def test_ingestion_progress_records_failed_step_when_ingest_errors(tmp_path: Pat
     rig = create_test_rig(tmp_path)
 
     try:
-        rig.core.ingest_text(token="token-a", text="   ", source="blank.txt")
+        rig.core.ingest_text(user=USER_A, text="   ", source="blank.txt")
     except ValueError as exc:
         assert str(exc) == "Document must contain non-empty text"
     else:
         raise AssertionError("Expected ValueError for blank document ingestion")
 
-    failed_docs = rig.core.list_documents(token="token-a")
+    failed_docs = rig.core.list_documents(user=USER_A)
     assert len(failed_docs) == 1
     failed_doc = failed_docs[0]
-    progress_rows = rig.core.list_ingestion_progress(failed_doc.doc_id, token="token-a")
+    progress_rows = rig.core.list_ingestion_progress(failed_doc.doc_id, user=USER_A)
     terminal_rows = [row for row in progress_rows if row.status != "running"]
 
     assert [row.step_name for row in terminal_rows] == ["load", "preprocess", "chunking"]
@@ -174,11 +177,11 @@ def test_ingestion_progress_records_failed_step_when_ingest_errors(tmp_path: Pat
 
 def test_ingestion_progress_can_be_grouped_by_job_id_for_same_document(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path)
-    first = rig.core.ingest_text(token="token-a", text="alpha first ingest", source="same.txt")
-    second = rig.core.ingest_text(token="token-a", text="alpha second ingest", source="same.txt")
+    first = rig.core.ingest_text(user=USER_A, text="alpha first ingest", source="same.txt")
+    second = rig.core.ingest_text(user=USER_A, text="alpha second ingest", source="same.txt")
 
-    first_rows = rig.core.list_ingestion_progress(first.doc_id, token="token-a", job_id=first.job_id)
-    second_rows = rig.core.list_ingestion_progress(second.doc_id, token="token-a", job_id=second.job_id)
+    first_rows = rig.core.list_ingestion_progress(first.doc_id, user=USER_A, job_id=first.job_id)
+    second_rows = rig.core.list_ingestion_progress(second.doc_id, user=USER_A, job_id=second.job_id)
 
     assert first.job_id != second.job_id
     assert first_rows
@@ -187,23 +190,23 @@ def test_ingestion_progress_can_be_grouped_by_job_id_for_same_document(tmp_path:
     assert all(row.job_id == second.job_id for row in second_rows)
 
 
-def test_ingestion_progress_is_limited_to_current_token_scope(tmp_path: Path) -> None:
+def test_ingestion_progress_is_limited_to_current_user_scope(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path)
-    token_a_result = rig.core.ingest_text(token="token-a", text="alpha scoped pipeline", source="a.txt")
-    rig.core.ingest_text(token="token-b", text="beta scoped pipeline", source="b.txt")
+    user_a_result = rig.core.ingest_text(user=USER_A, text="alpha scoped pipeline", source="a.txt")
+    rig.core.ingest_text(user=USER_B, text="beta scoped pipeline", source="b.txt")
 
-    visible = rig.core.list_ingestion_progress(token_a_result.doc_id, token="token-a")
-    hidden = rig.core.list_ingestion_progress(token_a_result.doc_id, token="token-b")
+    visible = rig.core.list_ingestion_progress(user_a_result.doc_id, user=USER_A)
+    hidden = rig.core.list_ingestion_progress(user_a_result.doc_id, user=USER_B)
 
     assert visible
-    assert all(row.doc_id == token_a_result.doc_id for row in visible)
+    assert all(row.doc_id == user_a_result.doc_id for row in visible)
     assert hidden == []
 
 
 def test_chunk_rows_are_persisted_and_rehydrated_across_restarts(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path, storage_mode="local")
     result = rig.core.ingest_text(
-        token="token-a",
+        user=USER_A,
         text="alpha one. beta two. gamma three. delta four. epsilon five.",
         source="persist.txt",
     )
@@ -217,12 +220,12 @@ def test_chunk_rows_are_persisted_and_rehydrated_across_restarts(tmp_path: Path)
         )
 
     assert len(chunk_rows) == result.chunk_count
-    assert all(row.user_id == "token-a" for row in chunk_rows)
+    assert all(row.user_id == "user-a" for row in chunk_rows)
     assert all(row.chunk_id for row in chunk_rows)
     assert all(row.content for row in chunk_rows)
 
     restarted = create_test_rig(tmp_path, storage_mode="local")
-    response = restarted.core.query(token="token-a", question="Where is alpha?", top_k=3)
+    response = restarted.core.query(user=USER_A, question="Where is alpha?", top_k=3)
 
     assert response.context_chunks
     assert any("alpha" in chunk.content.lower() for chunk in response.context_chunks)
@@ -231,46 +234,46 @@ def test_chunk_rows_are_persisted_and_rehydrated_across_restarts(tmp_path: Path)
 def test_list_document_chunks_returns_only_requested_document_chunks(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path)
     first = rig.core.ingest_text(
-        token="token-a",
+        user=USER_A,
         text="alpha one. beta two. gamma three. delta four. epsilon five.",
         source="first.txt",
     )
     second = rig.core.ingest_text(
-        token="token-a",
+        user=USER_A,
         text="alpha separate document for second result set only.",
         source="second.txt",
     )
 
-    chunks = rig.core.list_document_chunks(first.doc_id, token="token-a")
+    chunks = rig.core.list_document_chunks(first.doc_id, user=USER_A)
 
     assert len(chunks) == first.chunk_count
     assert all(chunk.doc_id == first.doc_id for chunk in chunks)
     assert all(chunk.doc_id != second.doc_id for chunk in chunks)
 
 
-def test_get_document_is_limited_to_current_token_scope(tmp_path: Path) -> None:
+def test_get_document_is_limited_to_current_user_scope(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path)
-    token_a_result = rig.core.ingest_text(token="token-a", text="alpha scoped document", source="a.txt")
-    rig.core.ingest_text(token="token-b", text="beta scoped document", source="b.txt")
+    user_a_result = rig.core.ingest_text(user=USER_A, text="alpha scoped document", source="a.txt")
+    rig.core.ingest_text(user=USER_B, text="beta scoped document", source="b.txt")
 
-    visible = rig.core.get_document(token_a_result.doc_id, token="token-a")
-    hidden = rig.core.get_document(token_a_result.doc_id, token="token-b")
+    visible = rig.core.get_document(user_a_result.doc_id, user=USER_A)
+    hidden = rig.core.get_document(user_a_result.doc_id, user=USER_B)
 
     assert visible is not None
-    assert visible.doc_id == token_a_result.doc_id
+    assert visible.doc_id == user_a_result.doc_id
     assert hidden is None
 
 
 def test_metadata_persists_across_restarts(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path, storage_mode="local")
-    first = rig.core.ingest_text(token="token-a", text="alpha persists", source="persist.txt")
+    first = rig.core.ingest_text(user=USER_A, text="alpha persists", source="persist.txt")
 
     restarted = create_test_rig(tmp_path, storage_mode="local")
 
-    documents = restarted.core.list_documents(token="token-a")
+    documents = restarted.core.list_documents(user=USER_A)
     assert [doc.doc_id for doc in documents] == [first.doc_id]
-    stored = restarted.core.get_document(first.doc_id, token="token-a")
+    stored = restarted.core.get_document(first.doc_id, user=USER_A)
     assert stored is not None
-    assert stored.user_id == "token-a"
+    assert stored.user_id == "user-a"
     assert stored.source == "persist.txt"
     assert stored.storage_path is not None

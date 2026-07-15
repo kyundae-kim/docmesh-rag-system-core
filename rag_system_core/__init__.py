@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from docmesh_py_core import AuthenticatedUser
+
 from rag_system_core.adapters.ollama import (
     OllamaEmbeddingClient,
     OllamaGenerationClient,
@@ -18,6 +20,7 @@ from rag_system_core.types import (
 )
 
 __all__ = [
+    "AuthenticatedUser",
     "ChunkRecord",
     "DocumentRecord",
     "EmbeddingClient",

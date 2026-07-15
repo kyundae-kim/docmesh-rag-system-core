@@ -3,8 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import BinaryIO, Callable
 
+from docmesh_py_core import AuthenticatedUser
+
 from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.composition.auth import resolve_user_id
 from rag_system_core.composition.health import run_health_checks
 from rag_system_core.domain.generation import GenerationService
 from rag_system_core.domain.ingestion import IngestionService
@@ -53,22 +54,20 @@ class RAGCore:
         )
         self.generator = GenerationService(generation_client)
 
-    def ingest_text(self, *, text: str, source: str, token: str | None = None) -> IngestResult:
-        resolved_user_id = resolve_user_id(token)
-        return self.ingestor.ingest_text(user_id=resolved_user_id, text=text, source=source)
+    def ingest_text(self, *, user: AuthenticatedUser, text: str, source: str) -> IngestResult:
+        return self.ingestor.ingest_text(user_id=user.sub, text=text, source=source)
 
     def ingest_file_stream(
         self,
         *,
+        user: AuthenticatedUser,
         file_stream: BinaryIO,
         source: str | None = None,
-        token: str | None = None,
     ) -> IngestResult:
-        resolved_user_id = resolve_user_id(token)
         if source is None or not source.strip():
             raise ValueError("source is required for stream ingestion")
         return self.ingestor.ingest_file_stream(
-            user_id=resolved_user_id,
+            user_id=user.sub,
             file_stream=file_stream,
             source=source,
         )
@@ -76,13 +75,12 @@ class RAGCore:
     def ingest_file_path(
         self,
         *,
+        user: AuthenticatedUser,
         file_path: str | Path,
-        token: str | None = None,
         source: str | None = None,
     ) -> IngestResult:
-        resolved_user_id = resolve_user_id(token)
         return self.ingestor.ingest_file_path(
-            user_id=resolved_user_id,
+            user_id=user.sub,
             file_path=Path(file_path),
             source=source,
         )
@@ -90,43 +88,37 @@ class RAGCore:
     def query(
         self,
         *,
+        user: AuthenticatedUser,
         question: str,
         top_k: int = 3,
-        token: str | None = None,
     ) -> QueryResult:
-        resolved_user_id = resolve_user_id(token)
-        context = self.retriever.search(user_id=resolved_user_id, question=question, top_k=top_k)
+        context = self.retriever.search(user_id=user.sub, question=question, top_k=top_k)
         return self.generator.generate(question=question, context_chunks=context)
 
-    def list_documents(self, token: str | None = None) -> list[DocumentRecord]:
-        resolved_user_id = resolve_user_id(token)
-        return self.metadata_store.list_documents(resolved_user_id)
+    def list_documents(self, *, user: AuthenticatedUser) -> list[DocumentRecord]:
+        return self.metadata_store.list_documents(user.sub)
 
-    def get_document(self, doc_id: str, *, token: str | None = None) -> DocumentRecord | None:
-        resolved_user_id = resolve_user_id(token)
-        return self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=resolved_user_id)
+    def get_document(self, doc_id: str, *, user: AuthenticatedUser) -> DocumentRecord | None:
+        return self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=user.sub)
 
-    def list_document_chunks(self, doc_id: str, *, token: str | None = None) -> list[ChunkRecord]:
-        resolved_user_id = resolve_user_id(token)
-        return self.metadata_store.list_document_chunks(doc_id=doc_id, user_id=resolved_user_id)
+    def list_document_chunks(self, doc_id: str, *, user: AuthenticatedUser) -> list[ChunkRecord]:
+        return self.metadata_store.list_document_chunks(doc_id=doc_id, user_id=user.sub)
 
     def list_ingestion_progress(
         self,
         doc_id: str,
         *,
-        token: str | None = None,
+        user: AuthenticatedUser,
         job_id: str | None = None,
     ) -> list[IngestionProgressRecord]:
-        resolved_user_id = resolve_user_id(token)
-        return self.metadata_store.list_ingestion_progress(doc_id=doc_id, user_id=resolved_user_id, job_id=job_id)
+        return self.metadata_store.list_ingestion_progress(doc_id=doc_id, user_id=user.sub, job_id=job_id)
 
-    def delete_document(self, doc_id: str, *, token: str | None = None) -> bool:
-        resolved_user_id = resolve_user_id(token)
-        document = self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=resolved_user_id)
+    def delete_document(self, doc_id: str, *, user: AuthenticatedUser) -> bool:
+        document = self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=user.sub)
         if document is None:
             return False
         self.vector_store.delete_document(doc_id)
-        deleted_document = self.metadata_store.delete_document(doc_id=doc_id, user_id=resolved_user_id)
+        deleted_document = self.metadata_store.delete_document(doc_id=doc_id, user_id=user.sub)
         if deleted_document is None:
             return False
         self.document_storage.delete(deleted_document)

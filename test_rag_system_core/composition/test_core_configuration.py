@@ -14,7 +14,14 @@ from rag_system_core.composition.factories import (
     create_rag_vector_store,
 )
 
-from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient, create_test_rig
+from test_rag_system_core.support import (
+    authenticated_user,
+    FakeEmbeddingClient,
+    FakeGenerationClient,
+    create_test_rig,
+)
+
+USER_A = authenticated_user("user-a")
 
 
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
@@ -24,7 +31,7 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
     monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
 
     rig = create_test_rig(tmp_path)
-    ingested = rig.core.ingest_text(token="token-a", text="alpha beta gamma", source="configured.txt")
+    ingested = rig.core.ingest_text(user=USER_A, text="alpha beta gamma", source="configured.txt")
 
     assert ingested.chunk_count == 1
     assert rig.core.vector_store.collection_name == "configured_chunks"
@@ -42,7 +49,7 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
         ),
         chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
     )
-    response = restarted.query(token="token-a", question="Where is alpha?", top_k=3)
+    response = restarted.query(user=USER_A, question="Where is alpha?", top_k=3)
 
     assert response.context_chunks
     assert any(chunk.doc_id == ingested.doc_id for chunk in response.context_chunks)
@@ -90,8 +97,8 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
         chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
     )
 
-    ingested = core.ingest_text(token="token-a", text="alpha beta gamma", source="configured.txt")
-    response = core.query(token="token-a", question="Where is alpha?", top_k=3)
+    ingested = core.ingest_text(user=USER_A, text="alpha beta gamma", source="configured.txt")
+    response = core.query(user=USER_A, question="Where is alpha?", top_k=3)
 
     assert ingested.chunk_count == 1
     assert response.answer == "generated::Where is alpha?"

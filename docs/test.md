@@ -15,7 +15,7 @@
 본 문서는 `docs/prd.md`, `docs/srs.md`와 동일한 용어 기준을 사용한다.
 
 - **user scope**: 현재 요청에 대해 해석된 사용자 경계
-- **resolved user identity**: token 또는 Keycloak 검증으로부터 해석된 사용자 식별 결과
+- **authenticated user**: 상위 애플리케이션이 전달하는 `docmesh_py_core.AuthenticatedUser`
 - **`user_id`**: persistence 및 filtering에 사용되는 저장된 사용자 식별자
 - **metadata store**: SQLite + SQLAlchemy 기반 document / chunk / ingestion progress persistence 계층
 - **vector store**: Milvus Lite 기반 embedding 저장 및 retrieval 계층
@@ -35,7 +35,7 @@
 - document asset storage (`memory`, `local`)
 - document deletion 및 rollback 특성
 - composition 계층 동작
-- Keycloak 모드 resolved user identity 해석
+- `AuthenticatedUser.sub` 기반 user scope
 - Ollama adapter의 정상/오류/health-check 동작
 - `docs/srs.md` 요구사항 ID 기준 추적성 검증
 
@@ -57,7 +57,7 @@
 3. **실제 persistence 검증**
    - SQLite 파일, ORM 테이블, 재초기화 후 조회/검색까지 확인한다.
 4. **사용자 격리 우선**
-   - token 또는 Keycloak 기반 user scope 간 데이터 혼합이 없어야 한다.
+   - 서로 다른 `AuthenticatedUser.sub` 기반 user scope 간 데이터 혼합이 없어야 한다.
 5. **restart recovery 포함**
    - 저장 성공뿐 아니라 재초기화 후 restart recovery까지 확인한다.
 6. **실패 경로 포함**
@@ -90,7 +90,7 @@
 - `create_rag_metadata_store(...)`
 - `create_rag_document_storage(...)`
 - `create_rag_chunker(...)`
-- `resolve_user_id(...)`
+- `AuthenticatedUser`
 
 ### 4.3 Adapter / protocol boundary
 - `OllamaEmbeddingClient`
@@ -114,7 +114,7 @@
 - `test_rag_system_core/composition/test_bootstrap.py`
 - `test_rag_system_core/composition/test_docmesh_integration.py`
 - `test_rag_system_core/composition/test_core_configuration.py`
-- `test_rag_system_core/composition/test_auth_runtime.py`
+
 
 ### 5.3 Adapter
 - `test_rag_system_core/adapters/test_ollama_embedding_client.py`
@@ -134,9 +134,8 @@
 
 | SRS ID | 요구사항 요약 | 검증 상태 | 관련 테스트 파일 | 대표 테스트 |
 |---|---|---|---|---|
-| SRS-FR-001 ~ 003 | 기본 token 기반 user scope 및 `single-user` fallback | 검증됨 | `domain/test_ingestion_api.py`, `composition/test_auth_runtime.py` | `test_ingest_text_uses_token_as_user_scope`, `test_ingest_text_without_token_uses_single_user_scope`, `test_blank_token_falls_back_to_single_user_scope`, `test_resolve_user_id_defaults_to_single_user` |
-| SRS-FR-004 ~ 007 | Keycloak 기반 resolved user identity 해석 | 검증됨 | `composition/test_docmesh_integration.py` | `test_resolve_user_id_uses_keycloak_when_auth_mode_enabled` |
-| SRS-FR-008 ~ 011 | `user_id` 부착 및 user scope 기반 조회/검색/삭제 제한 | 검증됨 | `domain/test_query.py`, `domain/test_metadata_and_progress.py`, `domain/test_deletion_and_rollback.py` | `test_query_filters_results_by_token_derived_user_id`, `test_get_document_is_limited_to_current_token_scope` |
+| SRS-FR-001 ~ 003 | `AuthenticatedUser` 입력 및 `sub` 기반 user scope | 검증됨 | `domain/test_ingestion_api.py` | `test_ingest_text_uses_authenticated_user_as_user_scope` |
+| SRS-FR-008 ~ 011 | `user_id` 부착 및 user scope 기반 조회/검색/삭제 제한 | 검증됨 | `domain/test_query.py`, `domain/test_metadata_and_progress.py`, `domain/test_deletion_and_rollback.py` | `test_query_filters_results_by_authenticated_user`, `test_get_document_is_limited_to_current_user_scope` |
 | SRS-FR-012 ~ 023 | ingestion API, pipeline order, progress status | 검증됨 | `domain/test_ingestion_api.py`, `domain/test_metadata_and_progress.py` | `test_ingest_file_stream_requires_explicit_source`, `test_ingestion_progress_rows_are_persisted_in_pipeline_order`, `test_ingestion_progress_records_failed_step_when_ingest_errors` |
 | SRS-FR-024 ~ 029 | document asset storage (`memory`, `local`, `storage_path`) | 검증됨 | `domain/test_ingestion_api.py`, `domain/test_deletion_and_rollback.py` | `test_ingest_text_stores_string_input_as_managed_asset`, `test_ingest_text_memory_storage_uses_logical_asset_path`, `test_ingest_file_stream_copies_input_stream_into_managed_storage` |
 | SRS-FR-030 ~ 037 | embedding batch 호출, generation 호출 계약, prompt 구조 | 검증됨 | `domain/test_query.py`, `domain/test_deletion_and_rollback.py`, `adapters/test_ollama_embedding_client.py`, `adapters/test_ollama_generation_client.py` | `test_embedding_requests_are_batched_for_chunk_ingestion`, `test_query_prompt_includes_system_query_and_context` |
@@ -173,12 +172,10 @@
 
 ## 7. 대표 테스트 시나리오
 
-### 7.1 User scope / resolved user identity
-- `test_ingest_text_uses_token_as_user_scope`
-- `test_ingest_text_without_token_uses_single_user_scope`
-- `test_blank_token_falls_back_to_single_user_scope`
-- `test_query_filters_results_by_token_derived_user_id`
-- `test_resolve_user_id_uses_keycloak_when_auth_mode_enabled`
+### 7.1 User scope / authenticated user
+- `test_ingest_text_uses_authenticated_user_as_user_scope`
+- `test_query_filters_results_by_authenticated_user`
+- `test_get_document_is_limited_to_current_user_scope`
 
 ### 7.2 Ingestion / progress
 - `test_ingest_file_stream_requires_explicit_source`
@@ -236,7 +233,7 @@ uv run pytest test_rag_system_core/adapters -q
 
 ```bash
 uv run pytest test_rag_system_core/domain/test_deletion_and_rollback.py::test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_allows_retry -q
-uv run pytest test_rag_system_core/composition/test_docmesh_integration.py::test_resolve_user_id_uses_keycloak_when_auth_mode_enabled -q
+uv run pytest test_rag_system_core/domain/test_ingestion_api.py::test_ingest_text_uses_authenticated_user_as_user_scope -q
 ```
 
 ---
@@ -264,8 +261,7 @@ uv run pytest test_rag_system_core/composition/test_docmesh_integration.py::test
 - `SRS-DR-006`: `memory` storage mode의 재시작 후 비영속성은 명시적 재시작 테스트를 추가하면 더 좋다.
 
 ### 10.2 향후 추가 권장 테스트
-- Keycloak 응답에 `sub`가 없고 `preferred_username`만 있는 경우 검증
-- Keycloak 응답에 둘 다 없는 경우 실패 검증
+- 빈 `AuthenticatedUser.sub` 처리 정책 검증
 - `health_check()` local fallback 결과 shape 검증
 - `memory` storage mode의 재시작 후 비영속성 명시 검증
 - UTF-8 decode 불가 파일 입력 시 실패 동작 명시 검증

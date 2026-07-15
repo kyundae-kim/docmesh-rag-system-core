@@ -5,7 +5,7 @@
 이 문서의 초점:
 - 어떤 env가 실제로 사용되는지
 - 어떤 값이 첫 성공 호출에 필요한지
-- 어떤 값이 DocMesh / Keycloak 통합 시에만 필요한지
+- 사용자 모델 전달과 런타임 설정의 책임이 어떻게 분리되는지
 - factory helper와 bootstrap 경로가 어떻게 연결되는지
 
 ---
@@ -14,8 +14,7 @@
 
 첫 성공 호출만 목표라면 다음 전략이 가장 단순하다.
 
-- `DOCMESH_AUTH_MODE` 미설정
-- token 생략 (`single-user` 경로)
+- 상위 애플리케이션에서 `AuthenticatedUser` 준비
 - `create_rag_*` helper로 구성요소 생성
 - `RAGCore(...)` 직접 조립
 - local storage 사용
@@ -30,7 +29,7 @@ OLLAMA_GENERATION_MODEL=gpt-oss:20b
 ```
 
 이 경우:
-- auth는 기본 token mode이지만 token을 안 넘기면 `single-user`
+- 각 호출에 `AuthenticatedUser`를 전달
 - Milvus URI를 비워도 `metadata_path.with_suffix(".milvus.db")` fallback 사용 가능
 - collection을 비워도 `rag_chunks` fallback 사용 가능
 
@@ -51,14 +50,6 @@ MILVUS_COLLECTION=rag_chunks
 MILVUS_REQUEST_TIMEOUT_SECONDS=30
 MILVUS_CONNECT_TIMEOUT_SECONDS=30
 
-# Optional auth mode
-# DOCMESH_AUTH_MODE=keycloak
-
-# If using keycloak mode, configure the required docmesh-py-core auth settings too.
-# Example names depend on your shared docmesh config contract.
-# KEYCLOAK_URL=
-# KEYCLOAK_REALM=
-# KEYCLOAK_CLIENT_ID=
 ```
 
 ---
@@ -75,7 +66,7 @@ MILVUS_CONNECT_TIMEOUT_SECONDS=30
 | `MILVUS_COLLECTION` | 선택 | 기본 `rag_chunks` 대신 별도 collection 사용 시 | |
 | `MILVUS_REQUEST_TIMEOUT_SECONDS` | 선택 | Milvus timeout 조정 시 | |
 | `MILVUS_CONNECT_TIMEOUT_SECONDS` | 선택 | DocMesh settings shape에 따라 timeout fallback으로 사용 가능 | |
-| `DOCMESH_AUTH_MODE` | 선택 | Keycloak 기반 user identity 해석이 필요할 때 | 기본은 token mode |
+
 
 ---
 
@@ -163,16 +154,15 @@ DocMesh 환경에서는 보통 다음 순서로 사용한다.
 - `OLLAMA_HOST=http://ollama:11434`
 - `OLLAMA_EMBEDDING_MODEL=bge-m3`
 - `OLLAMA_GENERATION_MODEL=gpt-oss:20b`
-- `DOCMESH_AUTH_MODE` 미설정
+- 상위 애플리케이션에서 `AuthenticatedUser` 생성
 - `storage_mode="local"`
 - `metadata_path=./data/metadata.db`
 - `document_storage_dir=./data/documents`
-- token 생략
+- 모든 user-scoped 호출에 `user` 전달
 
 ### 5.2 이때 기대되는 기본 동작
 
-- user scope: `single-user`
-- auth mode: 기본 token mode
+- user scope: `user.sub`
 - Milvus URI: `./data/metadata.milvus.db` 형태 fallback 사용 가능
 - Milvus collection: `rag_chunks`
 - chunker default 예시: `chunk_size=512`, `chunk_overlap=64`
@@ -183,8 +173,6 @@ DocMesh 환경에서는 보통 다음 순서로 사용한다.
 
 다음은 **첫 성공 호출만 목표라면 당장 필요하지 않다.**
 
-- `DOCMESH_AUTH_MODE=keycloak`
-- Keycloak 관련 설정
 - custom collection 이름
 - custom timeout 값
 - `bootstrap_rag_core(...)`
@@ -223,8 +211,7 @@ DocMesh 환경에서는 보통 다음 순서로 사용한다.
 - [ ] `OLLAMA_GENERATION_MODEL`이 설정됐다
 - [ ] Ollama 서버가 실제로 떠 있다
 - [ ] 모델이 실제로 준비되어 있다
-- [ ] `DOCMESH_AUTH_MODE`는 비워두었다 (첫 시도 기준)
-- [ ] Keycloak 설정에 의존하지 않는다
+- [ ] 상위 애플리케이션에서 `AuthenticatedUser`를 생성했다
 - [ ] `metadata_path`와 문서 저장 디렉터리에 쓰기 권한이 있다
 
 ---

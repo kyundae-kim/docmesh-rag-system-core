@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 from rag_system_core.runtime.docmesh_sdk import (
-    KeycloakAuthService,
     ServiceBundle,
     ServiceConfigs,
     assemble_services,
     check_all_services,
     load_available_service_configs,
-    load_service_configs,
 )
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.composition.auth import AuthSettings, DEFAULT_SINGLE_USER_ID, resolve_user_id
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
     load_docmesh_settings,
@@ -32,11 +29,8 @@ def _read_docmesh_milvus_settings(settings: ServiceConfigs | None = None) -> tup
 
 
 __all__ = [
-    "AuthSettings",
-    "DEFAULT_SINGLE_USER_ID",
     "DocumentStorage",
     "FixedWindowChunker",
-    "KeycloakAuthService",
     "LocalHealthCheckResult",
     "LocalHealthServiceResult",
     "ServiceBundle",
@@ -50,9 +44,7 @@ __all__ = [
     "extract_doc_id_from_storage_path",
     "load_available_service_configs",
     "load_docmesh_settings",
-    "load_service_configs",
     "read_docmesh_milvus_settings",
     "resolve_milvus_runtime_settings",
-    "resolve_user_id",
     "run_health_checks",
 ]

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from docmesh_py_core import AuthenticatedUser
+
 from rag_system_core import RAGCore
 from rag_system_core.composition.factories import (
     create_rag_chunker,
@@ -46,6 +48,20 @@ class FakeGenerationClient:
         context, question = context_block.rsplit("\n\n[User Query]\n", 1)
         first_context_line = context.strip().splitlines()[0]
         return f"ANSWER::{question.strip()}::{first_context_line}"
+
+
+def authenticated_user(user_id: str) -> AuthenticatedUser:
+    return AuthenticatedUser(
+        sub=user_id,
+        preferred_username=None,
+        email=None,
+        given_name=None,
+        family_name=None,
+        name=None,
+        realm_roles=[],
+        client_roles={},
+        claims={},
+    )
 
 
 @dataclass

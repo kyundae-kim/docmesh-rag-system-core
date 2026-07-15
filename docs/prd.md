@@ -14,7 +14,7 @@
 본 문서는 `docs/api.md`, `docs/srs.md`, `docs/test.md`와 동일한 용어 기준을 사용한다.
 
 - **user scope**: 현재 요청에 대해 해석된 사용자 경계
-- **resolved user identity**: token 또는 Keycloak 검증으로부터 해석된 사용자 식별 결과
+- **authenticated user**: 상위 애플리케이션이 전달하는 `docmesh_py_core.AuthenticatedUser`
 - **`user_id`**: persistence 및 filtering에 사용되는 저장된 사용자 식별자
 - **metadata store**: SQLite + SQLAlchemy 기반 document / chunk / ingestion progress persistence 계층
 - **vector store**: Milvus Lite 기반 embedding 저장 및 retrieval 계층
@@ -32,7 +32,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 상위 애플리케이션이 `RAGCore`를 통해 ingestion / retrieval / generation / document management를 단일 진입점으로 사용할 수 있어야 한다.
 - metadata store와 vector store를 분리해 restart recovery가 가능해야 한다.
 - user scope를 기준으로 멀티유저 데이터가 섞이지 않아야 한다.
-- DocMesh settings / registry / auth / health integration 경로를 선택적으로 사용할 수 있어야 한다.
+- DocMesh settings / registry / health integration 경로를 선택적으로 사용할 수 있어야 한다.
 
 ---
 
@@ -71,8 +71,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - embedding batch 호출
 - Milvus Lite 기반 vector search
 - generation client 기반 답변 생성
-- token 기반 user scope
-- 선택적 Keycloak 기반 `token -> user_id` 해석
+- `AuthenticatedUser.sub` 기반 user scope
 - SQLAlchemy ORM + SQLite metadata persistence
 - document asset storage (`memory`, `local`)
 - 문서 목록/단건/청크/progress 조회
@@ -101,7 +100,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 2. **멀티유저 상위 애플리케이션**
    - 여러 사용자 데이터를 user scope 기준으로 분리해야 하는 시스템
 3. **DocMesh 통합 개발자**
-   - DocMesh settings / registry / auth / health path를 재사용하려는 개발자
+   - DocMesh settings / registry / health path를 재사용하려는 개발자
 
 ### 5.2 핵심 사용 시나리오
 
@@ -116,8 +115,8 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - helper는 service factory를 통해 의존 구성요소를 생성한다.
 
 #### 시나리오 3: 사용자별 query
-- 사용자는 `token`을 제공한다.
-- 시스템은 현재 auth mode에 따라 resolved user identity를 해석한다.
+- 상위 애플리케이션은 인증된 `AuthenticatedUser`를 제공한다.
+- 시스템은 `user.sub`를 user scope로 사용한다.
 - retrieval과 조회/삭제는 해당 user scope만 대상으로 한다.
 
 #### 시나리오 4: restart recovery
@@ -140,15 +139,9 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 ### 6.1 사용자 식별 요구사항
 
 #### PRD-FR-1. 기본 사용자 식별
-- 시스템은 token 기반 사용자 식별을 지원해야 한다.
-- 기본 auth mode에서는 token 문자열 자체를 `user_id`로 사용해야 한다.
-- token이 없거나 공백이면 `single-user` scope를 사용해야 한다.
-
-#### PRD-FR-2. Keycloak 기반 해석
-- `DOCMESH_AUTH_MODE=keycloak`일 때 시스템은 Keycloak 검증을 통해 `user_id`를 해석해야 한다.
-- `sub`가 있으면 이를 우선 사용해야 한다.
-- `sub`가 없고 `preferred_username`이 있으면 이를 사용해야 한다.
-- 둘 다 없으면 오류를 발생시켜야 한다.
+- 시스템은 `docmesh_py_core.AuthenticatedUser`를 입력으로 받아야 한다.
+- 시스템은 `AuthenticatedUser.sub`를 `user_id`로 사용해야 한다.
+- 인증과 사용자 모델 생성은 상위 애플리케이션의 책임이어야 한다.
 
 #### PRD-FR-3. 멀티유저 격리
 - 모든 document metadata와 chunk metadata에는 `user_id`가 포함되어야 한다.
@@ -288,7 +281,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - 향후 API 서버나 다른 vector store 조합으로 확장 가능한 구조여야 한다.
 
 ### 7.3 데이터 격리
-- 서로 다른 사용자 token/subject 간 데이터 혼합이 발생해서는 안 된다.
+- 서로 다른 `AuthenticatedUser.sub` 간 데이터 혼합이 발생해서는 안 된다.
 - 저장, 검색, 조회, 삭제 전 과정에서 user scope가 유지되어야 한다.
 
 ### 7.4 안정성
@@ -323,8 +316,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
  ├─ create_rag_metadata_store
  ├─ create_rag_document_storage
  ├─ create_rag_chunker
- ├─ load_docmesh_settings
- └─ resolve_user_id
+ └─ load_docmesh_settings
 ```
 
 ### 8.1 설계 원칙
@@ -394,17 +386,14 @@ QueryResult
 - 파일 ingestion은 현재 UTF-8 decode 가능한 텍스트를 가정한다.
 - 바이너리 문서, PDF, 이미지 등은 직접 지원하지 않는다.
 
-### R3. Keycloak 설정 의존성
-- Keycloak 모드에서는 DocMesh auth 설정이 올바르지 않으면 user_id 해석이 실패한다.
-
-### R4. Milvus Lite 운영 한계
+### R3. Milvus Lite 운영 한계
 - 기본 검색 저장소는 로컬/경량 Milvus Lite다.
 - 대규모 운영, 고가용성, 복잡한 멀티테넌시에는 부적합하다.
 
-### R5. 분산 트랜잭션 부재
+### R4. 분산 트랜잭션 부재
 - delete는 vector store와 metadata / asset 전체에 대해 강한 원자성을 제공하지 않는다.
 
-### R6. memory storage의 휘발성
+### R5. memory storage의 휘발성
 - `memory` storage mode 자산은 프로세스 재시작 시 사라진다.
 
 ---
@@ -420,7 +409,7 @@ QueryResult
 - query / document management API
 - progress persistence / 조회
 - health check
-- DocMesh settings / registry / auth integration
+- DocMesh settings / registry integration
 - SQLite metadata persistence
 - Milvus Lite retrieval persistence
 
@@ -435,22 +424,21 @@ QueryResult
 
 ## 12. 수용 기준 (Acceptance Criteria)
 
-1. token이 없거나 공백이면 `single-user` scope로 동작한다.
-2. 기본 auth mode에서 token은 그대로 user scope가 된다.
-3. Keycloak 모드에서는 토큰으로부터 사용자 식별자를 해석할 수 있다.
-4. 텍스트, 파일 스트림, 파일 경로 입력을 각각 적재할 수 있다.
-5. `ingest_file_stream()`은 `source`가 없으면 실패한다.
-6. ingestion은 `load -> preprocess -> chunking -> embedding -> vector_store -> chunk_persistence` 순서의 progress를 남긴다.
-7. embedding은 chunk 전체에 대해 batch 1회 호출로 처리된다.
-8. query 결과는 반드시 현재 user scope의 chunk만 포함한다.
-9. prompt에는 `[System Prompt]`, `[Retrieved Context]`, `[User Query]`가 포함된다.
-10. metadata는 SQLite에 저장된다.
-11. 동일한 vector store 구성을 다시 사용하면 재시작 후 retrieval이 가능하다.
-12. 문서별 chunk 목록과 ingestion progress를 조회할 수 있다.
-13. 삭제 성공 시 document / chunk / progress / asset / Milvus 엔트리가 함께 정리된다.
-14. vector store 삭제가 실패하면 metadata는 유지되어 재시도가 가능하다.
-15. health check는 metadata 및 사용 가능한 의존 서비스 상태를 집계한다.
-16. `bootstrap_rag_core(...)`는 service factory를 사용해 코어를 조립할 수 있다.
+1. 모든 user-scoped 공개 메서드는 `AuthenticatedUser`를 받는다.
+2. `AuthenticatedUser.sub`가 저장 및 검색의 `user_id`로 사용된다.
+3. 텍스트, 파일 스트림, 파일 경로 입력을 각각 적재할 수 있다.
+4. `ingest_file_stream()`은 `source`가 없으면 실패한다.
+5. ingestion은 `load -> preprocess -> chunking -> embedding -> vector_store -> chunk_persistence` 순서의 progress를 남긴다.
+6. embedding은 chunk 전체에 대해 batch 1회 호출로 처리된다.
+7. query 결과는 반드시 현재 user scope의 chunk만 포함한다.
+8. prompt에는 `[System Prompt]`, `[Retrieved Context]`, `[User Query]`가 포함된다.
+9. metadata는 SQLite에 저장된다.
+10. 동일한 vector store 구성을 다시 사용하면 재시작 후 retrieval이 가능하다.
+11. 문서별 chunk 목록과 ingestion progress를 조회할 수 있다.
+12. 삭제 성공 시 document / chunk / progress / asset / Milvus 엔트리가 함께 정리된다.
+13. vector store 삭제가 실패하면 metadata는 유지되어 재시도가 가능하다.
+14. health check는 metadata 및 사용 가능한 의존 서비스 상태를 집계한다.
+15. `bootstrap_rag_core(...)`는 service factory를 사용해 코어를 조립할 수 있다.
 
 ---
 

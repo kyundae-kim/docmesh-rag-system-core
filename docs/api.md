@@ -17,7 +17,7 @@
 본 문서는 `docs/prd.md`, `docs/srs.md`, `docs/test.md`와 동일한 용어 기준을 사용한다.
 
 - **user scope**: 현재 요청에 대해 해석된 사용자 경계
-- **resolved user identity**: token 또는 Keycloak 검증으로부터 해석된 사용자 식별 결과
+- **authenticated user**: 상위 애플리케이션이 전달하는 `docmesh_py_core.AuthenticatedUser`
 - **`user_id`**: persistence 및 filtering에 사용되는 저장된 사용자 식별자
 - **metadata store**: SQLite + SQLAlchemy 기반 document / chunk / ingestion progress persistence 계층
 - **vector store**: Milvus Lite 기반 embedding 저장 및 retrieval 계층
@@ -83,6 +83,7 @@ DocMesh 통합 환경에서 자주 쓰는 예시 값:
 
 ```python
 from rag_system_core import (
+    AuthenticatedUser,
     RAGCore,
     OllamaEmbeddingClient,
     OllamaGenerationClient,
@@ -385,11 +386,11 @@ class QueryResult:
 ### 7.1 `ingest_text`
 
 ```python
-ingest_text(*, text: str, source: str, token: str | None = None) -> IngestResult
+ingest_text(*, user: AuthenticatedUser, text: str, source: str) -> IngestResult
 ```
 
 동작 요약:
-- `resolve_user_id(token)`으로 `user_id` 해석
+- `user.sub`를 `user_id`로 사용
 - text는 `strip()` 전처리 적용
 - 빈 텍스트가 되면 `ValueError("Document must contain non-empty text")`
 
@@ -398,9 +399,9 @@ ingest_text(*, text: str, source: str, token: str | None = None) -> IngestResult
 ```python
 ingest_file_stream(
     *,
+    user: AuthenticatedUser,
     file_stream,
     source: str | None = None,
-    token: str | None = None,
 ) -> IngestResult
 ```
 
@@ -413,8 +414,8 @@ ingest_file_stream(
 ```python
 ingest_file_path(
     *,
+    user: AuthenticatedUser,
     file_path: str | Path,
-    token: str | None = None,
     source: str | None = None,
 ) -> IngestResult
 ```
@@ -426,7 +427,7 @@ ingest_file_path(
 ### 7.4 `query`
 
 ```python
-query(*, question: str, top_k: int = 3, token: str | None = None) -> QueryResult
+query(*, user: AuthenticatedUser, question: str, top_k: int = 3) -> QueryResult
 ```
 
 생성되는 prompt 구조:
@@ -445,19 +446,19 @@ query(*, question: str, top_k: int = 3, token: str | None = None) -> QueryResult
 ### 7.5 `list_documents`
 
 ```python
-list_documents(token: str | None = None) -> list[DocumentRecord]
+list_documents(*, user: AuthenticatedUser) -> list[DocumentRecord]
 ```
 
 ### 7.6 `get_document`
 
 ```python
-get_document(doc_id: str, *, token: str | None = None) -> DocumentRecord | None
+get_document(doc_id: str, *, user: AuthenticatedUser) -> DocumentRecord | None
 ```
 
 ### 7.7 `list_document_chunks`
 
 ```python
-list_document_chunks(doc_id: str, *, token: str | None = None) -> list[ChunkRecord]
+list_document_chunks(doc_id: str, *, user: AuthenticatedUser) -> list[ChunkRecord]
 ```
 
 ### 7.8 `list_ingestion_progress`
@@ -466,7 +467,7 @@ list_document_chunks(doc_id: str, *, token: str | None = None) -> list[ChunkReco
 list_ingestion_progress(
     doc_id: str,
     *,
-    token: str | None = None,
+    user: AuthenticatedUser,
     job_id: str | None = None,
 ) -> list[IngestionProgressRecord]
 ```
@@ -474,7 +475,7 @@ list_ingestion_progress(
 ### 7.9 `delete_document`
 
 ```python
-delete_document(doc_id: str, *, token: str | None = None) -> bool
+delete_document(doc_id: str, *, user: AuthenticatedUser) -> bool
 ```
 
 반환:
@@ -503,15 +504,9 @@ health_check() -> object
 ## 8. user scope 규칙
 
 기본 규칙:
-- `token is None` → `single-user`
-- `token.strip() == ""` → `single-user`
-- 기본 auth mode에서는 나머지 token 문자열을 그대로 `user_id`로 사용
-
-Keycloak 모드:
-- `DOCMESH_AUTH_MODE=keycloak`
-- `KeycloakAuthService`로 토큰 검증
-- `sub` 우선, 없으면 `preferred_username` 사용
-- 둘 다 없으면 `RuntimeError`
+- 모든 user-scoped 공개 메서드는 `AuthenticatedUser`를 필수로 받는다.
+- persistence 및 filtering에는 `user.sub`를 `user_id`로 사용한다.
+- 사용자 인증 및 `AuthenticatedUser` 생성은 상위 애플리케이션에서 완료한다.
 
 ---
 

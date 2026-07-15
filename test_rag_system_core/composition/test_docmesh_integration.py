@@ -16,7 +16,6 @@ from rag_system_core.composition.factories import (
     create_rag_metadata_store,
     create_rag_vector_store,
 )
-from rag_system_core.infrastructure import resolve_user_id
 from rag_system_core.runtime import docmesh_sdk
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
 
@@ -195,37 +194,6 @@ def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Pat
 
     assert core.health_check().ok is True
     assert records["services"] == ["embedding", "generation", "metadata", "milvus"]
-
-
-def test_resolve_user_id_uses_keycloak_service_config(monkeypatch) -> None:
-    records: dict[str, object] = {}
-    keycloak_config = object()
-    configs = SimpleNamespace(require_keycloak=lambda: keycloak_config)
-
-    def fake_load_service_configs(env, *, services):
-        records["services"] = services
-        return configs
-
-    class FakeKeycloakAuthService:
-        def __init__(self, config, allowed_algorithms=None) -> None:
-            records["config"] = config
-            records["allowed_algorithms"] = allowed_algorithms
-
-        def extract_user_info(self, token: str):
-            records["token"] = token
-            return SimpleNamespace(sub="user-from-keycloak")
-
-    monkeypatch.setattr(docmesh_sdk, "load_service_configs", fake_load_service_configs)
-    monkeypatch.setattr(docmesh_sdk, "KeycloakAuthService", FakeKeycloakAuthService)
-    monkeypatch.setenv("DOCMESH_AUTH_MODE", "keycloak")
-
-    assert resolve_user_id("Bearer abc.def.ghi") == "user-from-keycloak"
-    assert records == {
-        "services": {"keycloak"},
-        "config": keycloak_config,
-        "allowed_algorithms": ["RS256"],
-        "token": "Bearer abc.def.ghi",
-    }
 
 
 def test_vector_store_uses_local_fallback_when_milvus_is_not_configured(monkeypatch, tmp_path: Path) -> None:

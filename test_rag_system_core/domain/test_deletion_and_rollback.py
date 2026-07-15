@@ -7,38 +7,40 @@ import pytest
 
 import rag_system_core.core as core_module
 
-from test_rag_system_core.support import create_test_rig, FakeEmbeddingClient
+from test_rag_system_core.support import authenticated_user, create_test_rig, FakeEmbeddingClient
+
+USER_A = authenticated_user("user-a")
 
 
 def test_delete_document_removes_metadata_chunks_asset_and_query_visibility(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path, storage_mode="local")
     target = rig.core.ingest_text(
-        token="token-a",
+        user=USER_A,
         text="alpha one. beta two. gamma three. delta four. epsilon five.",
         source="target.txt",
     )
     survivor = rig.core.ingest_text(
-        token="token-a",
+        user=USER_A,
         text="beta survivor document only.",
         source="survivor.txt",
     )
-    stored = rig.core.get_document(target.doc_id, token="token-a")
+    stored = rig.core.get_document(target.doc_id, user=USER_A)
     assert stored is not None
     assert stored.storage_path is not None
     stored_path = Path(stored.storage_path)
     assert stored_path.exists()
-    assert rig.core.list_ingestion_progress(target.doc_id, token="token-a")
+    assert rig.core.list_ingestion_progress(target.doc_id, user=USER_A)
 
-    deleted = rig.core.delete_document(target.doc_id, token="token-a")
+    deleted = rig.core.delete_document(target.doc_id, user=USER_A)
 
     assert deleted is True
-    assert rig.core.get_document(target.doc_id, token="token-a") is None
-    assert rig.core.list_document_chunks(target.doc_id, token="token-a") == []
-    assert rig.core.list_ingestion_progress(target.doc_id, token="token-a") == []
+    assert rig.core.get_document(target.doc_id, user=USER_A) is None
+    assert rig.core.list_document_chunks(target.doc_id, user=USER_A) == []
+    assert rig.core.list_ingestion_progress(target.doc_id, user=USER_A) == []
     assert not stored_path.exists()
-    assert [doc.doc_id for doc in rig.core.list_documents(token="token-a")] == [survivor.doc_id]
+    assert [doc.doc_id for doc in rig.core.list_documents(user=USER_A)] == [survivor.doc_id]
 
-    response = rig.core.query(token="token-a", question="Where is alpha?", top_k=5)
+    response = rig.core.query(user=USER_A, question="Where is alpha?", top_k=5)
     assert all(chunk.doc_id != target.doc_id for chunk in response.context_chunks)
 
 
@@ -72,7 +74,7 @@ def test_ingestion_service_store_rolls_back_milvus_chunks_when_chunk_persistence
         core_module.ChunkRecord(
             chunk_id="",
             doc_id="doc-1",
-            user_id="token-a",
+            user_id="user-a",
             content="alpha",
             metadata={"source": "x.txt"},
         )
@@ -117,14 +119,14 @@ def test_ingestion_service_store_rolls_back_milvus_chunks_when_generated_id_coun
         core_module.ChunkRecord(
             chunk_id="",
             doc_id="doc-1",
-            user_id="token-a",
+            user_id="user-a",
             content="alpha",
             metadata={"source": "x.txt"},
         ),
         core_module.ChunkRecord(
             chunk_id="",
             doc_id="doc-1",
-            user_id="token-a",
+            user_id="user-a",
             content="beta",
             metadata={"source": "x.txt"},
         ),
@@ -141,7 +143,7 @@ def test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_all
     monkeypatch, tmp_path: Path
 ) -> None:
     rig = create_test_rig(tmp_path, storage_mode="local")
-    ingested = rig.core.ingest_text(token="token-a", text="alpha retry cleanup", source="retry.txt")
+    ingested = rig.core.ingest_text(user=USER_A, text="alpha retry cleanup", source="retry.txt")
     original_delete_document = rig.core.vector_store.delete_document
     attempts = {"count": 0}
 
@@ -154,20 +156,20 @@ def test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_all
     monkeypatch.setattr(rig.core.vector_store, "delete_document", flaky_delete_document)
 
     with pytest.raises(RuntimeError, match="milvus delete failed"):
-        rig.core.delete_document(ingested.doc_id, token="token-a")
+        rig.core.delete_document(ingested.doc_id, user=USER_A)
 
-    assert rig.core.get_document(ingested.doc_id, token="token-a") is not None
-    assert rig.core.list_document_chunks(ingested.doc_id, token="token-a")
+    assert rig.core.get_document(ingested.doc_id, user=USER_A) is not None
+    assert rig.core.list_document_chunks(ingested.doc_id, user=USER_A)
 
-    assert rig.core.delete_document(ingested.doc_id, token="token-a") is True
-    assert rig.core.get_document(ingested.doc_id, token="token-a") is None
+    assert rig.core.delete_document(ingested.doc_id, user=USER_A) is True
+    assert rig.core.get_document(ingested.doc_id, user=USER_A) is None
 
 
 def test_embedding_requests_are_batched_for_chunk_ingestion(tmp_path: Path) -> None:
     rig = create_test_rig(tmp_path)
     text = "alpha one. beta two. gamma three. delta four. epsilon five."
 
-    result = rig.core.ingest_text(token="token-a", text=text, source="batch.txt")
+    result = rig.core.ingest_text(user=USER_A, text=text, source="batch.txt")
 
     assert result.chunk_count > 1
     assert len(rig.embedding_client.calls) == 1

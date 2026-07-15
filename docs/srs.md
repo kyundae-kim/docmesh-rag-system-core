@@ -14,11 +14,11 @@ At the software level, the system shall:
 
 - expose a single primary public entry point centered on `RAGCore`
 - support document ingestion from text, file streams, and file paths
-- isolate stored data and retrieval results by resolved user identity
+- isolate stored data and retrieval results by authenticated user information
 - persist metadata in SQLite and vector data in Milvus Lite
 - support restart-time recovery by reopening the same metadata and vector storage
 - support composition through helper factories and service-factory-based bootstrap paths
-- integrate with DocMesh configuration, service registry, auth, and health-check composition paths when used in a DocMesh environment
+- integrate with DocMesh configuration, service registry, and health-check composition paths when used in a DocMesh environment
 
 This SRS covers the current library behavior. It does not define an external HTTP service contract or frontend behavior.
 
@@ -31,7 +31,7 @@ This SRS covers the current library behavior. It does not define an external HTT
 | RAG | Retrieval-Augmented Generation |
 | DocMesh | The surrounding configuration/runtime ecosystem referenced by this library |
 | `RAGCore` | Primary public class for ingestion, retrieval, generation, and document management |
-| user scope | The resolved user identity boundary used to isolate document storage and retrieval |
+| user scope | The `AuthenticatedUser.sub` boundary used to isolate document storage and retrieval |
 | metadata store | SQLite-backed persistence for document, chunk, and ingestion progress records |
 | vector store | Milvus Lite-backed storage for embeddings and similarity search |
 | ingestion | Process of loading content, preprocessing, chunking, embedding, and storing it |
@@ -95,7 +95,6 @@ Document Storage
  - create_rag_document_storage
  - create_rag_chunker
  - load_docmesh_settings
- - resolve_user_id
 ```
 
 ### 2.2 Product Functions
@@ -116,9 +115,9 @@ The system provides the following software functions:
 
 | User class | Description | Key expectation |
 |---|---|---|
-| Single-user consumer | Local or single-instance user ingesting and querying documents | Minimal setup and predictable defaults |
+| Local consumer | Local or single-instance user ingesting and querying documents | Explicit user information and predictable behavior |
 | Multi-user integrator | Application/service integrating this library for multiple users | Strict user-scope isolation |
-| DocMesh-integrated developer | Developer using DocMesh settings, registry, auth, and health integrations | Stable composition and reuse of runtime services |
+| DocMesh-integrated developer | Developer using DocMesh settings, registry, and health integrations | Stable composition and reuse of runtime services |
 
 ### 2.4 Operating Environment
 The software is expected to run in a Python environment with:
@@ -143,7 +142,7 @@ The current implementation imposes the following constraints:
 - metadata persistence uses SQLite through SQLAlchemy ORM
 - file ingestion assumes UTF-8-decodable text inputs
 - `RAGCore` is a dependency-injected assembly point, not a convenience constructor over paths/settings alone
-- user identity resolution is token-based, with optional Keycloak-based resolution
+- user-scoped methods require `docmesh_py_core.AuthenticatedUser`
 - the system does not provide distributed transaction guarantees across vector, metadata, and asset storage
 
 ### 2.6 User Documentation
@@ -159,7 +158,7 @@ The following assumptions and dependencies apply:
 - embedding and generation clients satisfy their documented protocol contracts
 - the selected embedding model returns one vector per input text
 - Milvus Lite storage is reachable and reusable across restarts when configured consistently
-- Keycloak integration depends on valid external auth configuration when enabled
+- authentication and `AuthenticatedUser` creation are owned by the calling application
 
 ---
 
@@ -220,19 +219,18 @@ The system shall support composition helpers including:
 - `create_rag_chunker(...)`
 - `load_docmesh_settings(...)`
 - `create_service_registry(...)`
-- `resolve_user_id(...)`
 
 #### 3.3.6 External Runtime Integrations
 The system may integrate with the following external software services or packages:
 
 - DocMesh settings and service registry
-- Keycloak-based user identity resolution
+- `docmesh_py_core.AuthenticatedUser` as the user information model
 - Ollama-compatible embedding and generation adapters
 - Milvus Lite vector storage
 - SQLite metadata storage
 
 ### 3.4 Communications Interfaces
-This SRS defines no standalone network protocol for the product itself. Any network communication occurs indirectly through configured client adapters or auth integrations.
+This SRS defines no standalone network protocol for the product itself. Any network communication occurs indirectly through configured client adapters.
 
 ---
 
@@ -246,20 +244,15 @@ This feature resolves the current user identity and enforces user-scope isolatio
 **Priority:** High
 
 #### 4.1.2 Stimulus/Response Sequences
-- When a caller provides a token in default auth mode, the system resolves the token string as the user identity.
-- When a caller omits the token or provides a blank token, the system resolves the identity as `single-user`.
-- When Keycloak mode is enabled, the system resolves the user identity from validated token claims.
-- When a user performs retrieval or management operations, the system limits results to the resolved user identity.
+- When a caller invokes a user-scoped method, it provides an `AuthenticatedUser`.
+- The system uses `AuthenticatedUser.sub` as `user_id`.
+- When a user performs retrieval or management operations, the system limits results to that `user_id`.
 
 #### 4.1.3 Functional Requirements
 
-- **SRS-FR-001** The system shall support token-based user identification.
-- **SRS-FR-002** In the default auth mode, the system shall use the token string itself as `user_id`.
-- **SRS-FR-003** If the token is missing or blank, the system shall use `single-user` as `user_id`.
-- **SRS-FR-004** When `DOCMESH_AUTH_MODE=keycloak`, the system shall resolve `user_id` through Keycloak-based token validation.
-- **SRS-FR-005** When Keycloak resolution returns `sub`, the system shall prefer `sub` as `user_id`.
-- **SRS-FR-006** When `sub` is absent and `preferred_username` is present, the system shall use `preferred_username` as `user_id`.
-- **SRS-FR-007** When neither `sub` nor `preferred_username` is available in Keycloak mode, the system shall raise an error.
+- **SRS-FR-001** The system shall accept `docmesh_py_core.AuthenticatedUser` for user-scoped operations.
+- **SRS-FR-002** User information shall be required for ingestion, retrieval, listing, progress lookup, and deletion.
+- **SRS-FR-003** The system shall use `AuthenticatedUser.sub` as `user_id`.
 - **SRS-FR-008** The system shall attach `user_id` to persisted document metadata.
 - **SRS-FR-009** The system shall attach `user_id` to persisted chunk metadata.
 - **SRS-FR-010** The system shall restrict query results to chunks belonging to the resolved `user_id`.
@@ -505,22 +498,21 @@ created_at
 ### 7.1 Acceptance Criteria
 The implementation shall be considered conformant to this SRS when the following conditions are met:
 
-1. Missing or blank tokens resolve to `single-user`.
-2. In default auth mode, a provided token becomes the user scope.
-3. In Keycloak mode, user identity can be resolved from the token.
-4. Text, file stream, and file path ingestion paths all function as defined.
-5. `ingest_file_stream()` fails when `source` is absent.
-6. Ingestion progress records reflect the required pipeline order.
-7. Chunk embedding occurs through a single batch call per ingestion execution.
-8. Query results are restricted to the current user scope.
-9. Generated prompts contain `[System Prompt]`, `[Retrieved Context]`, and `[User Query]`.
-10. Metadata is stored in SQLite.
-11. Retrieval remains possible after restart when the same Milvus configuration is reused.
-12. Chunk listings and ingestion progress listings are available per document.
-13. Successful deletion removes document metadata, chunk metadata, progress metadata, stored assets, and Milvus entries.
-14. Failed vector-store deletion preserves metadata for retry.
-15. Health checking aggregates metadata and available dependency checks.
-16. `bootstrap_rag_core(...)` assembles a core through a service factory.
+1. User-scoped methods require an `AuthenticatedUser`.
+2. `AuthenticatedUser.sub` becomes the persisted and filtered user scope.
+3. Text, file stream, and file path ingestion paths all function as defined.
+4. `ingest_file_stream()` fails when `source` is absent.
+5. Ingestion progress records reflect the required pipeline order.
+6. Chunk embedding occurs through a single batch call per ingestion execution.
+7. Query results are restricted to the current user scope.
+8. Generated prompts contain `[System Prompt]`, `[Retrieved Context]`, and `[User Query]`.
+9. Metadata is stored in SQLite.
+10. Retrieval remains possible after restart when the same Milvus configuration is reused.
+11. Chunk listings and ingestion progress listings are available per document.
+12. Successful deletion removes document metadata, chunk metadata, progress metadata, stored assets, and Milvus entries.
+13. Failed vector-store deletion preserves metadata for retry.
+14. Health checking aggregates metadata and available dependency checks.
+15. `bootstrap_rag_core(...)` assembles a core through a service factory.
 
 ### 7.2 Traceability Source
 The canonical automated traceability mapping for these requirement IDs is maintained in `docs/test.md`.
@@ -539,7 +531,7 @@ Verification of this SRS is performed primarily through:
 - The current implementation depends on Milvus Lite as the default vector store.
 - File ingestion assumes UTF-8 text inputs.
 - `RAGCore` requires assembled dependencies rather than path-only convenience construction.
-- Keycloak mode depends on external auth configuration correctness.
+- The calling application must authenticate users and construct `AuthenticatedUser` instances.
 - Deletion ordering minimizes metadata loss on vector-store failure but does not provide distributed transaction semantics.
 - `memory` asset storage is intentionally non-persistent across restart.
 

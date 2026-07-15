@@ -7,7 +7,7 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 - 사용자 스코프 기반 검색(retrieval)
 - 생성 모델 호출을 통한 답변 생성(generation)
 - SQLite + Milvus Lite 기반 persistence
-- DocMesh settings / registry / auth / health-check 연동을 위한 composition 경로 제공
+- DocMesh settings / registry / health-check 연동을 위한 composition 경로 제공
 
 이 패키지는 **HTTP 서버가 아니라 라이브러리**입니다. 외부 애플리케이션이나 서비스가 `RAGCore`를 조립해 사용합니다.
 
@@ -27,9 +27,9 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 ## 핵심 개념
 
 ### user scope
-- 기본 auth mode에서는 `token` 문자열 자체를 `user_id`로 사용합니다.
-- `token`이 없거나 공백이면 `single-user`로 동작합니다.
-- `DOCMESH_AUTH_MODE=keycloak`이면 Keycloak 검증을 통해 `sub` 또는 `preferred_username`으로 `user_id`를 해석합니다.
+- 각 공개 메서드는 `docmesh_py_core.AuthenticatedUser`를 `user` 인자로 받습니다.
+- 저장 및 검색 격리에는 `user.sub`를 `user_id`로 사용합니다.
+- 사용자 인증과 사용자 모델 생성은 상위 애플리케이션의 책임입니다.
 
 ### document asset storage
 - 문서 본문은 document metadata row에 직접 저장하지 않습니다.
@@ -154,19 +154,37 @@ core = RAGCore(
 
 ## 사용 예시
 
+상위 애플리케이션에서 인증을 완료한 뒤 생성한 사용자 정보를 전달합니다.
+
+```python
+from rag_system_core import AuthenticatedUser
+
+user = AuthenticatedUser(
+    sub="user-a",
+    preferred_username="user-a",
+    email=None,
+    given_name=None,
+    family_name=None,
+    name=None,
+    realm_roles=[],
+    client_roles={},
+    claims={},
+)
+```
+
 ### 1. 텍스트 적재 + 질의
 
 ```python
 ingested = core.ingest_text(
+    user=user,
     text="alpha beta gamma",
     source="note.txt",
-    token="user-token-a",
 )
 
 response = core.query(
+    user=user,
     question="alpha를 요약해줘",
     top_k=3,
-    token="user-token-a",
 )
 
 print(ingested.doc_id)
@@ -181,9 +199,9 @@ from io import BytesIO
 stream = BytesIO(b"document from stream")
 
 ingested = core.ingest_file_stream(
+    user=user,
     file_stream=stream,
     source="stream.txt",
-    token="user-token-a",
 )
 
 print(ingested.chunk_count)
@@ -195,8 +213,8 @@ print(ingested.chunk_count)
 from pathlib import Path
 
 ingested = core.ingest_file_path(
+    user=user,
     file_path=Path("./sample.txt"),
-    token="user-token-a",
 )
 
 print(ingested.doc_id)
@@ -205,39 +223,22 @@ print(ingested.doc_id)
 ### 4. 문서 관리
 
 ```python
-documents = core.list_documents(token="user-token-a")
+documents = core.list_documents(user=user)
 first_doc = documents[0]
 
 print(first_doc.doc_id)
 print(first_doc.storage_path)
 
-chunks = core.list_document_chunks(first_doc.doc_id, token="user-token-a")
-progress_rows = core.list_ingestion_progress(first_doc.doc_id, token="user-token-a")
+chunks = core.list_document_chunks(first_doc.doc_id, user=user)
+progress_rows = core.list_ingestion_progress(first_doc.doc_id, user=user)
 ```
 
 ### 5. 삭제
 
 ```python
-deleted = core.delete_document(first_doc.doc_id, token="user-token-a")
+deleted = core.delete_document(first_doc.doc_id, user=user)
 print(deleted)
 ```
-
-### 6. single-user 모드
-
-```python
-core.ingest_text(
-    text="single user document",
-    source="solo.txt",
-)
-
-response = core.query(
-    question="문서를 요약해줘",
-)
-
-print(response.answer)
-```
-
----
 
 ## bootstrap 경로
 
@@ -302,9 +303,6 @@ core = bootstrap_rag_core(
 - `MILVUS_REQUEST_TIMEOUT_SECONDS`
 - `MILVUS_CONNECT_TIMEOUT_SECONDS`
 
-### 선택적 auth
-- `DOCMESH_AUTH_MODE=keycloak`
-
 legacy 패턴은 현재 지원 대상으로 보지 않습니다.
 - `OLLAMA_EMBED__*`
 - `OLLAMA_GENERATE__*`
@@ -323,7 +321,7 @@ uv run pytest -q
 문서 동기화 시점 기준 테스트 결과:
 
 ```text
-52 passed, 1 warning
+49 passed
 ```
 
 테스트 범위와 요구사항 추적은 [docs/test.md](docs/test.md)를 참고하세요.

@@ -1,4 +1,3 @@
-from rag_system_core.composition.auth import resolve_user_id
 from rag_system_core.composition.bootstrap import bootstrap_rag_core
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
@@ -15,7 +14,6 @@ __all__ = [
     "create_docmesh_service_client",
     "load_docmesh_settings",
     "resolve_milvus_runtime_settings",
-    "resolve_user_id",
     "run_health_checks",
     "DocmeshRAGServiceFactory",
     "RAGServiceFactory",
