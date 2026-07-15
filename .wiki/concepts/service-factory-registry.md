@@ -1,16 +1,16 @@
 ---
 title: Service Factory Registry
 created: 2026-06-19
-updated: 2026-06-23
+updated: 2026-07-16
 type: concept
 tags: [sdk, python, integration, config, decision]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md]
 confidence: medium
 ---
 
 # Service Factory Registry
 
-`ServiceFactoryRegistry`는 `docmesh-py-core` 소비 프로젝트에서 서비스별 SDK 초기화 책임을 한곳에 모으는 조정 계층이다. 권장 흐름은 `load_settings(environ)`으로 환경변수를 검증한 뒤 registry를 만들고, 실제로 필요한 서비스에 대해서만 `create_client()`를 호출하는 것이다.^[raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md]
+이 페이지의 이전 registry 중심 설명은 초기 SDK 가이드를 반영한다. v0.2.0의 현재 공개 경계는 `ServiceFactoryRegistry`가 아니라 assembly API다. 동기 lifecycle은 `assemble_services()`가, NATS를 포함한 async lifecycle은 `assemble_service_runtime()`이 설정 로드·available 서비스 탐지·`required`/`one_of` 검증·client 생성·선택적 startup healthcheck를 하나의 조정 계층으로 제공한다.^[raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md]
 
 ## Why this boundary matters
 
@@ -30,7 +30,7 @@ RAG Core API reference는 `bootstrap_rag_core(...)`가 settings를 직접 로드
 
 ## Return contract
 
-API 가이드는 registry의 반환 규칙을 서비스별로 더 구체화한다. `keycloak`, `postgres`, `sqlite`, `minio`, `milvus`, `ollama`는 대체로 `ServiceClientWrapper`를 반환하고, `langfuse`는 비활성화 시 `None`일 수 있으며, `nats`만 `NatsConnectionBuilder`를 반환한다. 또한 지원하지 않는 서비스명은 `UnsupportedServiceError`를, 공통 health check 래핑 중 실패는 `ServiceClientWrapperError`를 통해 표준화한다.^[raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
+v0.2.0 direct factory의 반환 규칙은 `keycloak`, `postgres`, `sqlite`, `minio`, `milvus`, `ollama`가 대체로 `ServiceClientWrapper`, 비활성 Langfuse가 `None`, NATS가 `NatsConnectionBuilder`라는 점이다. 그러나 일반 앱은 factory를 직접 조합하기보다 `ServiceBundle` 또는 `ServiceRuntime`을 사용해야 하며, NATS는 동기 bundle에서 제외되어 async runtime으로 조립한다. `factory_overrides` 및 keyword-only factory hooks는 테스트·특수 실행 환경의 명시적 대체 지점이다.^[raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md]
 
 ## Operational notes
 

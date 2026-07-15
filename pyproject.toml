@@ -20,4 +20,4 @@ include = ["rag_system_core*"]
 exclude = ["test_rag_system_core*"]
 
 [tool.uv.sources]
-docmesh-py-core = { git = "https://github.com/kyundae-kim/docmesh-py-core.git", rev = "v0.1.2" }
+docmesh-py-core = { git = "https://github.com/kyundae-kim/docmesh-py-core.git", rev = "v0.2.0" }

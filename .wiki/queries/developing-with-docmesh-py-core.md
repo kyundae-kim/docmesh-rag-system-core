@@ -1,10 +1,10 @@
 ---
 title: Developing with docmesh-py-core
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-07-16
 type: query
 tags: [sdk, python, integration, config, testing]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md]
+sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md]
 confidence: medium
 ---
 
@@ -16,15 +16,15 @@ confidence: medium
 
 ## Short answer
 
-가장 좋은 활용 방식은 `docmesh-py-core`를 **애플리케이션의 공통 인프라 SDK**로 두고, 각 서비스가 외부 의존성 초기화·설정 검증·health check·인증 코드를 직접 반복 작성하지 않게 만드는 것이다. 즉 비즈니스 로직은 앱/도메인 패키지에 두고, PostgreSQL·SQLite·MinIO·NATS·Ollama·Milvus·Keycloak 같은 인프라 접속과 운영 규칙은 `docmesh-py-core`의 설정/registry/health 패턴에 위임하는 것이 핵심이다.
+가장 좋은 활용 방식은 `docmesh-py-core`를 **애플리케이션의 공통 인프라 SDK**로 두고, 각 서비스가 외부 의존성 초기화·설정 검증·health check·인증 코드를 직접 반복 작성하지 않게 만드는 것이다. 비즈니스 로직은 앱/도메인 패키지에 두고, PostgreSQL·SQLite·MinIO·NATS·Ollama·Milvus·Keycloak 접속과 운영 규칙은 SDK의 assembly/config/health 경계에 위임한다. v0.2.0의 일반 애플리케이션 권장 경로는 registry 직접 조립이 아니라 **assembly-first**다.^[raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md]
 
 ## Recommended development flow
 
-1. 시작 시 `load_settings()`로 환경변수를 1회 로드하고 검증한다.
-2. `ServiceFactoryRegistry(settings)`를 만든다.
-3. 실제로 필요한 서비스만 `create_client()`로 요청한다.
-4. 시작 경로에서 `check()` 또는 `check_all_services()`로 readiness를 검증한다.
-5. 애플리케이션 종료 시 `close_all()`로 연결과 자원을 정리한다.
+1. 동기 서비스는 `assemble_services(env, services=..., required=..., check_on_startup=True)`로 설정 탐지·검증·client 생성·startup readiness를 한 번에 조립한다.
+2. `ServiceBundle` context manager 안에서 `bundle.clients[...]`로 생성된 wrapper/client를 사용한다.
+3. NATS 또는 async lifecycle은 `await assemble_service_runtime(...)`과 `async with runtime`으로 조립하고 `runtime.require(name)`으로 client를 조회한다.
+4. CLI·배치·테스트처럼 일부 서비스만 직접 다룰 때는 `load_service_configs(services={...})`와 `create_*_client()`를 사용한다.
+5. health endpoint에서는 `check_all_services()` 결과 또는 `HealthCheckError.result.to_dict()`를 응답으로 사용하고, lifecycle context manager가 종료 cleanup을 맡게 한다.
 
 이 흐름은 [[docmesh-py-core]], [[service-factory-registry]], [[service-health-orchestration]]가 공통으로 전제하는 소비 패턴이다.
 
@@ -32,7 +32,7 @@ confidence: medium
 
 ### 1. FastAPI / backend service bootstrap
 
-웹 서비스에서는 startup 시점에 설정 검증과 필수 인프라 점검을 한 번에 끝내는 용도로 가장 유용하다. 예를 들어 서버가 직접 DSN 파싱, Keycloak 토큰 설정, Ollama endpoint 조립, MinIO 연결 확인을 각각 구현하지 않고, registry와 health orchestration을 공통 부트스트랩 계층으로 사용하면 런타임 간 일관성이 높아진다.
+FastAPI에서는 lifespan 안에서 `assemble_services()` 또는 `await assemble_service_runtime()`을 호출하고 `with`/`async with`로 감싸는 것이 권장 예제다. 이 방식은 설정 탐색, 필수 서비스 검증, client 생성, startup healthcheck와 종료 cleanup을 응집시킨다. NATS가 포함될 경우 async runtime을 선택해야 한다.^[raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md]
 
 ### 2. Worker / batch / CLI jobs
 
@@ -56,7 +56,7 @@ background worker나 배치 스크립트도 같은 설정 계약을 재사용할
 - 루트 import 경계를 우선 사용한다. 하위 내부 모듈 직접 import는 예외적으로만 허용한다.
 - 서비스 선택은 별도 하드코딩 enum보다 실제 설정 존재 여부와 검증 결과에 맡긴다.
 - optional 서비스(Langfuse 등)와 required 서비스를 분리해서 readiness 정책을 설계한다.
-- 종료 경로에서 반드시 `close_all()`을 호출해 connection/resource leak를 막는다.
+- `ServiceBundle`/`ServiceRuntime` context manager로 종료 cleanup을 보장한다. 직접 생성한 client만 명시적으로 `close()`한다.
 - NATS처럼 반환 계약이 다른 서비스는 앱 내부에서 얇은 래퍼를 둬 비동기 연결 차이를 흡수하는 것이 좋다.
 
 ## Common pitfalls

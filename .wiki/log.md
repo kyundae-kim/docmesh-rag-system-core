@@ -224,3 +224,59 @@
   - entities/docmesh-py-core.md -> [[developing-with-docmesh-py-core]]
   - concepts/rag-service-architecture.md -> [[directory-refactoring-plan-for-docmesh-runtime-integration]]
   - concepts/interface-roadmap.md -> [[directory-refactoring-plan-for-docmesh-runtime-integration]]
+
+## [2026-07-16] ingest | docmesh-py-core API Reference v0.2.0
+- Source ingested:
+  - https://github.com/kyundae-kim/docmesh-py-core/blob/v0.2.0/docs/api.md
+- Raw source created:
+  - raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md
+- Wiki pages updated:
+  - entities/docmesh-py-core.md
+  - concepts/public-api-surface.md
+  - concepts/service-factory-registry.md
+  - concepts/service-health-orchestration.md
+- Navigation updated:
+  - index.md
+
+
+## [2026-07-16] ingest | docmesh-py-core Configuration Guide v0.2.0
+- Source ingested:
+  - https://github.com/kyundae-kim/docmesh-py-core/blob/v0.2.0/docs/config.md
+- Raw source created:
+  - raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md
+- Wiki pages updated:
+  - entities/docmesh-py-core.md
+  - concepts/settings-loading-and-validation.md
+  - concepts/service-configuration-topology.md
+  - concepts/keycloak-auth-service.md
+- Navigation checked:
+  - index.md (no new page; already dated 2026-07-16)
+
+
+## [2026-07-16] ingest | docmesh-py-core Examples v0.2.0
+- Source ingested:
+  - https://github.com/kyundae-kim/docmesh-py-core/blob/v0.2.0/docs/examples.md
+- Raw source created:
+  - raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md
+- Wiki pages updated:
+  - queries/developing-with-docmesh-py-core.md
+  - concepts/service-health-orchestration.md
+- Navigation checked:
+  - index.md (no new page; already dated 2026-07-16)
+
+## [2026-07-16] lint | 1 issue found and remediated
+- Pages scanned: 23
+- Raw sources scanned: 13
+- Broken links: 0
+- Orphans: 0
+- Source drift/hash mismatches: 0
+- Frontmatter issues: 0
+- Tag issues: 0
+- Index issues: 0
+- Quality issues: 0
+- Oversized pages: 0
+- Stale pages: 0
+- Contested pages: 0
+- Log rotation: not required
+- Remediation:
+  - Removed accidental line-number prefixes from log.md and restored append-only log formatting.

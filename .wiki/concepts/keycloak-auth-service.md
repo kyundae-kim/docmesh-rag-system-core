@@ -1,10 +1,10 @@
 ---
 title: Keycloak Auth Service
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-07-16
 type: concept
 tags: [sdk, integration, security, api, config]
-sources: [raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md]
+sources: [raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md]
 confidence: medium
 ---
 
@@ -18,7 +18,7 @@ confidence: medium
 
 ## Configuration requirements
 
-설정 가이드는 Keycloak 영역을 인증, 토큰 획득, 프로비저닝으로 나눠 환경변수를 정의한다. 기본 인증에는 `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`가 필요하고, `password` grant를 쓰면 `KEYCLOAK_TOKEN_USERNAME`과 `KEYCLOAK_TOKEN_PASSWORD`가 추가로 필요하다. 또한 프로비저닝이 활성화되면 service account 또는 관리자 사용자명/비밀번호 중 하나의 Admin API 인증 세트를 요구하며, 운영에서는 SSL 검증 비활성화를 기본 정책으로 허용하지 않는 방향이 권장된다.^[raw/articles/docmesh-py-core-config-guide-2026-06-19.md]
+v0.2.0 config reference는 Keycloak 영역을 discovery/auth, 토큰 획득, 프로비저닝으로 나눈다. `KeycloakConfig`는 `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`를 요구하며 confidential client 기본값에서는 `KEYCLOAK_CLIENT_SECRET`도 필요하다. password grant는 설정 로딩 시 username/password를 강제하지 않고, `fetch_access_token()` 호출에서 함수 인자 우선으로 완전한 자격증명을 확인한다. 프로비저닝 활성화 시에는 service account secret 또는 관리자 username/password 중 정확히 하나의 Admin API 인증 세트를 요구하며, production에서는 SSL 검증 비활성화를 허용하지 않는다.^[raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md]
 
 ## JWT validation
 

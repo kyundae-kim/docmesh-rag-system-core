@@ -1,10 +1,10 @@
 ---
 title: Service Health Orchestration
 created: 2026-06-19
-updated: 2026-06-23
+updated: 2026-07-16
 type: concept
 tags: [sdk, integration, testing, deployment, observability]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md]
+sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md]
 confidence: medium
 ---
 
@@ -14,11 +14,11 @@ confidence: medium
 
 ## Aggregated readiness
 
-여러 서비스를 함께 점검할 때는 `check_all_services()`로 health 함수를 맵으로 넘기고 `required_services` 집합으로 필수 의존성과 선택 의존성을 구분한다. 이 패턴은 필수 경로는 엄격하게 차단하면서도 Langfuse나 MinIO 같은 선택 서비스는 부분 장애로 처리할 수 있게 하므로 서버 readiness 정책 설계에 유용하다.^[raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md]
+여러 서비스를 함께 점검할 때는 `check_all_services()`로 health 함수를 맵으로 넘기고 `required_services` 집합으로 필수 의존성과 선택 의존성을 구분한다. `parallel=True`에서는 입력 순서를 보존하며 `ThreadPoolExecutor`로 실행한다. required 실패의 `HealthCheckError`는 첫 실패 `status`, 전체 required 실패 `failures`, optional 결과까지 포함한 `result`를 보존하므로 서버 readiness 정책은 부분 장애와 필수 장애를 구별할 수 있다.^[raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md]
 
 ## Result and failure model
 
-API 가이드는 `check_all_services()`의 반환/예외 모델도 명시한다. 반환값은 전체 성공 여부를 나타내는 `HealthCheckResult.ok`와 서비스별 상태 목록인 `HealthCheckResult.services`를 포함하며, 필수 서비스 실패 시에는 실패한 서비스명과 마스킹된 오류 메시지를 담은 `HealthCheckError`가 발생한다. 따라서 호출자는 단순 boolean만 볼 것이 아니라 필수 실패와 부분 실패를 분리해 관측/응답 정책을 설계해야 한다.^[raw/articles/docmesh-py-core-api-guide-2026-06-19.md]
+API 가이드는 `check_all_services()`의 반환/예외 모델도 명시한다. 반환값은 전체 성공 여부를 나타내는 `HealthCheckResult.ok`와 서비스별 상태 목록인 `HealthCheckResult.services`를 포함하며, 필수 서비스 실패 시에는 실패한 서비스명과 마스킹된 오류 메시지를 담은 `HealthCheckError`가 발생한다. FastAPI health endpoint는 이 예외의 `exc.result.to_dict()`를 503 본문으로 반환할 수 있으므로, 호출자는 단순 boolean만 볼 것이 아니라 필수 실패와 부분 실패를 분리해 관측/응답 정책을 설계해야 한다.^[raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md]
 
 ## How the RAG SRS uses this pattern
 
@@ -26,7 +26,7 @@ RAG Core의 SRS는 모든 health-check 결과에 metadata health를 포함해야
 
 ## Parallelism and lifecycle
 
-문서는 병렬 점검이 필요하면 `parallel=True`를 사용하라고 안내한다. 또한 FastAPI lifespan 예제처럼 시작 시점에 check를 수행하고 종료 시점에 registry close를 보장하는 구조를 제시하므로, health orchestration은 [[service-factory-registry]]의 생성/정리 수명주기와 분리해서 볼 수 없다.^[raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md]
+동기 lifecycle은 `ServiceBundle`의 context manager와 `close()`로 관리할 수 있다. NATS를 포함하는 async lifecycle에는 `async_check_all_services()`와 `ServiceRuntime`이 있으며, timeout·overall timeout·sync/awaitable check를 함께 다룬다. 시작 또는 healthcheck 실패 시 assembly API는 이미 만든 client를 rollback하고, `async_close_service_clients()`는 종료 실패가 있어도 나머지 client를 best-effort로 정리한 뒤 집계된 `ServiceCloseError`를 낸다.^[raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md]
 
 ## Risk points
 

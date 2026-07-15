@@ -1,20 +1,20 @@
 ---
 title: Settings Loading and Validation
 created: 2026-06-19
-updated: 2026-06-23
+updated: 2026-07-16
 type: concept
 tags: [config, sdk, python, security, decision]
-sources: [raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md]
+sources: [raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md]
 confidence: medium
 ---
 
 # Settings Loading and Validation
 
-`docmesh-py-core` 설정 가이드는 모든 설정을 환경변수에서 읽고 애플리케이션 시작 시 1회 로드/검증하는 것을 기본 정책으로 둔다. 공백 문자열은 미설정으로 간주하고, boolean은 대소문자와 무관하게 `true`/`false`로 해석하며, 숫자형은 허용 범위를 검증한다. 이 규칙은 `load_settings()`가 단순 매핑 로더가 아니라 운영 정책을 반영한 검증 게이트라는 점을 보여 준다.^[raw/articles/docmesh-py-core-config-guide-2026-06-19.md]
+`docmesh-py-core` v0.2.0은 모든 설정을 환경변수에서 읽는다. 공백 문자열은 미설정으로 처리하고 boolean은 `true`/`false`만, 숫자형은 타입·범위 검증을 통과해야 한다. 선택한 서비스만 검증하려면 `load_service_configs(services={...})`, 후보 중 실제 환경변수가 있는 서비스만 탐색하려면 `load_available_service_configs(env, services={...})`를 사용한다. 후자는 부분 설정을 유효한 것으로 보지 않고 오류로 처리하며, 이 로딩 경로의 검증 실패는 remediation을 포함하는 `ConfigError.issues: list[ConfigIssue]`로 제공된다.^[raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md]
 
 ## Validation scope
 
-검증 대상은 단순 필수 여부를 넘어 조건부 필수 규칙과 보안 규칙까지 포함한다. 예를 들어 `KEYCLOAK_TOKEN_GRANT_TYPE=password`이면 사용자명/비밀번호가 필요하고, `LANGFUSE_ENABLED=false`이면 Langfuse 관련 값은 선택 처리 가능하며, PostgreSQL은 `POSTGRES_DSN`이 없을 때 host/db/user/password 조합을 요구한다.^[raw/articles/docmesh-py-core-config-guide-2026-06-19.md]
+검증 대상은 단순 필수 여부를 넘어 조건부 필수 규칙과 보안 규칙까지 포함한다. `LANGFUSE_ENABLED=false`이면 Langfuse 연결 값 없이 로딩할 수 있고, PostgreSQL은 `POSTGRES_DSN`이 없을 때 host/db/user/password 조합을 요구한다. `KEYCLOAK_TOKEN_GRANT_TYPE=password`는 설정 로딩 단계에서는 username/password를 강제하지 않으며, 실제 `fetch_access_token()` 호출 시 함수 인자와 config 양쪽에 완전한 자격증명이 없을 때 오류가 난다.^[raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md]
 
 ## RAG-core reading model
 
@@ -22,7 +22,7 @@ RAG Core의 config guide는 모든 설정이 항상 필요한 것이 아니라, 
 
 ## Operational policy
 
-문서는 로컬/개발/스테이징/운영을 코드가 아니라 환경변수로 구분하고, 운영에서는 TLS 및 인증서 검증을 기본값으로 유지하라고 권장한다. 또한 integration 테스트는 운영 설정과 분리된 `.env.integration` 또는 별도 CI secret 세트를 사용해야 하므로, 설정 로딩 계층은 기능 스위치뿐 아니라 배포 격리 정책의 경계이기도 하다.^[raw/articles/docmesh-py-core-config-guide-2026-06-19.md]
+운영 판정은 `DOCMESH_SECURITY_MODE`가 있으면 이를 우선하고, 없으면 자유 문자열인 `DOCMESH_ENV`를 `DOCMESH_PRODUCTION_ALIASES`(기본 `prod,production`)와 비교한다. production에서는 `KEYCLOAK_VERIFY_SSL=false`, `MINIO_SECURE=false`, `MILVUS_SECURE=false`가 금지된다. `DOCMESH_HEALTHCHECK_ENABLED`는 config에 로딩될 뿐 `check_on_startup`에 자동 연결되지 않으므로, 소비 애플리케이션이 assembly API의 startup 정책으로 명시적으로 변환해야 한다.^[raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md]
 
 ## Related pages
 
