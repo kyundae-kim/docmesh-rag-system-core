@@ -16,6 +16,7 @@ from rag_system_core.composition.factories import (
     create_rag_generation_client,
     create_rag_vector_store,
 )
+from rag_system_core.composition.health import run_health_checks
 from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
@@ -221,10 +222,11 @@ def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Pat
     core = RAGCore(
         embedding_client=CheckedEmbedding(),
         generation_client=CheckedGeneration(),
-        vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
+        vector_store=create_rag_vector_store(),
         metadata_store=MetadataStore(tmp_path / "metadata.db"),
         document_storage=DocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
+        health_check_runner=run_health_checks,
     )
 
     assert core.health_check().ok is True
@@ -236,6 +238,5 @@ def test_vector_store_requires_client_when_milvus_is_not_configured(tmp_path: Pa
 
     with pytest.raises(RuntimeError, match="Failed to create Milvus service client"):
         create_rag_vector_store(
-            metadata_path=tmp_path / "metadata.db",
             settings=settings,
         )

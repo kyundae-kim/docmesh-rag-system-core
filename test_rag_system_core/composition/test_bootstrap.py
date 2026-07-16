@@ -37,8 +37,7 @@ def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> 
             records["generation"] = True
             return fake_generation_client
 
-        def create_vector_store(self, *, metadata_path):
-            records["vector_metadata_path"] = Path(metadata_path)
+        def create_vector_store(self):
             return fake_vector_store
 
         def create_document_storage(self, *, storage_mode, document_storage_dir):
@@ -69,7 +68,6 @@ def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> 
     assert records == {
         "embedding": True,
         "generation": True,
-        "vector_metadata_path": tmp_path / "metadata.db",
         "metadata_store_path": tmp_path / "metadata.db",
         "storage_mode": "local",
         "document_storage_dir": tmp_path / "documents",

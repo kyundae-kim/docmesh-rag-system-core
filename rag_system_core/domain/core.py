@@ -5,14 +5,16 @@ from typing import BinaryIO, Callable
 
 from docmesh_py_core import AuthenticatedUser
 
-from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.composition.health import run_health_checks
 from rag_system_core.domain.generation import GenerationService
 from rag_system_core.domain.ingestion import IngestionService
 from rag_system_core.domain.retrieval import RetrievalService
-from rag_system_core.storage.document_storage import DocumentStorage
-from rag_system_core.storage.metadata_store import ChunkModel, DocumentModel, IngestionProgressModel, MetadataStore
-from rag_system_core.storage.vector_store import VectorStore
+from rag_system_core.ports import (
+    Chunker,
+    DocumentAssetStorage,
+    HealthCheckRunner,
+    MetadataRepository,
+    VectorStore,
+)
 from rag_system_core.types import (
     ChunkRecord,
     DocumentRecord,
@@ -31,9 +33,10 @@ class RAGCore:
         embedding_client: EmbeddingClient,
         generation_client: GenerationClient,
         vector_store: VectorStore,
-        metadata_store: MetadataStore,
-        document_storage: DocumentStorage,
-        chunker: FixedWindowChunker,
+        metadata_store: MetadataRepository,
+        document_storage: DocumentAssetStorage,
+        chunker: Chunker,
+        health_check_runner: HealthCheckRunner,
     ) -> None:
         self.embedding_client = embedding_client
         self.generation_client = generation_client
@@ -41,6 +44,7 @@ class RAGCore:
         self.document_storage = document_storage
         self.vector_store = vector_store
         self.chunker = chunker
+        self.health_check_runner = health_check_runner
         self.ingestor = IngestionService(
             chunker=self.chunker,
             embedding_client=embedding_client,
@@ -132,24 +136,18 @@ class RAGCore:
             service_checks["embedding"] = self.embedding_client.check
         if hasattr(self.generation_client, "check"):
             service_checks["generation"] = self.generation_client.check
-        return run_health_checks(service_checks, required_services=set(service_checks))
+        return self.health_check_runner(service_checks, required_services=set(service_checks))
 
 
 __all__ = [
-    "ChunkModel",
     "ChunkRecord",
-    "DocumentModel",
     "DocumentRecord",
-    "DocumentStorage",
     "EmbeddingClient",
-    "FixedWindowChunker",
     "GenerationClient",
     "GenerationService",
-    "IngestionProgressModel",
     "IngestionProgressRecord",
     "IngestionService",
     "IngestResult",
-    "MetadataStore",
     "QueryResult",
     "RAGCore",
     "RetrievalService",

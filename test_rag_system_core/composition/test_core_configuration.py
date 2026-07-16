@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, get_type_hints
 
 import rag_system_core.composition.factories as factories_module
+import rag_system_core.storage as storage_module
 import pytest
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
@@ -16,6 +17,7 @@ from rag_system_core.composition.factories import (
     create_rag_generation_client,
     create_rag_vector_store,
 )
+from rag_system_core.composition.health import run_health_checks
 from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import VectorStore
@@ -78,6 +80,17 @@ def test_factories_module_does_not_construct_milvus_client_directly() -> None:
     assert not hasattr(factories_module, "MilvusClient")
 
 
+def test_vector_store_factory_does_not_expose_unused_path_or_uri_parameters() -> None:
+    parameters = inspect.signature(create_rag_vector_store).parameters
+
+    assert "metadata_path" not in parameters
+    assert "uri" not in parameters
+
+
+def test_storage_package_does_not_export_concrete_milvus_client() -> None:
+    assert not hasattr(storage_module, "MilvusClient")
+
+
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
     milvus_uri = tmp_path / "configured-milvus.db"
     monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
@@ -95,10 +108,11 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
     restarted = RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
-        vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
+        vector_store=create_rag_vector_store(),
         metadata_store=MetadataStore(tmp_path / "metadata.db"),
         document_storage=DocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
+        health_check_runner=run_health_checks,
     )
     response = restarted.query(user=USER_A, question="Where is alpha?", top_k=3)
 
@@ -144,10 +158,11 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     core = RAGCore(
         embedding_client=create_rag_embedding_client(settings=settings),
         generation_client=create_rag_generation_client(settings=settings),
-        vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
+        vector_store=create_rag_vector_store(),
         metadata_store=MetadataStore(tmp_path / "metadata.db"),
         document_storage=DocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
+        health_check_runner=run_health_checks,
     )
 
     ingested = core.ingest_text(user=USER_A, text="alpha beta gamma", source="configured.txt")
@@ -175,15 +190,15 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
 
     client = FakeMilvusClient()
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.resolve_milvus_runtime_settings",
-        lambda *, fallback_uri, settings=None: (str(tmp_path / "external-milvus.db"), "resolved_chunks", 7.25),
+        "rag_system_core.composition.factories.read_docmesh_milvus_settings",
+        lambda settings=None: (str(tmp_path / "external-milvus.db"), "resolved_chunks", 7.25),
     )
     monkeypatch.setattr(
         "rag_system_core.composition.factories.create_docmesh_service_client",
         lambda service_name, *, settings=None, bundle=None: None,
     )
 
-    vector_store = create_rag_vector_store(metadata_path=tmp_path / "metadata.db", client=client)
+    vector_store = create_rag_vector_store(client=client)
     core = RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
@@ -191,6 +206,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         metadata_store=MetadataStore(tmp_path / "metadata.db"),
         document_storage=DocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
+        health_check_runner=run_health_checks,
     )
 
     assert core.vector_store.collection_name == "resolved_chunks"
@@ -206,8 +222,6 @@ def test_create_rag_vector_store_requires_docmesh_or_explicit_client(monkeypatch
 
     with pytest.raises(RuntimeError, match="Failed to create Milvus service client"):
         create_rag_vector_store(
-            metadata_path=tmp_path / "metadata.db",
-            uri=str(tmp_path / "factory-milvus.db"),
             collection_name="factory_chunks",
             timeout=4.5,
         )

@@ -144,6 +144,78 @@ def test_ingestion_service_store_rolls_back_milvus_chunks_when_generated_id_coun
     assert metadata_store.add_chunks_calls == 0
 
 
+def test_ingest_text_rolls_back_generated_ids_when_vector_store_returns_wrong_count(tmp_path: Path) -> None:
+    class MismatchedVectorStore:
+        def __init__(self) -> None:
+            self.deleted_chunk_ids: list[list[str]] = []
+
+        def add(self, chunks, vectors):
+            del chunks, vectors
+            return ["101"]
+
+        def delete_chunks(self, chunk_ids):
+            self.deleted_chunk_ids.append(list(chunk_ids))
+
+    vector_store = MismatchedVectorStore()
+    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
+        embedding_client=FakeEmbeddingClient(),
+        vector_store=cast(VectorStore, vector_store),
+        metadata_store=metadata_store,
+        document_storage=DocumentStorage("memory", tmp_path / "documents"),
+    )
+
+    with pytest.raises(RuntimeError, match="Milvus returned a mismatched number of chunk ids"):
+        service.ingest_text(user_id="user-a", text="alpha beta", source="mismatch.txt")
+
+    assert vector_store.deleted_chunk_ids == [["101"]]
+    document = metadata_store.list_documents("user-a")[0]
+    progress = metadata_store.list_ingestion_progress(doc_id=document.doc_id, user_id="user-a")
+    assert [(row.step_name, row.status) for row in progress][-1] == ("vector_store", "failed")
+
+
+def test_ingest_text_rolls_back_persisted_chunks_when_completion_progress_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class TrackingVectorStore:
+        def __init__(self) -> None:
+            self.deleted_chunk_ids: list[list[str]] = []
+
+        def add(self, chunks, vectors):
+            del vectors
+            return [str(index + 101) for index, _ in enumerate(chunks)]
+
+        def delete_chunks(self, chunk_ids):
+            self.deleted_chunk_ids.append(list(chunk_ids))
+
+    vector_store = TrackingVectorStore()
+    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    add_progress = metadata_store.add_ingestion_progress
+
+    def fail_chunk_persistence_completion(records) -> None:
+        record = records[0]
+        if record.step_name == "chunk_persistence" and record.status == "completed":
+            raise RuntimeError("progress persistence failed")
+        add_progress(records)
+
+    monkeypatch.setattr(metadata_store, "add_ingestion_progress", fail_chunk_persistence_completion)
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
+        embedding_client=FakeEmbeddingClient(),
+        vector_store=cast(VectorStore, vector_store),
+        metadata_store=metadata_store,
+        document_storage=DocumentStorage("memory", tmp_path / "documents"),
+    )
+
+    with pytest.raises(RuntimeError, match="progress persistence failed"):
+        service.ingest_text(user_id="user-a", text="alpha beta", source="progress-failure.txt")
+
+    document = metadata_store.list_documents("user-a")[0]
+    assert metadata_store.list_chunks(doc_id=document.doc_id) == []
+    assert vector_store.deleted_chunk_ids == [["101", "102"]]
+
+
 def test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_allows_retry(
     monkeypatch, tmp_path: Path
 ) -> None:

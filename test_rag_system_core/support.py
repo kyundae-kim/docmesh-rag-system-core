@@ -8,6 +8,7 @@ from docmesh_py_core import AuthenticatedUser
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
+from rag_system_core.composition.health import run_health_checks
 from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 
@@ -76,10 +77,11 @@ def create_test_rig(tmp_path: Path, *, storage_mode: str = "memory") -> TestRig:
     core = RAGCore(
         embedding_client=embedding_client,
         generation_client=generation_client,
-        vector_store=create_rag_vector_store(metadata_path=metadata_path),
+        vector_store=create_rag_vector_store(),
         metadata_store=MetadataStore(metadata_path),
         document_storage=DocumentStorage(storage_mode, tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
+        health_check_runner=run_health_checks,
     )
     return TestRig(
         core=core,

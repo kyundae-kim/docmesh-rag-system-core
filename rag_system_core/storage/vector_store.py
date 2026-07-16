@@ -1,19 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
-from pymilvus import MilvusClient
+from rag_system_core.ports import VectorStore
 from rag_system_core.types import ChunkRecord
-
-
-class VectorStore(Protocol):
-    def add(self, chunks: list[ChunkRecord], vectors: list[list[float]]) -> list[str]: ...
-
-    def search(self, *, user_id: str, query_vector: list[float], top_k: int) -> list[ChunkRecord]: ...
-
-    def delete_document(self, doc_id: str) -> None: ...
-
-    def delete_chunks(self, chunk_ids: list[str]) -> None: ...
 
 
 def escape_milvus_string(value: str) -> str:

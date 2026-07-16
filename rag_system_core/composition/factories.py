@@ -12,12 +12,13 @@ from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerat
 from rag_system_core.composition.docmesh_runtime import (
     create_docmesh_service_client,
     load_docmesh_settings,
+    read_docmesh_milvus_settings,
     read_docmesh_ollama_settings,
-    resolve_milvus_runtime_settings,
 )
+from rag_system_core.ports import Chunker, DocumentAssetStorage, MetadataRepository, VectorStore
 from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
-from rag_system_core.storage.vector_store import MilvusLiteVectorStore, VectorStore
+from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 from rag_system_core.types import EmbeddingClient, GenerationClient
 
 
@@ -104,24 +105,22 @@ def create_rag_generation_client(
 
 def create_rag_vector_store(
     *,
-    metadata_path: str | Path,
     settings: ServiceConfigs | None = None,
     bundle: ServiceBundle | None = None,
-    uri: str | None = None,
     collection_name: str | None = None,
     timeout: float | None = None,
     client: object | None = None,
 ) -> VectorStore:
-    fallback_uri = str(Path(metadata_path).with_suffix(".milvus.db"))
     resolved_settings = _resolve_settings(settings=settings, bundle=bundle)
     if resolved_settings is None:
         resolved_settings = load_docmesh_settings(services={"milvus"})
-    _, configured_collection_name, configured_timeout = resolve_milvus_runtime_settings(
-        fallback_uri=fallback_uri,
-        settings=resolved_settings,
-    )
-    resolved_collection_name = configured_collection_name if collection_name is None else collection_name
-    resolved_timeout = configured_timeout if timeout is None else timeout
+    _, configured_collection_name, configured_timeout = read_docmesh_milvus_settings(resolved_settings)
+    resolved_collection_name = collection_name
+    if resolved_collection_name is None:
+        resolved_collection_name = configured_collection_name if configured_collection_name is not None else "rag_chunks"
+    resolved_timeout = timeout
+    if resolved_timeout is None:
+        resolved_timeout = configured_timeout if configured_timeout is not None else 30.0
     if client is None:
         client = create_docmesh_service_client("milvus", settings=resolved_settings, bundle=bundle)
     if client is None:
@@ -138,13 +137,15 @@ class RAGServiceFactory(Protocol):
 
     def create_generation_client(self) -> GenerationClient: ...
 
-    def create_vector_store(self, *, metadata_path: str | Path) -> VectorStore: ...
+    def create_vector_store(self) -> VectorStore: ...
 
-    def create_document_storage(self, *, storage_mode: str, document_storage_dir: str | Path) -> DocumentStorage: ...
+    def create_document_storage(
+        self, *, storage_mode: str, document_storage_dir: str | Path
+    ) -> DocumentAssetStorage: ...
 
-    def create_metadata_store(self, *, metadata_path: str | Path) -> MetadataStore: ...
+    def create_metadata_store(self, *, metadata_path: str | Path) -> MetadataRepository: ...
 
-    def create_chunker(self, *, chunk_size: int, chunk_overlap: int) -> FixedWindowChunker: ...
+    def create_chunker(self, *, chunk_size: int, chunk_overlap: int) -> Chunker: ...
 
 
 @dataclass(slots=True)
@@ -176,8 +177,8 @@ class DocmeshRAGServiceFactory:
     def create_generation_client(self) -> GenerationClient:
         return create_rag_generation_client(settings=self.settings, bundle=self.bundle)
 
-    def create_vector_store(self, *, metadata_path: str | Path) -> VectorStore:
-        return create_rag_vector_store(metadata_path=metadata_path, settings=self.settings, bundle=self.bundle)
+    def create_vector_store(self) -> VectorStore:
+        return create_rag_vector_store(settings=self.settings, bundle=self.bundle)
 
     def create_document_storage(self, *, storage_mode: str, document_storage_dir: str | Path) -> DocumentStorage:
         return DocumentStorage(storage_mode, Path(document_storage_dir))

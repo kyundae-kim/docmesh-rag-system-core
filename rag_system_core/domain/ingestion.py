@@ -1,15 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Callable, TypeVar
 from uuid import uuid4
 
-from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.storage.document_storage import DocumentStorage, extract_doc_id_from_storage_path
-from rag_system_core.storage.metadata_store import MetadataStore
-from rag_system_core.storage.vector_store import VectorStore
+from rag_system_core.ports import Chunker, DocumentAssetStorage, MetadataRepository, VectorStore
 from rag_system_core.types import (
     ChunkRecord,
     DocumentRecord,
@@ -17,6 +15,17 @@ from rag_system_core.types import (
     IngestionProgressRecord,
     IngestResult,
 )
+
+T = TypeVar("T")
+
+
+@dataclass(frozen=True, slots=True)
+class _ProgressContext:
+    job_id: str
+    doc_id: str
+    user_id: str
+    source: str
+    created_at: str
 
 
 class IngestionService:
@@ -32,11 +41,11 @@ class IngestionService:
     def __init__(
         self,
         *,
-        chunker: FixedWindowChunker,
+        chunker: Chunker,
         embedding_client: EmbeddingClient,
         vector_store: VectorStore,
-        metadata_store: MetadataStore,
-        document_storage: DocumentStorage,
+        metadata_store: MetadataRepository,
+        document_storage: DocumentAssetStorage,
     ) -> None:
         self.chunker = chunker
         self.embedding_client = embedding_client
@@ -46,12 +55,12 @@ class IngestionService:
 
     def ingest_text(self, *, user_id: str, text: str, source: str) -> IngestResult:
         normalized = self.preprocess(text)
+        doc_id = str(uuid4())
         storage_path = self.document_storage.store_text(
-            doc_id=str(uuid4()),
+            doc_id=doc_id,
             text=normalized,
             source=source,
         )
-        doc_id = extract_doc_id_from_storage_path(storage_path)
         return self._finalize_ingest(
             user_id=user_id,
             text=normalized,
@@ -105,6 +114,13 @@ class IngestionService:
     ) -> IngestResult:
         job_id = str(uuid4())
         created_at = datetime.now(UTC).isoformat()
+        context = _ProgressContext(
+            job_id=job_id,
+            doc_id=doc_id,
+            user_id=user_id,
+            source=source,
+            created_at=created_at,
+        )
         document_record = DocumentRecord(
             doc_id=doc_id,
             user_id=user_id,
@@ -114,75 +130,9 @@ class IngestionService:
         )
         self.metadata_store.add_document(document_record)
 
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="load",
-            status="running",
-            created_at=created_at,
-        )
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="load",
-            status="completed",
-            created_at=created_at,
-        )
-
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="preprocess",
-            status="running",
-            created_at=created_at,
-        )
-        normalized = self.preprocess(text)
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="preprocess",
-            status="completed",
-            created_at=created_at,
-        )
-
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="chunking",
-            status="running",
-            created_at=created_at,
-        )
-        chunks = self.chunk(normalized)
-        if not chunks:
-            self._record_progress_transition(
-                job_id=job_id,
-                doc_id=doc_id,
-                user_id=user_id,
-                source=source,
-                step_name="chunking",
-                status="failed",
-                created_at=created_at,
-            )
-            raise ValueError("Document must contain non-empty text")
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="chunking",
-            status="completed",
-            created_at=created_at,
-        )
+        self._run_step(context, "load", lambda: None)
+        normalized = self._run_step(context, "preprocess", lambda: self.preprocess(text))
+        chunks = self._run_step(context, "chunking", lambda: self._require_chunks(normalized))
 
         chunk_records = [
             ChunkRecord(
@@ -195,123 +145,16 @@ class IngestionService:
             for chunk in chunks
         ]
 
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="embedding",
-            status="running",
-            created_at=created_at,
+        embeddings = self._run_step(context, "embedding", lambda: self.embed(chunks))
+        generated_chunk_ids = self._run_step(
+            context,
+            "vector_store",
+            lambda: self._add_vectors(chunk_records, embeddings),
         )
-        try:
-            embeddings = self.embed(chunks)
-        except Exception:
-            self._record_progress_transition(
-                job_id=job_id,
-                doc_id=doc_id,
-                user_id=user_id,
-                source=source,
-                step_name="embedding",
-                status="failed",
-                created_at=created_at,
-            )
-            raise
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="embedding",
-            status="completed",
-            created_at=created_at,
-        )
-
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="vector_store",
-            status="running",
-            created_at=created_at,
-        )
-        try:
-            generated_chunk_ids = self.vector_store.add(chunk_records, embeddings)
-        except Exception:
-            self._record_progress_transition(
-                job_id=job_id,
-                doc_id=doc_id,
-                user_id=user_id,
-                source=source,
-                step_name="vector_store",
-                status="failed",
-                created_at=created_at,
-            )
-            raise
-        if len(generated_chunk_ids) != len(chunk_records):
-            self._record_progress_transition(
-                job_id=job_id,
-                doc_id=doc_id,
-                user_id=user_id,
-                source=source,
-                step_name="vector_store",
-                status="failed",
-                created_at=created_at,
-            )
-            raise RuntimeError("Milvus returned a mismatched number of chunk ids")
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="vector_store",
-            status="completed",
-            created_at=created_at,
-        )
-
-        persisted_chunk_records = [
-            ChunkRecord(
-                chunk_id=chunk_id,
-                doc_id=chunk.doc_id,
-                user_id=chunk.user_id,
-                content=chunk.content,
-                metadata=dict(chunk.metadata),
-            )
-            for chunk, chunk_id in zip(chunk_records, generated_chunk_ids, strict=True)
-        ]
-
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="chunk_persistence",
-            status="running",
-            created_at=created_at,
-        )
-        try:
-            self.metadata_store.add_chunks(persisted_chunk_records)
-        except Exception:
-            self.vector_store.delete_chunks(generated_chunk_ids)
-            self._record_progress_transition(
-                job_id=job_id,
-                doc_id=doc_id,
-                user_id=user_id,
-                source=source,
-                step_name="chunk_persistence",
-                status="failed",
-                created_at=created_at,
-            )
-            raise
-        self._record_progress_transition(
-            job_id=job_id,
-            doc_id=doc_id,
-            user_id=user_id,
-            source=source,
-            step_name="chunk_persistence",
-            status="completed",
-            created_at=created_at,
+        self._run_step(
+            context,
+            "chunk_persistence",
+            lambda: self._persist_chunks(chunk_records, generated_chunk_ids),
         )
 
         return IngestResult(
@@ -332,39 +175,31 @@ class IngestionService:
     def embed(self, chunks: list[str]) -> list[list[float]]:
         return self.embedding_client.embed(chunks)
 
-    def _record_progress_transition(
-        self,
-        *,
-        job_id: str,
-        doc_id: str,
-        user_id: str,
-        source: str,
-        step_name: str,
-        status: str,
-        created_at: str,
-    ) -> None:
-        self.metadata_store.add_ingestion_progress(
-            [
-                IngestionProgressRecord(
-                    progress_id=str(uuid4()),
-                    job_id=job_id,
-                    doc_id=doc_id,
-                    user_id=user_id,
-                    source=source,
-                    step_name=step_name,
-                    step_order=self.PIPELINE_STEPS.index(step_name),
-                    status=status,
-                    created_at=created_at,
-                )
-            ]
-        )
+    def _run_step(self, context: _ProgressContext, step_name: str, operation: Callable[[], T]) -> T:
+        self._record_progress_transition(context=context, step_name=step_name, status="running")
+        try:
+            result = operation()
+        except Exception:
+            self._record_progress_transition(context=context, step_name=step_name, status="failed")
+            raise
+        self._record_progress_transition(context=context, step_name=step_name, status="completed")
+        return result
 
-    def store(self, chunks: list[ChunkRecord], embeddings: list[list[float]]) -> None:
+    def _require_chunks(self, text: str) -> list[str]:
+        chunks = self.chunk(text)
+        if not chunks:
+            raise ValueError("Document must contain non-empty text")
+        return chunks
+
+    def _add_vectors(self, chunks: list[ChunkRecord], embeddings: list[list[float]]) -> list[str]:
         generated_chunk_ids = self.vector_store.add(chunks, embeddings)
         if len(generated_chunk_ids) != len(chunks):
             self.vector_store.delete_chunks(generated_chunk_ids)
             raise RuntimeError("Milvus returned a mismatched number of chunk ids")
-        persisted_chunk_records = [
+        return generated_chunk_ids
+
+    def _persist_chunks(self, chunks: list[ChunkRecord], generated_chunk_ids: list[str]) -> None:
+        persisted_chunks = [
             ChunkRecord(
                 chunk_id=chunk_id,
                 doc_id=chunk.doc_id,
@@ -375,7 +210,34 @@ class IngestionService:
             for chunk, chunk_id in zip(chunks, generated_chunk_ids, strict=True)
         ]
         try:
-            self.metadata_store.add_chunks(persisted_chunk_records)
+            self.metadata_store.add_chunks(persisted_chunks)
         except Exception:
             self.vector_store.delete_chunks(generated_chunk_ids)
             raise
+
+    def _record_progress_transition(
+        self,
+        *,
+        context: _ProgressContext,
+        step_name: str,
+        status: str,
+    ) -> None:
+        self.metadata_store.add_ingestion_progress(
+            [
+                IngestionProgressRecord(
+                    progress_id=str(uuid4()),
+                    job_id=context.job_id,
+                    doc_id=context.doc_id,
+                    user_id=context.user_id,
+                    source=context.source,
+                    step_name=step_name,
+                    step_order=self.PIPELINE_STEPS.index(step_name),
+                    status=status,
+                    created_at=context.created_at,
+                )
+            ]
+        )
+
+    def store(self, chunks: list[ChunkRecord], embeddings: list[list[float]]) -> None:
+        generated_chunk_ids = self._add_vectors(chunks, embeddings)
+        self._persist_chunks(chunks, generated_chunk_ids)
