@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from io import BytesIO
 from pathlib import Path
 
@@ -8,6 +9,10 @@ import pytest
 from test_rag_system_core.support import authenticated_user, create_test_rig
 
 USER_A = authenticated_user("user-a")
+
+
+def test_ingestion_service_has_no_package_root_alias_module() -> None:
+    assert importlib.util.find_spec("rag_system_core.ingestion") is None
 
 
 def test_ingest_text_uses_authenticated_user_as_user_scope(tmp_path: Path) -> None:
