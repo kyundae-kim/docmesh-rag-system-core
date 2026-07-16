@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +24,10 @@ from test_rag_system_core.support import (
 )
 
 USER_A = authenticated_user("user-a")
+
+
+def test_vector_store_has_no_package_root_alias_module() -> None:
+    assert importlib.util.find_spec("rag_system_core.vector_store") is None
 
 
 def test_configurable_factories_expose_only_explicit_keyword_parameters() -> None:
