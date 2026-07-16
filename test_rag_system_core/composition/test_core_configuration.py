@@ -6,15 +6,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, get_type_hints
 
+import rag_system_core.composition.factories as factories_module
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import (
     DocmeshRAGServiceFactory,
-    create_rag_chunker,
-    create_rag_document_storage,
     create_rag_embedding_client,
     create_rag_generation_client,
-    create_rag_metadata_store,
     create_rag_vector_store,
 )
 from rag_system_core.storage.document_storage import DocumentStorage
@@ -57,9 +55,6 @@ def test_factory_functions_declare_composition_contract_return_types() -> None:
         create_rag_embedding_client: EmbeddingClient,
         create_rag_generation_client: GenerationClient,
         create_rag_vector_store: VectorStore,
-        create_rag_document_storage: DocumentStorage,
-        create_rag_metadata_store: MetadataStore,
-        create_rag_chunker: FixedWindowChunker,
     }
 
     for factory, expected_return_type in expected_return_types.items():
@@ -70,6 +65,12 @@ def test_docmesh_factory_from_env_does_not_use_a_lazy_import() -> None:
     source = inspect.getsource(DocmeshRAGServiceFactory.from_env)
 
     assert " import " not in source
+
+
+def test_factories_module_has_no_constructor_only_free_functions() -> None:
+    assert not hasattr(factories_module, "create_rag_document_storage")
+    assert not hasattr(factories_module, "create_rag_metadata_store")
+    assert not hasattr(factories_module, "create_rag_chunker")
 
 
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
@@ -90,12 +91,9 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
         vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
-        metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
-        document_storage=create_rag_document_storage(
-            storage_mode="local",
-            document_storage_dir=tmp_path / "documents",
-        ),
-        chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
+        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        document_storage=DocumentStorage("local", tmp_path / "documents"),
+        chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
     )
     response = restarted.query(user=USER_A, question="Where is alpha?", top_k=3)
 
@@ -137,12 +135,9 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
         embedding_client=create_rag_embedding_client(settings=settings),
         generation_client=create_rag_generation_client(settings=settings),
         vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
-        metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
-        document_storage=create_rag_document_storage(
-            storage_mode="local",
-            document_storage_dir=tmp_path / "documents",
-        ),
-        chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
+        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        document_storage=DocumentStorage("local", tmp_path / "documents"),
+        chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
     )
 
     ingested = core.ingest_text(user=USER_A, text="alpha beta gamma", source="configured.txt")
@@ -187,12 +182,9 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
         vector_store=vector_store,
-        metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
-        document_storage=create_rag_document_storage(
-            storage_mode="local",
-            document_storage_dir=tmp_path / "documents",
-        ),
-        chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
+        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        document_storage=DocumentStorage("local", tmp_path / "documents"),
+        chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
     )
 
     assert records == {"uri": str(tmp_path / "external-milvus.db"), "timeout": 7.25}

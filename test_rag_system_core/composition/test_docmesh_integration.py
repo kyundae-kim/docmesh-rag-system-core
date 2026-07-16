@@ -8,16 +8,16 @@ import docmesh_py_core
 import pytest
 
 from rag_system_core import RAGCore
+from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.docmesh_runtime import assemble_docmesh_services
 from rag_system_core.composition.factories import (
     DocmeshRAGServiceFactory,
-    create_rag_chunker,
-    create_rag_document_storage,
     create_rag_embedding_client,
     create_rag_generation_client,
-    create_rag_metadata_store,
     create_rag_vector_store,
 )
+from rag_system_core.storage.document_storage import DocumentStorage
+from rag_system_core.storage.metadata_store import MetadataStore
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
 
 
@@ -222,12 +222,9 @@ def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Pat
         embedding_client=CheckedEmbedding(),
         generation_client=CheckedGeneration(),
         vector_store=create_rag_vector_store(metadata_path=tmp_path / "metadata.db"),
-        metadata_store=create_rag_metadata_store(metadata_path=tmp_path / "metadata.db"),
-        document_storage=create_rag_document_storage(
-            storage_mode="local",
-            document_storage_dir=tmp_path / "documents",
-        ),
-        chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
+        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        document_storage=DocumentStorage("local", tmp_path / "documents"),
+        chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
     )
 
     assert core.health_check().ok is True

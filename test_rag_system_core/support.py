@@ -6,12 +6,10 @@ from pathlib import Path
 from docmesh_py_core import AuthenticatedUser
 
 from rag_system_core import RAGCore
-from rag_system_core.composition.factories import (
-    create_rag_chunker,
-    create_rag_document_storage,
-    create_rag_metadata_store,
-    create_rag_vector_store,
-)
+from rag_system_core.adapters.chunking import FixedWindowChunker
+from rag_system_core.composition.factories import create_rag_vector_store
+from rag_system_core.storage.document_storage import DocumentStorage
+from rag_system_core.storage.metadata_store import MetadataStore
 
 
 class FakeEmbeddingClient:
@@ -79,12 +77,9 @@ def create_test_rig(tmp_path: Path, *, storage_mode: str = "memory") -> TestRig:
         embedding_client=embedding_client,
         generation_client=generation_client,
         vector_store=create_rag_vector_store(metadata_path=metadata_path),
-        metadata_store=create_rag_metadata_store(metadata_path=metadata_path),
-        document_storage=create_rag_document_storage(
-            storage_mode=storage_mode,
-            document_storage_dir=tmp_path / "documents",
-        ),
-        chunker=create_rag_chunker(chunk_size=32, chunk_overlap=4),
+        metadata_store=MetadataStore(metadata_path),
+        document_storage=DocumentStorage(storage_mode, tmp_path / "documents"),
+        chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
     )
     return TestRig(
         core=core,

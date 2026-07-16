@@ -137,18 +137,6 @@ def create_rag_vector_store(
     )
 
 
-def create_rag_document_storage(*, storage_mode: str, document_storage_dir: str | Path) -> DocumentStorage:
-    return DocumentStorage(storage_mode, Path(document_storage_dir))
-
-
-def create_rag_metadata_store(*, metadata_path: str | Path) -> MetadataStore:
-    return MetadataStore(Path(metadata_path))
-
-
-def create_rag_chunker(*, chunk_size: int, chunk_overlap: int) -> FixedWindowChunker:
-    return FixedWindowChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-
-
 class RAGServiceFactory(Protocol):
     def create_embedding_client(self) -> EmbeddingClient: ...
 
@@ -196,10 +184,10 @@ class DocmeshRAGServiceFactory:
         return create_rag_vector_store(metadata_path=metadata_path, settings=self.settings, bundle=self.bundle)
 
     def create_document_storage(self, *, storage_mode: str, document_storage_dir: str | Path) -> DocumentStorage:
-        return create_rag_document_storage(storage_mode=storage_mode, document_storage_dir=document_storage_dir)
+        return DocumentStorage(storage_mode, Path(document_storage_dir))
 
     def create_metadata_store(self, *, metadata_path: str | Path) -> MetadataStore:
-        return create_rag_metadata_store(metadata_path=metadata_path)
+        return MetadataStore(Path(metadata_path))
 
     def create_chunker(self, *, chunk_size: int, chunk_overlap: int) -> FixedWindowChunker:
-        return create_rag_chunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        return FixedWindowChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
