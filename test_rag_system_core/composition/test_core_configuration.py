@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -22,6 +23,18 @@ from test_rag_system_core.support import (
 )
 
 USER_A = authenticated_user("user-a")
+
+
+def test_configurable_factories_expose_only_explicit_keyword_parameters() -> None:
+    factories = (
+        create_rag_embedding_client,
+        create_rag_generation_client,
+        create_rag_vector_store,
+    )
+
+    for factory in factories:
+        parameters = inspect.signature(factory).parameters.values()
+        assert all(parameter.kind is not inspect.Parameter.VAR_KEYWORD for parameter in parameters)
 
 
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:

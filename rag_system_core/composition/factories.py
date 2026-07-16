@@ -27,9 +27,13 @@ def _require_ollama_client(*, settings: Any | None = None, bundle: Any | None = 
     return resolved_client
 
 
-def create_rag_embedding_client(*, settings: Any | None = None, bundle: Any | None = None, **overrides):
-    model = overrides.pop("model", None)
-    client = overrides.pop("client", None)
+def create_rag_embedding_client(
+    *,
+    settings: Any | None = None,
+    bundle: Any | None = None,
+    model: str | None = None,
+    client: Any | None = None,
+):
     resolved_settings = settings
     if resolved_settings is None and bundle is not None:
         resolved_settings = bundle.configs
@@ -43,9 +47,13 @@ def create_rag_embedding_client(*, settings: Any | None = None, bundle: Any | No
     )
 
 
-def create_rag_generation_client(*, settings: Any | None = None, bundle: Any | None = None, **overrides):
-    model = overrides.pop("model", None)
-    client = overrides.pop("client", None)
+def create_rag_generation_client(
+    *,
+    settings: Any | None = None,
+    bundle: Any | None = None,
+    model: str | None = None,
+    client: Any | None = None,
+):
     resolved_settings = settings
     if resolved_settings is None and bundle is not None:
         resolved_settings = bundle.configs
@@ -59,28 +67,39 @@ def create_rag_generation_client(*, settings: Any | None = None, bundle: Any | N
     )
 
 
-def create_rag_vector_store(*, metadata_path: str | Path, settings: Any | None = None, bundle: Any | None = None, **overrides):
+def create_rag_vector_store(
+    *,
+    metadata_path: str | Path,
+    settings: Any | None = None,
+    bundle: Any | None = None,
+    uri: str | None = None,
+    collection_name: str | None = None,
+    timeout: float | None = None,
+    client: Any | None = None,
+):
     fallback_uri = str(Path(metadata_path).with_suffix('.milvus.db'))
     resolved_settings = settings
     if resolved_settings is None and bundle is not None:
         resolved_settings = bundle.configs
     if resolved_settings is None:
         resolved_settings = load_docmesh_settings(services={"milvus"})
-    uri, collection_name, timeout = resolve_milvus_runtime_settings(
+    configured_uri, configured_collection_name, configured_timeout = resolve_milvus_runtime_settings(
         fallback_uri=fallback_uri,
         settings=resolved_settings,
     )
-    client = overrides.pop('client', None)
+    resolved_uri = configured_uri if uri is None else uri
+    resolved_collection_name = configured_collection_name if collection_name is None else collection_name
+    resolved_timeout = configured_timeout if timeout is None else timeout
     if client is None:
         client = create_docmesh_service_client('milvus', settings=resolved_settings, bundle=bundle)
     if client is None:
         client = MilvusClient(
-            uri=overrides.get('uri', uri),
-            timeout=overrides.get('timeout', timeout),
+            uri=resolved_uri,
+            timeout=resolved_timeout,
         )
     return MilvusLiteVectorStore(
-        collection_name=overrides.pop('collection_name', collection_name),
-        timeout=overrides.pop('timeout', timeout),
+        collection_name=resolved_collection_name,
+        timeout=resolved_timeout,
         client=client,
     )
 
