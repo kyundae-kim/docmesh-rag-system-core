@@ -231,21 +231,11 @@ def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Pat
     assert records["services"] == ["embedding", "generation", "metadata", "milvus"]
 
 
-def test_vector_store_uses_local_fallback_when_milvus_is_not_configured(monkeypatch, tmp_path: Path) -> None:
-    records: dict[str, object] = {}
-
-    class FakeMilvusClient:
-        def __init__(self, *, uri: str, timeout: float) -> None:
-            records.update(uri=uri, timeout=timeout)
-
-    monkeypatch.setattr("rag_system_core.composition.factories.MilvusClient", FakeMilvusClient)
+def test_vector_store_requires_client_when_milvus_is_not_configured(tmp_path: Path) -> None:
     settings = SimpleNamespace(milvus=None)
 
-    store = create_rag_vector_store(
-        metadata_path=tmp_path / "metadata.db",
-        settings=settings,
-    )
-
-    expected_uri = str((tmp_path / "metadata.db").with_suffix(".milvus.db"))
-    assert records == {"uri": expected_uri, "timeout": 30.0}
-    assert store.collection_name == "rag_chunks"
+    with pytest.raises(RuntimeError, match="Failed to create Milvus service client"):
+        create_rag_vector_store(
+            metadata_path=tmp_path / "metadata.db",
+            settings=settings,
+        )

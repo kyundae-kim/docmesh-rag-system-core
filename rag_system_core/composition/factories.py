@@ -17,7 +17,7 @@ from rag_system_core.composition.docmesh_runtime import (
 )
 from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
-from rag_system_core.storage.vector_store import MilvusClient, MilvusLiteVectorStore, VectorStore
+from rag_system_core.storage.vector_store import MilvusLiteVectorStore, VectorStore
 from rag_system_core.types import EmbeddingClient, GenerationClient
 
 
@@ -116,20 +116,16 @@ def create_rag_vector_store(
     resolved_settings = _resolve_settings(settings=settings, bundle=bundle)
     if resolved_settings is None:
         resolved_settings = load_docmesh_settings(services={"milvus"})
-    configured_uri, configured_collection_name, configured_timeout = resolve_milvus_runtime_settings(
+    _, configured_collection_name, configured_timeout = resolve_milvus_runtime_settings(
         fallback_uri=fallback_uri,
         settings=resolved_settings,
     )
-    resolved_uri = configured_uri if uri is None else uri
     resolved_collection_name = configured_collection_name if collection_name is None else collection_name
     resolved_timeout = configured_timeout if timeout is None else timeout
     if client is None:
         client = create_docmesh_service_client("milvus", settings=resolved_settings, bundle=bundle)
     if client is None:
-        client = MilvusClient(
-            uri=resolved_uri,
-            timeout=resolved_timeout,
-        )
+        raise RuntimeError("Failed to create Milvus service client")
     return MilvusLiteVectorStore(
         collection_name=resolved_collection_name,
         timeout=resolved_timeout,

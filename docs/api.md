@@ -270,10 +270,9 @@ create_rag_vector_store(*, metadata_path: str | Path, settings=None, registry=No
 
 동작:
 - 가능하면 DocMesh settings에서 Milvus runtime 설정을 읽음
-- fallback URI는 `metadata_path.with_suffix(".milvus.db")`
 - fallback collection name은 `rag_chunks`
 - fallback timeout은 `30.0`
-- DocMesh `milvus` client 생성 실패 시 `MilvusClient(uri=..., timeout=...)`를 직접 생성
+- DocMesh `milvus` client를 생성할 수 없고 명시적 `client`도 없으면 `RuntimeError` 발생
 - 반환 타입은 `MilvusLiteVectorStore`
 
 ### 5.4 `create_rag_document_storage`

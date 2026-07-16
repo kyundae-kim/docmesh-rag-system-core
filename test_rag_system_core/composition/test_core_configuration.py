@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, get_type_hints
 
 import rag_system_core.composition.factories as factories_module
+import pytest
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import (
@@ -73,6 +74,10 @@ def test_factories_module_has_no_constructor_only_free_functions() -> None:
     assert not hasattr(factories_module, "create_rag_chunker")
 
 
+def test_factories_module_does_not_construct_milvus_client_directly() -> None:
+    assert not hasattr(factories_module, "MilvusClient")
+
+
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
     milvus_uri = tmp_path / "configured-milvus.db"
     monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
@@ -104,6 +109,7 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
 def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Path) -> None:
     embed_calls: list[dict[str, Any]] = []
     chat_calls: list[dict[str, Any]] = []
+    create_service_client = factories_module.create_docmesh_service_client
 
     class FakeOllamaClient:
         def embed(self, *, model: str, input: list[str]) -> dict[str, list[list[float]]]:
@@ -128,7 +134,11 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
     monkeypatch.setattr(
         "rag_system_core.composition.factories.create_docmesh_service_client",
-        lambda service_name, *, settings, bundle=None: FakeOllamaClient() if service_name == "ollama" else None,
+        lambda service_name, *, settings, bundle=None: (
+            FakeOllamaClient()
+            if service_name == "ollama"
+            else create_service_client(service_name, settings=settings, bundle=bundle)
+        ),
     )
 
     core = RAGCore(
@@ -160,14 +170,10 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
 
 
 def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path: Path) -> None:
-    records: dict[str, object] = {}
-
     class FakeMilvusClient:
-        def __init__(self, *, uri: str, timeout: float) -> None:
-            records["uri"] = uri
-            records["timeout"] = timeout
+        pass
 
-    monkeypatch.setattr("rag_system_core.composition.factories.MilvusClient", FakeMilvusClient)
+    client = FakeMilvusClient()
     monkeypatch.setattr(
         "rag_system_core.composition.factories.resolve_milvus_runtime_settings",
         lambda *, fallback_uri, settings=None: (str(tmp_path / "external-milvus.db"), "resolved_chunks", 7.25),
@@ -177,7 +183,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         lambda service_name, *, settings=None, bundle=None: None,
     )
 
-    vector_store = create_rag_vector_store(metadata_path=tmp_path / "metadata.db")
+    vector_store = create_rag_vector_store(metadata_path=tmp_path / "metadata.db", client=client)
     core = RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
@@ -187,34 +193,21 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
     )
 
-    assert records == {"uri": str(tmp_path / "external-milvus.db"), "timeout": 7.25}
     assert core.vector_store.collection_name == "resolved_chunks"
     assert core.vector_store.timeout == 7.25
-    assert isinstance(core.vector_store._client, FakeMilvusClient)
+    assert core.vector_store._client is client
 
 
-def test_create_rag_vector_store_requires_external_client_construction(monkeypatch, tmp_path: Path) -> None:
-    records: dict[str, object] = {}
-
-    class FakeMilvusClient:
-        def __init__(self, *, uri: str, timeout: float) -> None:
-            records["uri"] = uri
-            records["timeout"] = timeout
-
-    monkeypatch.setattr("rag_system_core.composition.factories.MilvusClient", FakeMilvusClient)
+def test_create_rag_vector_store_requires_docmesh_or_explicit_client(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "rag_system_core.composition.factories.create_docmesh_service_client",
         lambda service_name, *, settings=None, bundle=None: None,
     )
 
-    store = create_rag_vector_store(
-        metadata_path=tmp_path / "metadata.db",
-        uri=str(tmp_path / "factory-milvus.db"),
-        collection_name="factory_chunks",
-        timeout=4.5,
-    )
-
-    assert records == {"uri": str(tmp_path / "factory-milvus.db"), "timeout": 4.5}
-    assert store.collection_name == "factory_chunks"
-    assert store.timeout == 4.5
-    assert isinstance(store._client, FakeMilvusClient)
+    with pytest.raises(RuntimeError, match="Failed to create Milvus service client"):
+        create_rag_vector_store(
+            metadata_path=tmp_path / "metadata.db",
+            uri=str(tmp_path / "factory-milvus.db"),
+            collection_name="factory_chunks",
+            timeout=4.5,
+        )
