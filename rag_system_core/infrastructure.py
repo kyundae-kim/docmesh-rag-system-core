@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rag_system_core.runtime.docmesh_sdk import (
+from docmesh_py_core import (
     ServiceBundle,
     ServiceConfigs,
     assemble_services,

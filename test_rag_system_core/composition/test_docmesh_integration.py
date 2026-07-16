@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import docmesh_py_core
 import pytest
 
 from rag_system_core import RAGCore
@@ -16,7 +17,6 @@ from rag_system_core.composition.factories import (
     create_rag_metadata_store,
     create_rag_vector_store,
 )
-from rag_system_core.runtime import docmesh_sdk
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
 
 
@@ -68,7 +68,7 @@ def test_assemble_docmesh_services_uses_v020_assembly_api(monkeypatch) -> None:
         records.update(kwargs)
         return expected_bundle
 
-    monkeypatch.setattr(docmesh_sdk, "assemble_services", fake_assemble_services)
+    monkeypatch.setattr(docmesh_py_core, "assemble_services", fake_assemble_services)
     env = {"OLLAMA_HOST": "http://ollama"}
 
     bundle = assemble_docmesh_services(
@@ -112,11 +112,11 @@ def test_direct_ollama_factory_loads_v020_service_config_once(monkeypatch) -> No
         return settings
 
     monkeypatch.setattr(
-        docmesh_sdk,
+        docmesh_py_core,
         "load_available_service_configs",
         fake_load_available_service_configs,
     )
-    monkeypatch.setattr(docmesh_sdk, "create_ollama_client", lambda config: ollama)
+    monkeypatch.setattr(docmesh_py_core, "create_ollama_client", lambda config: ollama)
 
     client = create_rag_embedding_client()
 
@@ -170,7 +170,7 @@ def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Pat
             check()
         return SimpleNamespace(ok=True)
 
-    monkeypatch.setattr(docmesh_sdk, "check_all_services", fake_check_all_services)
+    monkeypatch.setattr(docmesh_py_core, "check_all_services", fake_check_all_services)
 
     class CheckedEmbedding(FakeEmbeddingClient):
         def check(self) -> None:

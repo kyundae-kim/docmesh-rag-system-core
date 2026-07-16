@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from rag_system_core.runtime import docmesh_sdk
+import docmesh_py_core
 
 
 @dataclass(slots=True)
@@ -20,7 +20,7 @@ class LocalHealthCheckResult:
 
 
 def run_health_checks(service_checks: dict[str, Any], required_services: set[str] | None = None) -> Any:
-    return docmesh_sdk.check_all_services(
+    return docmesh_py_core.check_all_services(
         service_checks,
         required_services=required_services,
     )

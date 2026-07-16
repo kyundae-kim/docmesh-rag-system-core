@@ -4,7 +4,7 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-from rag_system_core.runtime import docmesh_sdk
+import docmesh_py_core
 
 RAG_SERVICES = {"milvus", "ollama"}
 
@@ -15,7 +15,7 @@ def load_docmesh_settings(
     services: set[str] | None = None,
 ) -> Any:
     source = os.environ if env is None else env
-    return docmesh_sdk.load_available_service_configs(
+    return docmesh_py_core.load_available_service_configs(
         source,
         services=RAG_SERVICES if services is None else services,
     )
@@ -30,7 +30,7 @@ def assemble_docmesh_services(
     parallel_healthchecks: bool = False,
 ) -> Any:
     source = os.environ if env is None else env
-    return docmesh_sdk.assemble_services(
+    return docmesh_py_core.assemble_services(
         source,
         services=RAG_SERVICES if services is None else services,
         required=required,
@@ -55,9 +55,9 @@ def create_docmesh_service_client(
     if config is None:
         return None
     if service_name == "ollama":
-        return docmesh_sdk.create_ollama_client(config)
+        return docmesh_py_core.create_ollama_client(config)
     if service_name == "milvus":
-        return docmesh_sdk.create_milvus_client(config)
+        return docmesh_py_core.create_milvus_client(config)
     raise ValueError(f"Unsupported RAG service: {service_name}")
 
 
