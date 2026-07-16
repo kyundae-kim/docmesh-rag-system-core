@@ -4,10 +4,12 @@ import importlib.util
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, get_type_hints
 
 from rag_system_core import RAGCore
+from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import (
+    DocmeshRAGServiceFactory,
     create_rag_chunker,
     create_rag_document_storage,
     create_rag_embedding_client,
@@ -15,6 +17,10 @@ from rag_system_core.composition.factories import (
     create_rag_metadata_store,
     create_rag_vector_store,
 )
+from rag_system_core.storage.document_storage import DocumentStorage
+from rag_system_core.storage.metadata_store import MetadataStore
+from rag_system_core.storage.vector_store import VectorStore
+from rag_system_core.types import EmbeddingClient, GenerationClient
 
 from test_rag_system_core.support import (
     authenticated_user,
@@ -44,6 +50,26 @@ def test_configurable_factories_expose_only_explicit_keyword_parameters() -> Non
     for factory in factories:
         parameters = inspect.signature(factory).parameters.values()
         assert all(parameter.kind is not inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+
+
+def test_factory_functions_declare_composition_contract_return_types() -> None:
+    expected_return_types = {
+        create_rag_embedding_client: EmbeddingClient,
+        create_rag_generation_client: GenerationClient,
+        create_rag_vector_store: VectorStore,
+        create_rag_document_storage: DocumentStorage,
+        create_rag_metadata_store: MetadataStore,
+        create_rag_chunker: FixedWindowChunker,
+    }
+
+    for factory, expected_return_type in expected_return_types.items():
+        assert get_type_hints(factory)["return"] is expected_return_type
+
+
+def test_docmesh_factory_from_env_does_not_use_a_lazy_import() -> None:
+    source = inspect.getsource(DocmeshRAGServiceFactory.from_env)
+
+    assert " import " not in source
 
 
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:

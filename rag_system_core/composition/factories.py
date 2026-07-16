@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
+from docmesh_py_core import ServiceBundle, ServiceConfigs
+
+import rag_system_core.composition.docmesh_runtime as docmesh_runtime
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
 from rag_system_core.composition.docmesh_runtime import (
@@ -18,7 +21,37 @@ from rag_system_core.storage.vector_store import MilvusClient, MilvusLiteVectorS
 from rag_system_core.types import EmbeddingClient, GenerationClient
 
 
-def _require_ollama_client(*, settings: Any | None = None, bundle: Any | None = None, client: Any | None = None) -> Any:
+def _resolve_settings(
+    *,
+    settings: ServiceConfigs | None,
+    bundle: ServiceBundle | None,
+) -> ServiceConfigs | None:
+    if settings is not None:
+        return settings
+    if bundle is not None:
+        return bundle.configs
+    return None
+
+
+def _resolve_ollama_settings(
+    *,
+    settings: ServiceConfigs | None,
+    bundle: ServiceBundle | None,
+    model: str | None,
+    client: object | None,
+) -> ServiceConfigs | None:
+    resolved_settings = _resolve_settings(settings=settings, bundle=bundle)
+    if resolved_settings is None and (model is None or client is None):
+        return load_docmesh_settings(services={"ollama"})
+    return resolved_settings
+
+
+def _require_ollama_client(
+    *,
+    settings: ServiceConfigs | None = None,
+    bundle: ServiceBundle | None = None,
+    client: object | None = None,
+) -> object:
     if client is not None:
         return client
     resolved_client = create_docmesh_service_client("ollama", settings=settings, bundle=bundle)
@@ -29,58 +62,58 @@ def _require_ollama_client(*, settings: Any | None = None, bundle: Any | None = 
 
 def create_rag_embedding_client(
     *,
-    settings: Any | None = None,
-    bundle: Any | None = None,
+    settings: ServiceConfigs | None = None,
+    bundle: ServiceBundle | None = None,
     model: str | None = None,
-    client: Any | None = None,
-):
-    resolved_settings = settings
-    if resolved_settings is None and bundle is not None:
-        resolved_settings = bundle.configs
-    if resolved_settings is None and (model is None or client is None):
-        resolved_settings = load_docmesh_settings(services={"ollama"})
+    client: object | None = None,
+) -> EmbeddingClient:
+    resolved_settings = _resolve_ollama_settings(
+        settings=settings,
+        bundle=bundle,
+        model=model,
+        client=client,
+    )
     _, configured_model, _, _ = read_docmesh_ollama_settings(resolved_settings)
-    resolved_model = model or configured_model
+    resolved_model = configured_model if model is None else model
     return OllamaEmbeddingClient(
         client=_require_ollama_client(settings=resolved_settings, bundle=bundle, client=client),
-        model=resolved_model or "",
+        model=resolved_model if resolved_model is not None else "",
     )
 
 
 def create_rag_generation_client(
     *,
-    settings: Any | None = None,
-    bundle: Any | None = None,
+    settings: ServiceConfigs | None = None,
+    bundle: ServiceBundle | None = None,
     model: str | None = None,
-    client: Any | None = None,
-):
-    resolved_settings = settings
-    if resolved_settings is None and bundle is not None:
-        resolved_settings = bundle.configs
-    if resolved_settings is None and (model is None or client is None):
-        resolved_settings = load_docmesh_settings(services={"ollama"})
+    client: object | None = None,
+) -> GenerationClient:
+    resolved_settings = _resolve_ollama_settings(
+        settings=settings,
+        bundle=bundle,
+        model=model,
+        client=client,
+    )
     _, _, configured_model, _ = read_docmesh_ollama_settings(resolved_settings)
-    resolved_model = model or configured_model
+    resolved_model = configured_model if model is None else model
     return OllamaGenerationClient(
         client=_require_ollama_client(settings=resolved_settings, bundle=bundle, client=client),
-        model=resolved_model or "",
+        model=resolved_model if resolved_model is not None else "",
     )
 
 
 def create_rag_vector_store(
     *,
     metadata_path: str | Path,
-    settings: Any | None = None,
-    bundle: Any | None = None,
+    settings: ServiceConfigs | None = None,
+    bundle: ServiceBundle | None = None,
     uri: str | None = None,
     collection_name: str | None = None,
     timeout: float | None = None,
-    client: Any | None = None,
-):
-    fallback_uri = str(Path(metadata_path).with_suffix('.milvus.db'))
-    resolved_settings = settings
-    if resolved_settings is None and bundle is not None:
-        resolved_settings = bundle.configs
+    client: object | None = None,
+) -> VectorStore:
+    fallback_uri = str(Path(metadata_path).with_suffix(".milvus.db"))
+    resolved_settings = _resolve_settings(settings=settings, bundle=bundle)
     if resolved_settings is None:
         resolved_settings = load_docmesh_settings(services={"milvus"})
     configured_uri, configured_collection_name, configured_timeout = resolve_milvus_runtime_settings(
@@ -91,7 +124,7 @@ def create_rag_vector_store(
     resolved_collection_name = configured_collection_name if collection_name is None else collection_name
     resolved_timeout = configured_timeout if timeout is None else timeout
     if client is None:
-        client = create_docmesh_service_client('milvus', settings=resolved_settings, bundle=bundle)
+        client = create_docmesh_service_client("milvus", settings=resolved_settings, bundle=bundle)
     if client is None:
         client = MilvusClient(
             uri=resolved_uri,
@@ -104,15 +137,15 @@ def create_rag_vector_store(
     )
 
 
-def create_rag_document_storage(*, storage_mode: str, document_storage_dir: str | Path):
+def create_rag_document_storage(*, storage_mode: str, document_storage_dir: str | Path) -> DocumentStorage:
     return DocumentStorage(storage_mode, Path(document_storage_dir))
 
 
-def create_rag_metadata_store(*, metadata_path: str | Path):
+def create_rag_metadata_store(*, metadata_path: str | Path) -> MetadataStore:
     return MetadataStore(Path(metadata_path))
 
 
-def create_rag_chunker(*, chunk_size: int, chunk_overlap: int):
+def create_rag_chunker(*, chunk_size: int, chunk_overlap: int) -> FixedWindowChunker:
     return FixedWindowChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
 
@@ -132,8 +165,8 @@ class RAGServiceFactory(Protocol):
 
 @dataclass(slots=True)
 class DocmeshRAGServiceFactory:
-    settings: Any
-    bundle: Any | None = None
+    settings: ServiceConfigs
+    bundle: ServiceBundle | None = None
 
     @classmethod
     def from_env(
@@ -142,9 +175,7 @@ class DocmeshRAGServiceFactory:
         *,
         check_on_startup: bool = False,
     ) -> "DocmeshRAGServiceFactory":
-        from rag_system_core.composition.docmesh_runtime import assemble_docmesh_services
-
-        bundle = assemble_docmesh_services(
+        bundle = docmesh_runtime.assemble_docmesh_services(
             env,
             required={"ollama"},
             check_on_startup=check_on_startup,

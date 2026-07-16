@@ -105,6 +105,39 @@ def test_ollama_factories_use_clients_from_service_bundle() -> None:
     assert generation_client.generate("Summarize alpha") == "docmesh answer"
 
 
+@pytest.mark.parametrize(
+    ("factory", "message"),
+    [
+        (create_rag_embedding_client, "Ollama embed model must be configured"),
+        (create_rag_generation_client, "Ollama generation model must be configured"),
+    ],
+)
+def test_ollama_factories_do_not_replace_an_explicit_empty_model(factory, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        factory(
+            settings=make_settings(),
+            model="",
+            client=FakeDocmeshOllamaWrapper(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("factory", "expected_model"),
+    [
+        (create_rag_embedding_client, "explicit-embedding"),
+        (create_rag_generation_client, "explicit-generation"),
+    ],
+)
+def test_ollama_factories_prefer_an_explicit_model(factory, expected_model: str) -> None:
+    client = factory(
+        settings=make_settings(),
+        model=expected_model,
+        client=FakeDocmeshOllamaWrapper(),
+    )
+
+    assert client.model == expected_model
+
+
 def test_direct_ollama_factory_loads_v020_service_config_once(monkeypatch) -> None:
     settings = make_settings()
     ollama = FakeDocmeshOllamaWrapper()
