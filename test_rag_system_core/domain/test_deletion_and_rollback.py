@@ -212,7 +212,7 @@ def test_ingest_text_rolls_back_persisted_chunks_when_completion_progress_fails(
         service.ingest_text(user_id="user-a", text="alpha beta", source="progress-failure.txt")
 
     document = metadata_store.list_documents("user-a")[0]
-    assert metadata_store.list_chunks(doc_id=document.doc_id) == []
+    assert metadata_store.list_document_chunks(doc_id=document.doc_id, user_id="user-a") == []
     assert vector_store.deleted_chunk_ids == [["101", "102"]]
 
 

@@ -155,6 +155,7 @@ class IngestionService:
             context,
             "chunk_persistence",
             lambda: self._persist_chunks(chunk_records, generated_chunk_ids),
+            completion_failure_rollback=lambda: self._rollback_persisted_chunks(generated_chunk_ids),
         )
 
         return IngestResult(
@@ -175,14 +176,25 @@ class IngestionService:
     def embed(self, chunks: list[str]) -> list[list[float]]:
         return self.embedding_client.embed(chunks)
 
-    def _run_step(self, context: _ProgressContext, step_name: str, operation: Callable[[], T]) -> T:
+    def _run_step(
+        self,
+        context: _ProgressContext,
+        step_name: str,
+        operation: Callable[[], T],
+        completion_failure_rollback: Callable[[], None] | None = None,
+    ) -> T:
         self._record_progress_transition(context=context, step_name=step_name, status="running")
         try:
             result = operation()
         except Exception:
             self._record_progress_transition(context=context, step_name=step_name, status="failed")
             raise
-        self._record_progress_transition(context=context, step_name=step_name, status="completed")
+        try:
+            self._record_progress_transition(context=context, step_name=step_name, status="completed")
+        except Exception:
+            if completion_failure_rollback is not None:
+                completion_failure_rollback()
+            raise
         return result
 
     def _require_chunks(self, text: str) -> list[str]:
@@ -214,6 +226,10 @@ class IngestionService:
         except Exception:
             self.vector_store.delete_chunks(generated_chunk_ids)
             raise
+
+    def _rollback_persisted_chunks(self, chunk_ids: list[str]) -> None:
+        self.metadata_store.delete_chunks(chunk_ids)
+        self.vector_store.delete_chunks(chunk_ids)
 
     def _record_progress_transition(
         self,

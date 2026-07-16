@@ -91,6 +91,16 @@ class MetadataStore:
             session.add_all(models)
             session.commit()
 
+    def delete_chunks(self, chunk_ids: list[str]) -> None:
+        if not chunk_ids:
+            return
+        statement = select(ChunkModel).where(ChunkModel.chunk_id.in_(chunk_ids))
+        with self.session() as session:
+            rows = session.scalars(statement).all()
+            for row in rows:
+                session.delete(row)
+            session.commit()
+
     def add_ingestion_progress(self, progress_rows: list[IngestionProgressRecord]) -> None:
         models = [
             IngestionProgressModel(
