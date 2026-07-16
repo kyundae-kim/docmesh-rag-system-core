@@ -26,6 +26,10 @@ from test_rag_system_core.support import (
 USER_A = authenticated_user("user-a")
 
 
+def test_core_has_no_package_root_alias_module() -> None:
+    assert importlib.util.find_spec("rag_system_core.core") is None
+
+
 def test_vector_store_has_no_package_root_alias_module() -> None:
     assert importlib.util.find_spec("rag_system_core.vector_store") is None
 

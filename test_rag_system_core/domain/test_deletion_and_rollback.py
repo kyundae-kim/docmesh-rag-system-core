@@ -5,7 +5,12 @@ from typing import cast
 
 import pytest
 
-import rag_system_core.core as core_module
+from rag_system_core.adapters.chunking import FixedWindowChunker
+from rag_system_core.domain.ingestion import IngestionService
+from rag_system_core.storage.document_storage import DocumentStorage
+from rag_system_core.storage.metadata_store import MetadataStore
+from rag_system_core.storage.vector_store import VectorStore
+from rag_system_core.types import ChunkRecord
 
 from test_rag_system_core.support import authenticated_user, create_test_rig, FakeEmbeddingClient
 
@@ -63,15 +68,15 @@ def test_ingestion_service_store_rolls_back_milvus_chunks_when_chunk_persistence
 
     vector_store = FakeVectorStore()
     metadata_store = FailingMetadataStore()
-    service = core_module.IngestionService(
-        chunker=core_module.FixedWindowChunker(chunk_size=32, chunk_overlap=4),
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
         embedding_client=FakeEmbeddingClient(),
-        vector_store=cast(core_module.VectorStore, vector_store),
-        metadata_store=cast(core_module.MetadataStore, metadata_store),
-        document_storage=core_module.DocumentStorage("memory", tmp_path / "documents"),
+        vector_store=cast(VectorStore, vector_store),
+        metadata_store=cast(MetadataStore, metadata_store),
+        document_storage=DocumentStorage("memory", tmp_path / "documents"),
     )
     chunks = [
-        core_module.ChunkRecord(
+        ChunkRecord(
             chunk_id="",
             doc_id="doc-1",
             user_id="user-a",
@@ -108,22 +113,22 @@ def test_ingestion_service_store_rolls_back_milvus_chunks_when_generated_id_coun
 
     metadata_store = MetadataStoreSpy()
     vector_store = FakeVectorStore()
-    service = core_module.IngestionService(
-        chunker=core_module.FixedWindowChunker(chunk_size=32, chunk_overlap=4),
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
         embedding_client=FakeEmbeddingClient(),
-        vector_store=cast(core_module.VectorStore, vector_store),
-        metadata_store=cast(core_module.MetadataStore, metadata_store),
-        document_storage=core_module.DocumentStorage("memory", tmp_path / "documents"),
+        vector_store=cast(VectorStore, vector_store),
+        metadata_store=cast(MetadataStore, metadata_store),
+        document_storage=DocumentStorage("memory", tmp_path / "documents"),
     )
     chunks = [
-        core_module.ChunkRecord(
+        ChunkRecord(
             chunk_id="",
             doc_id="doc-1",
             user_id="user-a",
             content="alpha",
             metadata={"source": "x.txt"},
         ),
-        core_module.ChunkRecord(
+        ChunkRecord(
             chunk_id="",
             doc_id="doc-1",
             user_id="user-a",
