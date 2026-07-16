@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 from sqlalchemy import inspect
@@ -15,6 +16,10 @@ from test_rag_system_core.support import authenticated_user, create_test_rig
 
 USER_A = authenticated_user("user-a")
 USER_B = authenticated_user("user-b")
+
+
+def test_metadata_store_has_no_package_root_alias_module() -> None:
+    assert importlib.util.find_spec("rag_system_core.metadata_store") is None
 
 
 def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Path) -> None:

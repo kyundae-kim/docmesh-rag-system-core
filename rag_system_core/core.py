@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import rag_system_core.metadata_store as metadata_store_module
+import rag_system_core.storage.metadata_store as metadata_store_module
 import rag_system_core.storage.vector_store as vector_store_module
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.adapters.ollama import (

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,10 @@ from rag_system_core.composition.factories import (
     create_rag_vector_store,
 )
 from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
+
+
+def test_infrastructure_has_no_package_root_facade_module() -> None:
+    assert importlib.util.find_spec("rag_system_core.infrastructure") is None
 
 
 class FakeDocmeshOllamaWrapper:
