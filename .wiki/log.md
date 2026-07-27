@@ -280,3 +280,24 @@
 - Log rotation: not required
 - Remediation:
   - Removed accidental line-number prefixes from log.md and restored append-only log formatting.
+
+## [2026-07-27] ingest | docmesh-py-core v0.5.0 API, configuration, examples, and environment template
+- Sources ingested:
+  - https://github.com/kyundae-kim/docmesh-py-core/wiki/API-Reference-v0.5.0
+  - https://github.com/kyundae-kim/docmesh-py-core/wiki/Configuration-v0.5.0
+  - https://github.com/kyundae-kim/docmesh-py-core/wiki/Examples-v0.5.0
+  - https://github.com/kyundae-kim/docmesh-py-core/blob/v0.5.0/.env.example
+- Raw sources created:
+  - raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md
+- Wiki pages updated:
+  - entities/docmesh-py-core.md
+  - concepts/public-api-surface.md
+  - concepts/service-configuration-topology.md
+  - concepts/settings-loading-and-validation.md
+  - concepts/service-health-orchestration.md
+  - queries/developing-with-docmesh-py-core.md
+  - index.md
+- Version update: v0.5.0 introduces RuntimePlan/Service assembly, diagnose_services(), and RuntimePlan.healthcheck; legacy PostgreSQL DSN and the prior healthcheck environment switch are not part of the v0.5.0 contract.

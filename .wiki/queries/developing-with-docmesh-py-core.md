@@ -1,10 +1,10 @@
 ---
 title: Developing with docmesh-py-core
 created: 2026-06-19
-updated: 2026-07-16
+updated: 2026-07-27
 type: query
 tags: [sdk, python, integration, config, testing]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md]
+sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md]
 confidence: medium
 ---
 
@@ -16,13 +16,13 @@ confidence: medium
 
 ## Short answer
 
-가장 좋은 활용 방식은 `docmesh-py-core`를 **애플리케이션의 공통 인프라 SDK**로 두고, 각 서비스가 외부 의존성 초기화·설정 검증·health check·인증 코드를 직접 반복 작성하지 않게 만드는 것이다. 비즈니스 로직은 앱/도메인 패키지에 두고, PostgreSQL·SQLite·MinIO·NATS·Ollama·Milvus·Keycloak 접속과 운영 규칙은 SDK의 assembly/config/health 경계에 위임한다. v0.2.0의 일반 애플리케이션 권장 경로는 registry 직접 조립이 아니라 **assembly-first**다.^[raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md]
+가장 좋은 활용 방식은 `docmesh-py-core`를 **애플리케이션의 공통 인프라 SDK**로 두고, 각 서비스가 외부 의존성 초기화·설정 검증·health check·인증 코드를 직접 반복 작성하지 않게 만드는 것이다. 비즈니스 로직은 앱/도메인 패키지에 두고, PostgreSQL·SQLite·MinIO·NATS·Ollama·Milvus·Keycloak 접속과 운영 규칙은 SDK의 assembly/config/health 경계에 위임한다. v0.5.0의 일반 애플리케이션 권장 경로는 registry 직접 조립이 아니라 **RuntimePlan 기반 assembly-first**다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
 
 ## Recommended development flow
 
-1. 동기 서비스는 `assemble_services(env, services=..., required=..., check_on_startup=True)`로 설정 탐지·검증·client 생성·startup readiness를 한 번에 조립한다.
-2. `ServiceBundle` context manager 안에서 `bundle.clients[...]`로 생성된 wrapper/client를 사용한다.
-3. NATS 또는 async lifecycle은 `await assemble_service_runtime(...)`과 `async with runtime`으로 조립하고 `runtime.require(name)`으로 client를 조회한다.
+1. 동기 서비스는 `assemble_services(services=..., required=..., check_on_startup=True)`로 설정 탐지·검증·client 생성·startup readiness를 한 번에 조립한다.
+2. `ServiceBundle` context manager 안에서 `bundle.get_client(...)`로 생성된 wrapper/client를 사용한다.
+3. NATS 또는 async lifecycle은 `RuntimePlan`과 `await assemble_service_runtime(plan=...)`, `async with runtime`으로 조립하고 `runtime.require(Service.…)`로 client를 조회한다.
 4. CLI·배치·테스트처럼 일부 서비스만 직접 다룰 때는 `load_service_configs(services={...})`와 `create_*_client()`를 사용한다.
 5. health endpoint에서는 `check_all_services()` 결과 또는 `HealthCheckError.result.to_dict()`를 응답으로 사용하고, lifecycle context manager가 종료 cleanup을 맡게 한다.
 
@@ -32,7 +32,7 @@ confidence: medium
 
 ### 1. FastAPI / backend service bootstrap
 
-FastAPI에서는 lifespan 안에서 `assemble_services()` 또는 `await assemble_service_runtime()`을 호출하고 `with`/`async with`로 감싸는 것이 권장 예제다. 이 방식은 설정 탐색, 필수 서비스 검증, client 생성, startup healthcheck와 종료 cleanup을 응집시킨다. NATS가 포함될 경우 async runtime을 선택해야 한다.^[raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md]
+Backend service의 lifespan에서는 `assemble_services()` 또는 `await assemble_service_runtime(plan=...)`을 `with`/`async with`로 감싸 설정 탐색, 필수 서비스 검증, client 생성, startup healthcheck와 종료 cleanup을 응집시킬 수 있다. NATS가 포함될 경우 async runtime을 선택해야 한다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]^[raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md]
 
 ### 2. Worker / batch / CLI jobs
 
