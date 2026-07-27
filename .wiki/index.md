@@ -2,7 +2,7 @@
 
 > Content catalog. Every wiki page listed under its type with a one-line summary.
 > Read this first to find relevant pages for any query.
-> Last updated: 2026-07-27 | Total pages: 27
+> Last updated: 2026-07-27 | Total pages: 28
 
 ## Entities
 - [[dms-core]] — PostgreSQL/SQLite metadata와 MinIO object storage를 조합해 문서 lifecycle을 제공하는 DMS Python SDK.
@@ -39,3 +39,4 @@
 - [[future-considerations-for-sdk-api-mcp-rag-project]] — SDK 중심 RAG 코어를 API/MCP로 확장할 때의 구조, 운영, 버전, 보안, 비동기 고려사항.
 - [[sdk-first-with-api-and-mcp-evaluation]] — SDK를 canonical core로 두고 API/MCP를 별도 adapter product로 확장하는 전략 평가.
 - [[structural-integration-of-docmesh-py-core-into-docmesh-rag-system-core]] — docmesh-py-core를 config/auth/bootstrap 계층으로 두고 rag-system-core와 분리 결합하는 구조 제안.
+- [[verifying-docmesh-py-core-contract]] — 버전 업데이트 시 공개 API, 설정, assembly·lifecycle, health/error 및 소비 프로젝트 회귀 계약을 검증하는 절차.

@@ -324,3 +324,12 @@
   - concepts/settings-loading-and-validation.md
   - index.md
 - Source note: GitHub Wiki raw endpoints expose the current wiki body; the supplied `v0.6.0` page names were preserved in source URLs and filenames, but no immutable wiki commit was supplied.
+
+## [2026-07-27] query | docmesh-py-core 계약 검증 방법
+- Query filed:
+  - queries/verifying-docmesh-py-core-contract.md
+- Navigation updated:
+  - index.md
+- Scope: package-root API, signature, strict configuration, RuntimePlan assembly, lifecycle cleanup, health/error shape, stale-symbol and consumer regression verification.
+- Verification: 28 pages indexed; the new query page passed page/index/link checks.
+- Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
