@@ -4,7 +4,7 @@ created: 2026-06-19
 updated: 2026-07-27
 type: concept
 tags: [config, integration, architecture, security, observability]
-sources: [raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md]
+sources: [raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md]
 confidence: medium
 ---
 
@@ -19,6 +19,10 @@ confidence: medium
 ## RAG-core specific slice
 
 RAG Core config guide는 이 topology 중 첫 성공 호출에 실제로 자주 필요한 값을 좁혀 보여 준다. 실질적으로 중요한 값은 `OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_GENERATION_MODEL`, 선택적 `OLLAMA_REQUEST_TIMEOUT_SECONDS`, 선택적 `MILVUS_URI`, `MILVUS_COLLECTION`, `MILVUS_REQUEST_TIMEOUT_SECONDS`, `MILVUS_CONNECT_TIMEOUT_SECONDS`, 그리고 조건부 `DOCMESH_AUTH_MODE`다. 반면 Keycloak 관련 상세 설정은 DocMesh 통합 경로에서만 필요하므로, RAG 설정 topology는 "전부 다 채우기"가 아니라 실행 경로별 부분집합 이해가 더 중요하다.^[raw/articles/docmesh-rag-core-config-guide-2026-06-23.md]
+
+## DMS document-storage slice
+
+`dms-core`는 PostgreSQL 또는 SQLite metadata store 하나와 MinIO를 함께 요구한다. `DMS_METADATA_BACKEND`가 없을 때 `POSTGRES_*`가 SQLite보다 우선하며, 양쪽이 있는 auto mode는 경고를 내고 PostgreSQL을 선택한다. `DMS_CONFIGURATION_STRICT=true`로 모호성을 차단하고, `diagnose_environment()`로 연결 없이 선택·누락 값·미지원 legacy key를 확인할 수 있다. [[dms-configuration-and-assembly]]는 이 구성을 document-management 경계에서 적용하는 방법을 정리한다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
 
 ## Security and masking
 

@@ -4,7 +4,7 @@ created: 2026-06-11
 updated: 2026-07-27
 type: concept
 tags: [sdk, api, python, integration]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md]
 confidence: high
 ---
 
@@ -35,6 +35,10 @@ SRS는 public record type으로 `DocumentRecord`, `ChunkRecord`, `IngestResult`,
 ## Root import discipline
 
 `docmesh-py-core` v0.5.0 API reference는 패키지 루트의 `__all__`을 공개 소비 경계로 고정하고 86개 공개 이름을 계약 테스트로 확인한다. 조립 경로에는 `RuntimePlan`, `Service`, `assemble_services`, `assemble_service_runtime`, `ServiceBundle`, `ServiceRuntime`이 있고, direct API에는 `*Config`, `load_service_configs(services={...})`, `create_*_client`가 있다. `diagnose_services`, `ServiceClientWrapper`, `NatsConnectionBuilder`, health/cleanup helper, `KeycloakAuthService`도 루트에서 import한다. 따라서 RAG Core의 public API와 마찬가지로, 통합 코드는 문서화된 root export에 의존하고 내부 모듈 import를 피해야 한다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+
+## DMS SDK boundary
+
+`dms-core` v0.6.0도 같은 원칙으로 `dms.__all__`을 공개 경계로 둔다. 환경·service-config·client·component factory와 문서 lifecycle, metadata validation, recovery, HTTP error adapter를 루트에서 제공하며, 일반 조회는 `storage_key`가 없는 `PublicDocumentMetadata`를 반환한다. 따라서 RAG의 document-management adapter는 내부 object-store 위치를 노출하지 않고 [[dms-core]]의 public-safe 모델만 API/MCP 경계로 재노출해야 한다.^[raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md]
 
 ## Integration implications
 

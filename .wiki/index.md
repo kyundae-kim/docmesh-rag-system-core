@@ -2,15 +2,19 @@
 
 > Content catalog. Every wiki page listed under its type with a one-line summary.
 > Read this first to find relevant pages for any query.
-> Last updated: 2026-07-27 | Total pages: 23
+> Last updated: 2026-07-27 | Total pages: 27
 
 ## Entities
+- [[dms-core]] — PostgreSQL/SQLite metadata와 MinIO object storage를 조합해 문서 lifecycle을 제공하는 DMS Python SDK.
 - [[docmesh-py-core]] — 설정 로드, 서비스 client 생성, health check, Keycloak 인증을 공통화하는 DocMesh Python SDK 엔티티 페이지.
 - [[ragcore]] — DocMesh RAG Core의 단일 public SDK 진입점과 역할, 제약, 관련 인터페이스를 정리한 엔티티 페이지.
 <!-- Alphabetical within section -->
 
 ## Concepts
 - [[construction-paths-and-adapter-contracts]] — RAGCore 직접 조립 경로, bootstrap 경로, helper fallback, adapter 계약을 정리한 개념 페이지.
+- [[dms-configuration-and-assembly]] — DMS metadata backend 선택, factory별 자원 소유권, healthcheck·보안 설정을 정리한 개념 페이지.
+- [[dms-document-lifecycle]] — DMS 업로드·stream·idempotency·cursor 조회·삭제의 lifecycle 계약.
+- [[dms-metadata-and-recovery]] — DMS metadata policy, structured validation, reconciliation, HTTP error adapter를 정리한 개념 페이지.
 - [[first-success-configuration]] — single-user, local storage, Ollama + Milvus Lite fallback 기준의 최소 성공 설정 경로.
 - [[ingestion-pipeline]] — 문서 입력, 청킹, 임베딩, progress 추적, vector store 적재까지의 ingest 흐름.
 - [[interface-roadmap]] — SDK 중심 현재 구조에서 API/MCP 등 후속 인터페이스 확장 방향.

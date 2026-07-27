@@ -301,3 +301,26 @@
   - queries/developing-with-docmesh-py-core.md
   - index.md
 - Version update: v0.5.0 introduces RuntimePlan/Service assembly, diagnose_services(), and RuntimePlan.healthcheck; legacy PostgreSQL DSN and the prior healthcheck environment switch are not part of the v0.5.0 contract.
+
+## [2026-07-27] ingest | dms-core v0.6.0 API, configuration, examples, and environment template
+- Sources ingested:
+  - https://github.com/kyundae-kim/dms-core/wiki/API-Reference-v0.6.0
+  - https://github.com/kyundae-kim/dms-core/wiki/Configuration-v0.6.0
+  - https://github.com/kyundae-kim/dms-core/wiki/Examples-v0.6.0
+  - https://github.com/kyundae-kim/dms-core/blob/v0.6.0/.env.example
+- Raw sources created:
+  - raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md
+  - raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md
+  - raw/articles/dms-core-examples-v0.6.0-2026-07-27.md
+  - raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md
+- Wiki pages created:
+  - entities/dms-core.md
+  - concepts/dms-document-lifecycle.md
+  - concepts/dms-metadata-and-recovery.md
+  - concepts/dms-configuration-and-assembly.md
+- Wiki pages updated:
+  - concepts/public-api-surface.md
+  - concepts/service-configuration-topology.md
+  - concepts/settings-loading-and-validation.md
+  - index.md
+- Source note: GitHub Wiki raw endpoints expose the current wiki body; the supplied `v0.6.0` page names were preserved in source URLs and filenames, but no immutable wiki commit was supplied.

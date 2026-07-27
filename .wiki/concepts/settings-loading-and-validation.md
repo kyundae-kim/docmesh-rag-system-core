@@ -4,7 +4,7 @@ created: 2026-06-19
 updated: 2026-07-27
 type: concept
 tags: [config, sdk, python, security, decision]
-sources: [raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md]
+sources: [raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
 confidence: medium
 ---
 
@@ -19,6 +19,10 @@ confidence: medium
 ## RAG-core reading model
 
 RAG Core의 config guide는 모든 설정이 항상 필요한 것이 아니라, first-success 경로와 DocMesh-integrated 경로가 서로 다른 설정 집합을 요구한다고 정리한다. 즉 `load_docmesh_settings()`와 registry를 쓰는 bootstrap 경로에서는 공통 DocMesh config contract를 따르지만, helper + `RAGCore(...)` 직접 조립 경로에서는 사실상 `OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_GENERATION_MODEL`과 writable 경로가 우선이다. 이 차이는 설정 로딩 계층이 "단일 필수 집합"이 아니라 사용 경로에 따른 다층 계약임을 보여 준다.^[raw/articles/docmesh-rag-core-config-guide-2026-06-23.md]
+
+## DMS diagnosis before assembly
+
+`dms-core`는 `diagnose_environment(env)`로 입력 mapping을 바꾸거나 연결을 만들지 않고 metadata backend 선택, object backend, startup healthcheck, 누락 key, warning, unsupported key를 판정한다. 환경 factory는 이 규칙을 따라 PostgreSQL/SQLite와 MinIO를 조립하며, legacy `POSTGRES_DSN`은 항상 unsupported로 진단한다. 따라서 host application은 [[dms-configuration-and-assembly]]에 따라 배포 전 secret-safe 진단을 수행하고, 실패한 `ConfigurationError.diagnosis`를 운영자용 오류 처리에 활용할 수 있다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
 
 ## Operational policy
 
