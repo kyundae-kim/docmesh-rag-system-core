@@ -364,3 +364,14 @@
 - Scope: package-root API, four assembly paths, configuration diagnosis, document lifecycle, idempotency, pagination, metadata safety, recovery, health/error semantics, and consumer regression verification.
 - Live inspection: installed `dms 0.6.0`, 56 package-root exports; no current DMS imports or factory calls in the consumer source/tests.
 - Documentation drift noted: live `diagnose_environment(env, ...)` requires the environment mapping although the collected API wiki text says `env=None`.
+
+## [2026-07-27] query | dms-core를 DocumentStorage로 적용하는 방법
+- Question:
+  - dms-core를 DocMesh RAG Core의 document storage로 적용하는 방법
+- Query filed:
+  - queries/applying-dms-core-as-document-storage.md
+- Navigation updated:
+  - index.md
+- Recommendation: use DMS as the original-document lifecycle boundary, keep RAG-specific chunk/progress/vector metadata in RAG Core, and connect both sides with the public `document_id` rather than exposing DMS `storage_key` as `storage_path`.
+- Verification: 30 pages indexed; the new query page passed frontmatter, index, and wikilink checks.
+- Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
