@@ -110,6 +110,45 @@ Lifecycle 검증에서는 “생성 성공”만 보지 말고 정상 종료, �
 
 검증 보고서에는 설치된 버전, package-root inventory 차이, 실행한 테스트 명령, pass/fail 수, 남은 stale symbol과 lifecycle 미검증 지점을 포함한다. GitHub Wiki 문서는 tag 이름을 포함해도 immutable commit에 고정되지 않을 수 있으므로, 최종 migration 판단은 대상 tag의 실제 패키지와 source tree로 재확인한다.
 
+## Executed validation: 2026-07-27
+
+대상 소비 프로젝트 `/workspaces/docmesh-rag-system-core`와 tag `v0.5.0`의 실제 source commit `b17a5a8dae6ddda4011a278bbe3aea655499a438`을 비교했다. 프로젝트 `.venv`에 설치된 배포물도 `docmesh-py-core 0.5.0`이었다.
+
+### Package contract result
+
+- 설치 패키지와 tag source 모두 package-root `__all__` 86개를 제공했다.
+- `load_service_configs`, `load_available_service_configs`, `assemble_services`는 positional 환경 mapping을 받지 않는 keyword-only API였다.
+- upstream test suite는 임시 `pytest-asyncio` plugin 환경에서 `206 passed, 14 skipped`였다.
+- 실제 `SQLITE_PATH=:memory:`로 strict config load, diagnosis, 동기 `ServiceBundle` assembly/healthcheck가 통과했다.
+- 같은 SQLite 구성의 `RuntimePlan` + `assemble_service_runtime()` async smoke test도 assembly, `require()`, `SELECT 1`, healthcheck, context cleanup을 통과했다.
+
+따라서 검증 범위에서 SDK v0.5.0 자체의 공개·설정·동기/비동기 runtime 계약은 일관됐다.
+
+### Consumer contract failures
+
+소비 프로젝트 전체 suite는 `38 passed, 30 failed`였다. 30건은 모두 `rag_system_core/composition/docmesh_runtime.py:18`의 동일한 root cause로 수렴했다.
+
+1. `load_docmesh_settings()`가 `load_available_service_configs(source, services=...)`로 환경 mapping을 positional 전달한다. 실제 v0.5.0은 `load_available_service_configs(*, services=...)`이므로 `TypeError`다.
+2. `assemble_docmesh_services()`도 `assemble_services(source, ...)`로 같은 금지된 positional mapping을 전달하며 직접 smoke probe에서 `TypeError`가 재현됐다.
+3. `test_rag_system_core/composition/test_docmesh_integration.py`의 fake 함수는 여전히 `env` positional 인자를 받기 때문에 첫 번째 오류를 가린다.
+4. 같은 파일의 테스트명 두 개가 `v020`을 유지해 검증 기준 버전도 stale하다.
+
+최초 판정은 **SDK contract PASS / consumer integration FAIL**이었다.
+
+### Consumer fix verification
+
+같은 날 소비 프로젝트를 v0.5.0 계약에 맞게 수정했다.
+
+- `load_docmesh_settings()`와 `assemble_docmesh_services()`에서 positional 환경 mapping 인자를 제거했다.
+- 두 wrapper는 process environment를 직접 읽는 SDK의 keyword-only API만 호출한다.
+- `DocmeshRAGServiceFactory.from_env()`도 별도 mapping을 전달하지 않고 process environment 기반 assembly를 위임한다.
+- fake SDK 함수들을 실제 keyword-only signature로 바꾸고 테스트명의 `v020` 표기를 `v050`으로 갱신했다.
+- 새 계약 테스트 네 개가 수정 전 모두 예상한 `TypeError`로 실패했고, 수정 후 모두 통과했다.
+- 집중 통합 suite는 `13 passed`, 전체 소비 프로젝트 suite는 `69 passed`였다.
+- compileall, `git diff --check`, stale `v020`/positional-env 검색도 통과했다.
+
+최종 판정은 **SDK contract PASS / consumer integration PASS**다.
+
 ## Related pages
 
 - [[docmesh-py-core]]

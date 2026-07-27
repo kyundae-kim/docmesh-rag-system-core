@@ -9,7 +9,7 @@ import pytest
 
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.composition.docmesh_runtime import assemble_docmesh_services
+from rag_system_core.composition.docmesh_runtime import assemble_docmesh_services, load_docmesh_settings
 from rag_system_core.composition.factories import (
     DocmeshRAGServiceFactory,
     create_rag_embedding_client,
@@ -65,20 +65,37 @@ def make_settings() -> SimpleNamespace:
     )
 
 
-def test_assemble_docmesh_services_uses_v020_assembly_api(monkeypatch) -> None:
+def test_load_docmesh_settings_uses_v050_keyword_only_api(monkeypatch) -> None:
+    records: dict[str, object] = {}
+    expected_settings = object()
+
+    def fake_load_available_service_configs(*, services):
+        records["services"] = services
+        return expected_settings
+
+    monkeypatch.setattr(
+        docmesh_py_core,
+        "load_available_service_configs",
+        fake_load_available_service_configs,
+    )
+
+    settings = load_docmesh_settings(services={"milvus"})
+
+    assert settings is expected_settings
+    assert records == {"services": {"milvus"}}
+
+
+def test_assemble_docmesh_services_uses_v050_keyword_only_api(monkeypatch) -> None:
     records: dict[str, object] = {}
     expected_bundle = object()
 
-    def fake_assemble_services(env, **kwargs):
-        records["env"] = env
+    def fake_assemble_services(**kwargs):
         records.update(kwargs)
         return expected_bundle
 
     monkeypatch.setattr(docmesh_py_core, "assemble_services", fake_assemble_services)
-    env = {"OLLAMA_HOST": "http://ollama"}
 
     bundle = assemble_docmesh_services(
-        env,
         required={"ollama"},
         check_on_startup=True,
         parallel_healthchecks=True,
@@ -86,7 +103,6 @@ def test_assemble_docmesh_services_uses_v020_assembly_api(monkeypatch) -> None:
 
     assert bundle is expected_bundle
     assert records == {
-        "env": env,
         "services": {"milvus", "ollama"},
         "required": {"ollama"},
         "check_on_startup": True,
@@ -139,13 +155,12 @@ def test_ollama_factories_prefer_an_explicit_model(factory, expected_model: str)
     assert client.model == expected_model
 
 
-def test_direct_ollama_factory_loads_v020_service_config_once(monkeypatch) -> None:
+def test_direct_ollama_factory_loads_v050_service_config_once(monkeypatch) -> None:
     settings = make_settings()
     ollama = FakeDocmeshOllamaWrapper()
     records = {"loads": 0}
 
-    def fake_load_available_service_configs(env, *, services):
-        del env
+    def fake_load_available_service_configs(*, services):
         assert services == {"ollama"}
         records["loads"] += 1
         return settings
@@ -174,13 +189,10 @@ def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
-        lambda env, *, required, check_on_startup: bundle,
+        lambda *, required, check_on_startup: bundle,
     )
 
-    factory = DocmeshRAGServiceFactory.from_env(
-        {"OLLAMA_HOST": "http://ollama"},
-        check_on_startup=True,
-    )
+    factory = DocmeshRAGServiceFactory.from_env(check_on_startup=True)
     factory.close()
 
     assert factory.settings is settings

@@ -156,12 +156,10 @@ class DocmeshRAGServiceFactory:
     @classmethod
     def from_env(
         cls,
-        env: dict[str, str] | None = None,
         *,
         check_on_startup: bool = False,
     ) -> "DocmeshRAGServiceFactory":
         bundle = docmesh_runtime.assemble_docmesh_services(
-            env,
             required={"ollama"},
             check_on_startup=check_on_startup,
         )

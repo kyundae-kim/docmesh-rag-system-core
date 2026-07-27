@@ -333,3 +333,25 @@
 - Scope: package-root API, signature, strict configuration, RuntimePlan assembly, lifecycle cleanup, health/error shape, stale-symbol and consumer regression verification.
 - Verification: 28 pages indexed; the new query page passed page/index/link checks.
 - Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
+
+## [2026-07-27] update | docmesh-py-core v0.5.0 계약 검증 실행
+- Validated installed package version 0.5.0 against tag commit `b17a5a8dae6ddda4011a278bbe3aea655499a438`.
+- Upstream result: 206 passed, 14 skipped; package-root exports: 86.
+- SQLite sync bundle and async RuntimePlan smoke tests passed.
+- Consumer result: 38 passed, 30 failed.
+- Root cause: positional environment mapping passed to keyword-only `load_available_service_configs()`; the same violation exists in `assemble_services()` integration.
+- Wiki page updated:
+  - queries/verifying-docmesh-py-core-contract.md
+
+## [2026-07-27] update | docmesh-py-core v0.5.0 소비 계약 오류 수정
+- Removed positional environment mappings from config loading and service assembly wrappers.
+- Aligned `DocmeshRAGServiceFactory.from_env()` and SDK test doubles with v0.5.0 keyword-only signatures.
+- Renamed stale `v020` integration tests to `v050`.
+- TDD result: 4 expected RED failures, then 4 passed after the production fix.
+- Verification: 13 focused integration tests passed; full consumer suite 69 passed; compileall, diff check, and stale-symbol scan passed.
+- Files updated:
+  - rag_system_core/composition/docmesh_runtime.py
+  - rag_system_core/composition/factories.py
+  - test_rag_system_core/composition/test_docmesh_integration.py
+  - README.md
+  - queries/verifying-docmesh-py-core-contract.md

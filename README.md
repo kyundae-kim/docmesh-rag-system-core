@@ -242,27 +242,28 @@ print(deleted)
 
 ## bootstrap 경로
 
-DocMesh settings / registry가 이미 준비된 환경이면 service factory 기반 bootstrap 경로도 사용할 수 있습니다.
+DocMesh v0.5.0 설정이 프로세스 환경변수에 준비되어 있으면 service factory 기반 bootstrap 경로도 사용할 수 있습니다. `from_env()`는 별도의 환경 mapping을 받지 않고 현재 프로세스 환경을 읽습니다.
 
 ```python
 from rag_system_core import DocmeshRAGServiceFactory, bootstrap_rag_core
-from rag_system_core.composition.docmesh_runtime import create_service_registry, load_docmesh_settings
 
-settings = load_docmesh_settings()
-registry = create_service_registry(settings)
-service_factory = DocmeshRAGServiceFactory(settings=settings, registry=registry)
+service_factory = DocmeshRAGServiceFactory.from_env(check_on_startup=True)
 
-core = bootstrap_rag_core(
-    service_factory=service_factory,
-    metadata_path="./data/metadata.db",
-    document_storage_dir="./data/documents",
-    storage_mode="local",
-    chunk_size=512,
-    chunk_overlap=64,
-)
+try:
+    core = bootstrap_rag_core(
+        service_factory=service_factory,
+        metadata_path="./data/metadata.db",
+        document_storage_dir="./data/documents",
+        storage_mode="local",
+        chunk_size=512,
+        chunk_overlap=64,
+    )
+    # 여기에서 core를 사용하는 애플리케이션을 실행합니다.
+finally:
+    service_factory.close()
 ```
 
-이 경로는 helper가 settings를 직접 로드하는 방식이 아니라, **준비된 service factory를 받아 조립**하는 방식입니다.
+이 경로에서 factory는 DocMesh service bundle의 lifecycle을 소유하며, 사용이 끝나면 `close()`해야 합니다.
 
 ---
 

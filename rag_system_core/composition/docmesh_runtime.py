@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-from collections.abc import Mapping
 from typing import Any
 
 import docmesh_py_core
@@ -10,28 +8,22 @@ RAG_SERVICES = {"milvus", "ollama"}
 
 
 def load_docmesh_settings(
-    env: Mapping[str, str] | None = None,
     *,
     services: set[str] | None = None,
 ) -> Any:
-    source = os.environ if env is None else env
     return docmesh_py_core.load_available_service_configs(
-        source,
         services=RAG_SERVICES if services is None else services,
     )
 
 
 def assemble_docmesh_services(
-    env: Mapping[str, str] | None = None,
     *,
     services: set[str] | None = None,
     required: set[str] | None = None,
     check_on_startup: bool = False,
     parallel_healthchecks: bool = False,
 ) -> Any:
-    source = os.environ if env is None else env
     return docmesh_py_core.assemble_services(
-        source,
         services=RAG_SERVICES if services is None else services,
         required=required,
         check_on_startup=check_on_startup,
