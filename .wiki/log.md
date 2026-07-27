@@ -355,3 +355,12 @@
   - test_rag_system_core/composition/test_docmesh_integration.py
   - README.md
   - queries/verifying-docmesh-py-core-contract.md
+
+## [2026-07-27] query | dms-core 계약 검증 방법
+- Query filed:
+  - queries/verifying-dms-core-contract.md
+- Navigation updated:
+  - index.md
+- Scope: package-root API, four assembly paths, configuration diagnosis, document lifecycle, idempotency, pagination, metadata safety, recovery, health/error semantics, and consumer regression verification.
+- Live inspection: installed `dms 0.6.0`, 56 package-root exports; no current DMS imports or factory calls in the consumer source/tests.
+- Documentation drift noted: live `diagnose_environment(env, ...)` requires the environment mapping although the collected API wiki text says `env=None`.
