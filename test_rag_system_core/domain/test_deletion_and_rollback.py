@@ -7,12 +7,16 @@ import pytest
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.domain.ingestion import IngestionService
-from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import VectorStore
 from rag_system_core.types import ChunkRecord
 
-from test_rag_system_core.support import authenticated_user, create_test_rig, FakeEmbeddingClient
+from test_rag_system_core.support import (
+    authenticated_user,
+    create_test_rig,
+    FakeDocumentStorage,
+    FakeEmbeddingClient,
+)
 
 USER_A = authenticated_user("user-a")
 
@@ -73,7 +77,7 @@ def test_ingestion_service_store_rolls_back_milvus_chunks_when_chunk_persistence
         embedding_client=FakeEmbeddingClient(),
         vector_store=cast(VectorStore, vector_store),
         metadata_store=cast(MetadataStore, metadata_store),
-        document_storage=DocumentStorage("memory", tmp_path / "documents"),
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
     )
     chunks = [
         ChunkRecord(
@@ -118,7 +122,7 @@ def test_ingestion_service_store_rolls_back_milvus_chunks_when_generated_id_coun
         embedding_client=FakeEmbeddingClient(),
         vector_store=cast(VectorStore, vector_store),
         metadata_store=cast(MetadataStore, metadata_store),
-        document_storage=DocumentStorage("memory", tmp_path / "documents"),
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
     )
     chunks = [
         ChunkRecord(
@@ -163,7 +167,7 @@ def test_ingest_text_rolls_back_generated_ids_when_vector_store_returns_wrong_co
         embedding_client=FakeEmbeddingClient(),
         vector_store=cast(VectorStore, vector_store),
         metadata_store=metadata_store,
-        document_storage=DocumentStorage("memory", tmp_path / "documents"),
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
     )
 
     with pytest.raises(RuntimeError, match="Milvus returned a mismatched number of chunk ids"):
@@ -205,7 +209,7 @@ def test_ingest_text_rolls_back_persisted_chunks_when_completion_progress_fails(
         embedding_client=FakeEmbeddingClient(),
         vector_store=cast(VectorStore, vector_store),
         metadata_store=metadata_store,
-        document_storage=DocumentStorage("memory", tmp_path / "documents"),
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
     )
 
     with pytest.raises(RuntimeError, match="progress persistence failed"):

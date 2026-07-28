@@ -18,10 +18,9 @@ def test_package_root_exports_bootstrap_helper():
 
 def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> None:
     from rag_system_core.composition.bootstrap import bootstrap_rag_core
-    from rag_system_core.storage.document_storage import DocumentStorage
     from rag_system_core.storage.metadata_store import MetadataStore
     from rag_system_core.storage.vector_store import MilvusLiteVectorStore
-    from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
+    from test_rag_system_core.support import FakeDocumentStorage, FakeEmbeddingClient, FakeGenerationClient
 
     records: dict[str, object] = {}
     fake_embedding_client = FakeEmbeddingClient()
@@ -42,7 +41,7 @@ def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> 
 
         def create_document_storage(self):
             records["document_storage"] = True
-            return DocumentStorage("memory", tmp_path / "documents")
+            return FakeDocumentStorage("memory", tmp_path / "documents")
 
         def create_metadata_store(self, *, metadata_path):
             records["metadata_store_path"] = Path(metadata_path)

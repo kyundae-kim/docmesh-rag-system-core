@@ -305,7 +305,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
  ├─ RetrievalService
  ├─ GenerationService
  ├─ MetadataStore (SQLite + SQLAlchemy)
- ├─ DocumentStorage (memory | local)
+ ├─ DmsDocumentStorage (dms-core + MinIO)
  └─ MilvusLiteVectorStore (default)
 
 [Composition Layer]

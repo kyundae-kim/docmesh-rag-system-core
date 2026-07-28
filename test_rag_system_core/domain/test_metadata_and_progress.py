@@ -8,10 +8,9 @@ from sqlalchemy import inspect
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
 from rag_system_core.composition.health import run_health_checks
-from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 
-from test_rag_system_core.support import authenticated_user, create_test_rig
+from test_rag_system_core.support import authenticated_user, create_test_rig, FakeDocumentStorage
 
 USER_A = authenticated_user("user-a")
 USER_B = authenticated_user("user-b")
@@ -90,7 +89,7 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
         generation_client=rig.generation_client,
         vector_store=vector_store,
         metadata_store=MetadataStore(tmp_path / "metadata.db"),
-        document_storage=DocumentStorage("memory", tmp_path / "documents"),
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
         health_check_runner=run_health_checks,
     )

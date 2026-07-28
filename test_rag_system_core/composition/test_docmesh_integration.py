@@ -22,9 +22,8 @@ from rag_system_core.composition.factories import (
     create_rag_vector_store,
 )
 from rag_system_core.composition.health import run_health_checks
-from rag_system_core.storage.document_storage import DocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
-from test_rag_system_core.support import FakeEmbeddingClient, FakeGenerationClient
+from test_rag_system_core.support import FakeDocumentStorage, FakeEmbeddingClient, FakeGenerationClient
 
 
 def test_infrastructure_has_no_package_root_facade_module() -> None:
@@ -390,7 +389,7 @@ def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Pat
         def check(self) -> None:
             return None
 
-    class CheckedDocumentStorage(DocumentStorage):
+    class CheckedDocumentStorage(FakeDocumentStorage):
         def check(self) -> None:
             return None
 
