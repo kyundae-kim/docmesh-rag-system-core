@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from types import TracebackType
+from typing import Protocol, Self
 
 import dms
 from docmesh_py_core import ServiceBundle, ServiceConfigs
@@ -160,6 +161,7 @@ class DocmeshRAGServiceFactory:
         cls,
         *,
         check_on_startup: bool = False,
+        parallel_healthchecks: bool = True,
     ) -> "DocmeshRAGServiceFactory":
         dms_settings = docmesh_runtime.load_dms_settings()
         bundle = docmesh_runtime.assemble_docmesh_services(
@@ -167,6 +169,7 @@ class DocmeshRAGServiceFactory:
             required=RAG_SERVICES,
             one_of=(),
             check_on_startup=check_on_startup,
+            parallel_healthchecks=parallel_healthchecks,
         )
         try:
             dms_sdk = dms.create_sdk_from_service_configs(
@@ -182,6 +185,18 @@ class DocmeshRAGServiceFactory:
             bundle=bundle,
             owns_dms_sdk=True,
         )
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        del exc_type, exc_value, traceback
+        self.close()
 
     def close(self) -> None:
         try:

@@ -274,12 +274,20 @@ def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
     )
     dms_sdk = SimpleNamespace(close=lambda: records.update(dms_closed=True))
 
-    def fake_assemble_docmesh_services(*, services, required, one_of, check_on_startup):
+    def fake_assemble_docmesh_services(
+        *,
+        services,
+        required,
+        one_of,
+        check_on_startup,
+        parallel_healthchecks,
+    ):
         records["assembly"] = {
             "services": services,
             "required": required,
             "one_of": one_of,
             "check_on_startup": check_on_startup,
+            "parallel_healthchecks": parallel_healthchecks,
         }
         return bundle
 
@@ -302,7 +310,10 @@ def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
         fake_create_dms_sdk,
     )
 
-    factory = DocmeshRAGServiceFactory.from_env(check_on_startup=True)
+    factory = DocmeshRAGServiceFactory.from_env(
+        check_on_startup=True,
+        parallel_healthchecks=True,
+    )
     storage = factory.create_document_storage()
     factory.close()
 
@@ -315,6 +326,7 @@ def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
             "required": {"milvus", "ollama"},
             "one_of": (),
             "check_on_startup": True,
+            "parallel_healthchecks": True,
         },
         "bundle_closed": True,
         "dms_check_on_startup": True,
@@ -335,7 +347,7 @@ def test_docmesh_factory_from_env_closes_bundle_when_dms_assembly_fails(monkeypa
 
     monkeypatch.setattr(
         "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
-        lambda *, services, required, one_of, check_on_startup: bundle,
+        lambda *, services, required, one_of, check_on_startup, parallel_healthchecks: bundle,
     )
     monkeypatch.setattr(
         "rag_system_core.composition.docmesh_runtime.load_dms_settings",
@@ -356,6 +368,22 @@ def test_docmesh_factory_from_env_closes_bundle_when_dms_assembly_fails(monkeypa
         DocmeshRAGServiceFactory.from_env(check_on_startup=True)
 
     assert records["bundle_closed"] is True
+
+
+def test_docmesh_factory_context_manager_closes_owned_resources() -> None:
+    records: list[str] = []
+    factory = DocmeshRAGServiceFactory(
+        settings=make_settings(),
+        dms_sdk=SimpleNamespace(close=lambda: records.append("dms")),
+        bundle=SimpleNamespace(close=lambda: records.append("bundle")),
+        owns_dms_sdk=True,
+    )
+
+    with factory as entered:
+        assert entered is factory
+        assert records == []
+
+    assert records == ["dms", "bundle"]
 
 
 def test_ollama_factories_require_models_from_settings() -> None:

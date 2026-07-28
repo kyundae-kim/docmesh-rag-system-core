@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
-from rag_system_core.composition.factories import RAGServiceFactory
+from rag_system_core.composition.factories import DocmeshRAGServiceFactory, RAGServiceFactory
 from rag_system_core.composition.health import run_health_checks
 from rag_system_core.domain.core import RAGCore
 
@@ -23,4 +25,25 @@ def bootstrap_rag_core(
         chunker=service_factory.create_chunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
         health_check_runner=run_health_checks,
     )
+
+
+@contextmanager
+def bootstrap_rag_core_from_env(
+    *,
+    metadata_path: str | Path,
+    chunk_size: int = 512,
+    chunk_overlap: int = 64,
+    check_on_startup: bool = True,
+    parallel_healthchecks: bool = True,
+) -> Iterator[RAGCore]:
+    with DocmeshRAGServiceFactory.from_env(
+        check_on_startup=check_on_startup,
+        parallel_healthchecks=parallel_healthchecks,
+    ) as service_factory:
+        yield bootstrap_rag_core(
+            service_factory=service_factory,
+            metadata_path=metadata_path,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
 

@@ -417,3 +417,27 @@
   - `queries/separating-dms-service-environment-variables-with-prefixes.md`
   - `index.md`
 - Verification: 32 composition tests and all 79 repository tests passed; compileall and `git diff --check` passed.
+
+## [2026-07-28] query | docmesh-py-core 적용 최적화
+- Synthesized the preferred adoption strategy: one composition entrypoint, selective config validation, process-scope client reuse, required/optional readiness, deterministic cleanup, and isolated DMS configuration/lifecycle.
+- Filed: `queries/optimizing-docmesh-py-core-adoption.md`
+- Navigation updated: `index.md` (32 pages indexed).
+- Verification: the new query page passed required frontmatter, index presence, and wikilink checks.
+- Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
+
+## [2026-07-28] update | docmesh-py-core bootstrap 최적화 repository 적용
+- Added public `bootstrap_rag_core_from_env(...)` context manager with startup checks and parallel Ollama/Milvus healthchecks enabled by default.
+- Added context-manager lifecycle ownership to `DocmeshRAGServiceFactory` and exposed `parallel_healthchecks` through `from_env(...)`.
+- Preserved DMS-first cleanup and RAG bundle rollback when DMS assembly fails.
+- Updated implementation, tests, and public usage documentation:
+  - `rag_system_core/composition/bootstrap.py`
+  - `rag_system_core/composition/factories.py`
+  - `rag_system_core/composition/__init__.py`
+  - `rag_system_core/__init__.py`
+  - `test_rag_system_core/composition/test_bootstrap.py`
+  - `test_rag_system_core/composition/test_docmesh_integration.py`
+  - `README.md`
+  - `queries/optimizing-docmesh-py-core-adoption.md`
+  - `index.md`
+- Verification: installed v0.5.0 API signatures checked; 36 composition tests and all 83 repository tests passed; compileall and `git diff --check` passed; mypy remained at the same 15 pre-existing errors as `HEAD` with no new regression.
+- Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.

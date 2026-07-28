@@ -55,6 +55,7 @@ from rag_system_core import (
     OllamaEmbeddingClient,
     OllamaGenerationClient,
     bootstrap_rag_core,
+    bootstrap_rag_core_from_env,
     DocmeshRAGServiceFactory,
     RAGServiceFactory,
     DocumentRecord,
@@ -67,10 +68,11 @@ from rag_system_core import (
 )
 ```
 
-실무적으로는 아래 두 경로가 핵심입니다.
+실무적으로는 아래 세 경로가 핵심입니다.
 
-1. **factory helper + `RAGCore(...)` 직접 조립**
-2. **`DocmeshRAGServiceFactory` + `bootstrap_rag_core(...)`**
+1. **production 기본 경로: `bootstrap_rag_core_from_env(...)` context manager**
+2. **고급 조립 경로: `DocmeshRAGServiceFactory` + `bootstrap_rag_core(...)`**
+3. **테스트·사용자 정의 경로: factory helper + `RAGCore(...)` 직접 조립**
 
 ---
 
@@ -129,20 +131,18 @@ DMS_MINIO_SECURE=false
 
 현재 구현 기준으로 `RAGCore`는 **의존성 주입형 생성자**입니다. production 기본 경로는 DocMesh 설정으로 Ollama·Milvus·DMS를 함께 조립하는 service factory입니다.
 
-가장 현실적인 첫 성공 경로는 `DocmeshRAGServiceFactory`가 구성요소와 DMS SDK를 만들고 `bootstrap_rag_core(...)`가 코어를 조립하는 방식입니다.
+가장 현실적인 첫 성공 경로는 `bootstrap_rag_core_from_env(...)`가 구성요소와 DMS SDK를 한 번 조립하고 context 종료 시 소유 자원을 정리하는 방식입니다. startup health check는 기본적으로 활성화되며 Ollama와 Milvus를 병렬 점검합니다.
 
 ```python
-from rag_system_core import DocmeshRAGServiceFactory, bootstrap_rag_core
+from rag_system_core import bootstrap_rag_core_from_env
 
-service_factory = DocmeshRAGServiceFactory.from_env(check_on_startup=True)
-core = bootstrap_rag_core(
-    service_factory=service_factory,
+with bootstrap_rag_core_from_env(
     metadata_path="./data/metadata.db",
     chunk_size=512,
     chunk_overlap=64,
-)
-
-# 프로세스 종료 시 service_factory.close()를 호출합니다.
+) as core:
+    # 이 context 안에서 API 서버, worker 또는 batch 작업을 실행합니다.
+    print(core.health_check().ok)
 ```
 
 ---
@@ -237,26 +237,21 @@ print(deleted)
 
 ## bootstrap 경로
 
-DocMesh v0.5.0 설정이 프로세스 환경변수에 준비되어 있으면 service factory 기반 bootstrap 경로도 사용할 수 있습니다. `from_env()`는 별도의 환경 mapping을 받지 않고 현재 프로세스 환경을 읽으며, DMS의 공유 서비스 설정은 `DMS_` 접두사로 RAG 설정과 분리합니다.
+DocMesh v0.5.0 설정이 프로세스 환경변수에 준비되어 있으면 lifecycle을 소유하는 environment bootstrap 경로를 사용합니다. `from_env()`는 별도의 환경 mapping을 받지 않고 현재 프로세스 환경을 읽으며, DMS의 공유 서비스 설정은 `DMS_` 접두사로 RAG 설정과 분리합니다.
 
 ```python
-from rag_system_core import DocmeshRAGServiceFactory, bootstrap_rag_core
+from rag_system_core import bootstrap_rag_core_from_env
 
-service_factory = DocmeshRAGServiceFactory.from_env(check_on_startup=True)
-
-try:
-    core = bootstrap_rag_core(
-        service_factory=service_factory,
-        metadata_path="./data/metadata.db",
-        chunk_size=512,
-        chunk_overlap=64,
-    )
+with bootstrap_rag_core_from_env(
+    metadata_path="./data/metadata.db",
+    check_on_startup=True,
+    parallel_healthchecks=True,
+) as core:
     # 여기에서 core를 사용하는 애플리케이션을 실행합니다.
-finally:
-    service_factory.close()
+    ...
 ```
 
-이 경로에서 factory는 DocMesh service bundle과 DMS SDK의 lifecycle을 소유하며, 사용이 끝나면 `close()`해야 합니다.
+이 helper는 DocMesh service bundle과 DMS SDK의 lifecycle을 소유합니다. context가 정상 종료되거나 예외로 종료되면 DMS SDK와 RAG bundle을 순서대로 정리합니다. 사용자 정의 조립이 필요한 경우 `DocmeshRAGServiceFactory.from_env(...)` 자체도 context manager로 사용할 수 있습니다.
 
 ---
 
@@ -324,7 +319,7 @@ uv run pytest -q
 문서 동기화 시점 기준 테스트 결과:
 
 ```text
-49 passed
+83 passed
 ```
 
 테스트 범위와 요구사항 추적은 [docs/test.md](docs/test.md)를 참고하세요.

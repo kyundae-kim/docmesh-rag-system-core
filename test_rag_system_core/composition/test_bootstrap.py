@@ -16,6 +16,12 @@ def test_package_root_exports_bootstrap_helper():
     assert callable(bootstrap_rag_core)
 
 
+def test_package_root_exports_environment_bootstrap_helper():
+    from rag_system_core import bootstrap_rag_core_from_env
+
+    assert callable(bootstrap_rag_core_from_env)
+
+
 def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> None:
     from rag_system_core.composition.bootstrap import bootstrap_rag_core
     from rag_system_core.storage.metadata_store import MetadataStore
@@ -72,3 +78,59 @@ def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> 
     assert core.embedding_client is fake_embedding_client
     assert core.generation_client is fake_generation_client
     assert core.vector_store is fake_vector_store
+
+
+def test_bootstrap_rag_core_from_env_owns_factory_lifecycle(monkeypatch, tmp_path: Path) -> None:
+    import rag_system_core.composition.bootstrap as bootstrap_module
+    from rag_system_core.composition.bootstrap import bootstrap_rag_core_from_env
+
+    records: dict[str, object] = {}
+    expected_core = object()
+
+    class FakeFactory:
+        @classmethod
+        def from_env(cls, *, check_on_startup, parallel_healthchecks):
+            records["from_env"] = {
+                "check_on_startup": check_on_startup,
+                "parallel_healthchecks": parallel_healthchecks,
+            }
+            return cls()
+
+        def __enter__(self):
+            records["entered"] = True
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            records["exited"] = True
+
+    def fake_bootstrap_rag_core(*, service_factory, metadata_path, chunk_size, chunk_overlap):
+        records["bootstrap"] = {
+            "service_factory": service_factory,
+            "metadata_path": metadata_path,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
+        }
+        return expected_core
+
+    monkeypatch.setattr(bootstrap_module, "DocmeshRAGServiceFactory", FakeFactory)
+    monkeypatch.setattr(bootstrap_module, "bootstrap_rag_core", fake_bootstrap_rag_core)
+
+    with bootstrap_rag_core_from_env(
+        metadata_path=tmp_path / "metadata.db",
+        chunk_size=64,
+        chunk_overlap=8,
+    ) as core:
+        assert core is expected_core
+        assert records["entered"] is True
+        assert "exited" not in records
+
+    assert records["from_env"] == {
+        "check_on_startup": True,
+        "parallel_healthchecks": True,
+    }
+    bootstrap_record = records["bootstrap"]
+    assert isinstance(bootstrap_record, dict)
+    assert bootstrap_record["metadata_path"] == tmp_path / "metadata.db"
+    assert bootstrap_record["chunk_size"] == 64
+    assert bootstrap_record["chunk_overlap"] == 8
+    assert records["exited"] is True
