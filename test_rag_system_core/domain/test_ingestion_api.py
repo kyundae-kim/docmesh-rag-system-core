@@ -35,8 +35,8 @@ def test_ingest_text_stores_string_input_as_managed_asset(tmp_path: Path) -> Non
 
     stored = rig.core.get_document(result.doc_id, user=USER_A)
     assert stored is not None
-    assert stored.storage_path is not None
-    stored_path = Path(stored.storage_path)
+    assert stored.asset_reference is not None
+    stored_path = Path(stored.asset_reference)
     assert stored_path.exists()
     assert stored_path.read_text(encoding="utf-8") == "alpha asset text"
 
@@ -48,8 +48,8 @@ def test_ingest_text_memory_storage_uses_logical_asset_path(tmp_path: Path) -> N
 
     stored = rig.core.get_document(result.doc_id, user=USER_A)
     assert stored is not None
-    assert stored.storage_path is not None
-    assert stored.storage_path.startswith("memory://")
+    assert stored.asset_reference is not None
+    assert stored.asset_reference.startswith("memory://")
     assert rig.core.document_storage.load(stored) == "alpha memory asset"
 
 
@@ -61,8 +61,8 @@ def test_ingest_file_stream_copies_input_stream_into_managed_storage(tmp_path: P
 
     stored = rig.core.get_document(result.doc_id, user=USER_A)
     assert stored is not None
-    assert stored.storage_path is not None
-    stored_path = Path(stored.storage_path)
+    assert stored.asset_reference is not None
+    stored_path = Path(stored.asset_reference)
     assert stored_path.exists()
     assert stored_path.name != "source.txt"
     assert stored_path.read_text(encoding="utf-8") == "alpha original file"
@@ -85,8 +85,8 @@ def test_ingest_file_path_reads_existing_file_via_dedicated_api(tmp_path: Path) 
     stored = rig.core.get_document(result.doc_id, user=USER_A)
     assert stored is not None
     assert stored.source == "existing.txt"
-    assert stored.storage_path is not None
-    assert Path(stored.storage_path).read_text(encoding="utf-8") == "alpha from path"
+    assert stored.asset_reference is not None
+    assert Path(stored.asset_reference).read_text(encoding="utf-8") == "alpha from path"
 
 
 def test_ingestion_service_exposes_separate_stream_and_path_methods(tmp_path: Path) -> None:

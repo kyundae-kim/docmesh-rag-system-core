@@ -18,7 +18,7 @@ class DocumentRecord:
     user_id: str
     source: str
     created_at: str
-    storage_path: str | None = None
+    asset_reference: str | None = None
 
 
 @dataclass(slots=True)

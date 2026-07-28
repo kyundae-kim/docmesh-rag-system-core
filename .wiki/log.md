@@ -375,3 +375,45 @@
 - Recommendation: use DMS as the original-document lifecycle boundary, keep RAG-specific chunk/progress/vector metadata in RAG Core, and connect both sides with the public `document_id` rather than exposing DMS `storage_key` as `storage_path`.
 - Verification: 30 pages indexed; the new query page passed frontmatter, index, and wikilink checks.
 - Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
+
+## [2026-07-28] query | DMS 서비스 환경변수 접미사 분리 관리
+- Question:
+  - DMS용 PostgreSQL·SQLite·MinIO 환경변수를 특정 접미사로 분리 관리하는 방법
+- Query filed:
+  - queries/separating-dms-service-environment-variables-with-suffixes.md
+- Navigation updated:
+  - index.md
+- Conclusion: current DMS/docmesh environment factories read fixed canonical process-environment keys; use deployment-time key translation for a separate process, or parse suffixed application settings and inject explicitly created clients/components when sharing one process.
+- Verification: 31 pages indexed; the new query page passed frontmatter, index, and wikilink checks.
+- Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
+
+## [2026-07-28] update | DMS 서비스 환경변수 분리 규칙 정정
+- User correction: 접미사 방식이 아니라 접두사 방식으로 분리 관리.
+- Query page renamed:
+  - queries/separating-dms-service-environment-variables-with-suffixes.md
+  - queries/separating-dms-service-environment-variables-with-prefixes.md
+- Naming examples updated:
+  - `DMS_POSTGRES_HOST`
+  - `DMS_SQLITE_PATH`
+  - `DMS_MINIO_ENDPOINT`
+- Navigation updated:
+  - index.md
+- Verification: 31 pages indexed; renamed page passed frontmatter, index, and wikilink checks; no suffix-named query file or suffix wording remains in the corrected page.
+- Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
+
+## [2026-07-28] update | DMS 접두사 환경변수 repository 적용
+- Added `load_dms_settings()` with isolated `DMS_DOCMESH_*`, `DMS_POSTGRES_*`, `DMS_SQLITE_*`, and `DMS_MINIO_*` config models.
+- Preserved canonical DMS control keys `DMS_METADATA_BACKEND` and `DMS_CONFIGURATION_STRICT` without a duplicated prefix.
+- Split runtime assembly: Ollama/Milvus remain in the RAG service bundle; DMS receives a separately constructed `ServiceConfigs` instance.
+- Avoided temporary or global `os.environ` mutation.
+- Updated configuration surfaces:
+  - `.env.example`
+  - `README.md`
+- Updated implementation and tests:
+  - `rag_system_core/composition/docmesh_runtime.py`
+  - `rag_system_core/composition/factories.py`
+  - `test_rag_system_core/composition/test_docmesh_integration.py`
+- Wiki pages updated:
+  - `queries/separating-dms-service-environment-variables-with-prefixes.md`
+  - `index.md`
+- Verification: 32 composition tests and all 79 repository tests passed; compileall and `git diff --check` passed.

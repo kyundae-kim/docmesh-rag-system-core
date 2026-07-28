@@ -40,10 +40,9 @@ def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> 
         def create_vector_store(self):
             return fake_vector_store
 
-        def create_document_storage(self, *, storage_mode, document_storage_dir):
-            records["storage_mode"] = storage_mode
-            records["document_storage_dir"] = Path(document_storage_dir)
-            return DocumentStorage(storage_mode, Path(document_storage_dir))
+        def create_document_storage(self):
+            records["document_storage"] = True
+            return DocumentStorage("memory", tmp_path / "documents")
 
         def create_metadata_store(self, *, metadata_path):
             records["metadata_store_path"] = Path(metadata_path)
@@ -59,8 +58,6 @@ def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> 
     core = bootstrap_rag_core(
         service_factory=FakeServiceFactory(),
         metadata_path=tmp_path / "metadata.db",
-        document_storage_dir=tmp_path / "documents",
-        storage_mode="local",
         chunk_size=32,
         chunk_overlap=4,
     )
@@ -69,8 +66,7 @@ def test_bootstrap_rag_core_builds_core_from_service_factory(tmp_path: Path) -> 
         "embedding": True,
         "generation": True,
         "metadata_store_path": tmp_path / "metadata.db",
-        "storage_mode": "local",
-        "document_storage_dir": tmp_path / "documents",
+        "document_storage": True,
         "chunk_size": 32,
         "chunk_overlap": 4,
     }

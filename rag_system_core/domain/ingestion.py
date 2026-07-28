@@ -56,51 +56,64 @@ class IngestionService:
     def ingest_text(self, *, user_id: str, text: str, source: str) -> IngestResult:
         normalized = self.preprocess(text)
         doc_id = str(uuid4())
-        storage_path = self.document_storage.store_text(
+        job_id = str(uuid4())
+        asset_reference = self.document_storage.store_text(
             doc_id=doc_id,
+            user_id=user_id,
             text=normalized,
             source=source,
+            idempotency_key=job_id,
         )
         return self._finalize_ingest(
             user_id=user_id,
             text=normalized,
             source=source,
             doc_id=doc_id,
-            storage_path=storage_path,
+            job_id=job_id,
+            asset_reference=asset_reference,
         )
 
     def ingest_file_stream(self, *, user_id: str, file_stream: BinaryIO, source: str) -> IngestResult:
         payload = file_stream.read()
         text = payload.decode("utf-8")
         doc_id = str(uuid4())
-        storage_path = self.document_storage.store_file_stream(
+        job_id = str(uuid4())
+        asset_reference = self.document_storage.store_file_stream(
             doc_id=doc_id,
+            user_id=user_id,
             file_stream=BytesIO(payload),
+            size=len(payload),
             source=source,
+            idempotency_key=job_id,
         )
         return self._finalize_ingest(
             user_id=user_id,
             text=text,
             source=source,
             doc_id=doc_id,
-            storage_path=storage_path,
+            job_id=job_id,
+            asset_reference=asset_reference,
         )
 
     def ingest_file_path(self, *, user_id: str, file_path: Path, source: str | None = None) -> IngestResult:
         payload = file_path.read_bytes()
         resolved_source = source or file_path.name
         doc_id = str(uuid4())
-        storage_path = self.document_storage.store_file_path(
+        job_id = str(uuid4())
+        asset_reference = self.document_storage.store_file_path(
             doc_id=doc_id,
+            user_id=user_id,
             file_path=file_path,
             source=resolved_source,
+            idempotency_key=job_id,
         )
         return self._finalize_ingest(
             user_id=user_id,
             text=payload.decode("utf-8"),
             source=resolved_source,
             doc_id=doc_id,
-            storage_path=storage_path,
+            job_id=job_id,
+            asset_reference=asset_reference,
         )
 
     def _finalize_ingest(
@@ -110,9 +123,9 @@ class IngestionService:
         text: str,
         source: str,
         doc_id: str,
-        storage_path: str,
+        job_id: str,
+        asset_reference: str,
     ) -> IngestResult:
-        job_id = str(uuid4())
         created_at = datetime.now(UTC).isoformat()
         context = _ProgressContext(
             job_id=job_id,
@@ -126,7 +139,7 @@ class IngestionService:
             user_id=user_id,
             source=source,
             created_at=created_at,
-            storage_path=storage_path,
+            asset_reference=asset_reference,
         )
         self.metadata_store.add_document(document_record)
 

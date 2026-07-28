@@ -122,10 +122,10 @@ class RAGCore:
         if document is None:
             return False
         self.vector_store.delete_document(doc_id)
+        self.document_storage.delete(document)
         deleted_document = self.metadata_store.delete_document(doc_id=doc_id, user_id=user.sub)
         if deleted_document is None:
             return False
-        self.document_storage.delete(deleted_document)
         return True
 
     def health_check(self):
@@ -136,6 +136,8 @@ class RAGCore:
             service_checks["embedding"] = self.embedding_client.check
         if hasattr(self.generation_client, "check"):
             service_checks["generation"] = self.generation_client.check
+        if hasattr(self.document_storage, "check"):
+            service_checks["dms"] = self.document_storage.check
         return self.health_check_runner(service_checks, required_services=set(service_checks))
 
 

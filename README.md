@@ -6,7 +6,8 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 - 문서 적재(ingestion)
 - 사용자 스코프 기반 검색(retrieval)
 - 생성 모델 호출을 통한 답변 생성(generation)
-- SQLite + Milvus Lite 기반 persistence
+- SQLite + Milvus Lite 기반 검색 persistence
+- dms-core + MinIO 기반 원문 lifecycle
 - DocMesh settings / registry / health-check 연동을 위한 composition 경로 제공
 
 이 패키지는 **HTTP 서버가 아니라 라이브러리**입니다. 외부 애플리케이션이나 서비스가 `RAGCore`를 조립해 사용합니다.
@@ -33,10 +34,9 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 
 ### document asset storage
 - 문서 본문은 document metadata row에 직접 저장하지 않습니다.
-- 원문 자산은 `DocumentStorage`가 관리하고, 문서에는 `storage_path`만 기록됩니다.
-- 지원 모드:
-  - `memory`
-  - `local`
+- production bootstrap에서는 `DmsDocumentStorage`가 dms-core의 원문 lifecycle을 사용합니다.
+- RAG metadata에는 내부 MinIO key가 아니라 opaque `asset_reference`만 기록되며, 기본값은 동일한 DMS `document_id`입니다.
+- 테스트나 사용자 정의 직접 조립에서는 `DocumentAssetStorage` protocol 구현체를 주입할 수 있습니다.
 
 ### persistence
 - metadata store: SQLite + SQLAlchemy ORM
@@ -79,6 +79,7 @@ from rag_system_core import (
 `pyproject.toml` 기준 요구사항:
 - Python `>= 3.11`
 - `docmesh-py-core`
+- `dms-core`
 - `pydantic-settings`
 - `pymilvus[milvus-lite]`
 
@@ -104,11 +105,20 @@ uv pip install ollama
 OLLAMA_HOST=http://ollama:11434
 OLLAMA_EMBEDDING_MODEL=bge-m3
 OLLAMA_GENERATION_MODEL=gpt-oss:20b
+MILVUS_URI=./data/metadata.milvus.db
+DMS_DOCMESH_ENV=development
+DMS_METADATA_BACKEND=sqlite
+DMS_SQLITE_PATH=./data/dms.db
+DMS_MINIO_ENDPOINT=minio:9000
+DMS_MINIO_ACCESS_KEY=replace-me
+DMS_MINIO_SECRET_KEY=replace-me
+DMS_MINIO_BUCKET=documents
+DMS_MINIO_SECURE=false
 ```
 
 추가로 보통 아래 경로에 쓰기 가능해야 합니다.
 - `metadata_path`가 가리키는 SQLite 파일 경로
-- `document_storage_dir` 디렉터리
+- `DMS_SQLITE_PATH`가 가리키는 DMS metadata 파일 경로
 - `metadata_path.with_suffix(".milvus.db")`로 생성될 수 있는 Milvus Lite 파일 경로
 
 전체 canonical 예시는 [.env.example](.env.example), 세부 설명은 [docs/config.md](docs/config.md)를 참고하세요.
@@ -117,37 +127,22 @@ OLLAMA_GENERATION_MODEL=gpt-oss:20b
 
 ## 가장 단순한 사용 경로
 
-현재 구현 기준으로 `RAGCore`는 **의존성 주입형 생성자**입니다. 즉, 예전 문서처럼 `metadata_path`, `storage_mode` 같은 값만 바로 넘겨서 생성하지 않습니다.
+현재 구현 기준으로 `RAGCore`는 **의존성 주입형 생성자**입니다. production 기본 경로는 DocMesh 설정으로 Ollama·Milvus·DMS를 함께 조립하는 service factory입니다.
 
-가장 현실적인 첫 성공 경로는 `create_rag_*` helper로 구성요소를 만든 뒤 `RAGCore(...)`를 조립하는 방식입니다.
+가장 현실적인 첫 성공 경로는 `DocmeshRAGServiceFactory`가 구성요소와 DMS SDK를 만들고 `bootstrap_rag_core(...)`가 코어를 조립하는 방식입니다.
 
 ```python
-from pathlib import Path
+from rag_system_core import DocmeshRAGServiceFactory, bootstrap_rag_core
 
-from rag_system_core import RAGCore
-from rag_system_core.composition.factories import (
-    create_rag_chunker,
-    create_rag_document_storage,
-    create_rag_embedding_client,
-    create_rag_generation_client,
-    create_rag_metadata_store,
-    create_rag_vector_store,
+service_factory = DocmeshRAGServiceFactory.from_env(check_on_startup=True)
+core = bootstrap_rag_core(
+    service_factory=service_factory,
+    metadata_path="./data/metadata.db",
+    chunk_size=512,
+    chunk_overlap=64,
 )
 
-metadata_path = Path("./data/metadata.db")
-document_storage_dir = Path("./data/documents")
-
-core = RAGCore(
-    embedding_client=create_rag_embedding_client(),
-    generation_client=create_rag_generation_client(),
-    vector_store=create_rag_vector_store(metadata_path=metadata_path),
-    metadata_store=create_rag_metadata_store(metadata_path=metadata_path),
-    document_storage=create_rag_document_storage(
-        storage_mode="local",
-        document_storage_dir=document_storage_dir,
-    ),
-    chunker=create_rag_chunker(chunk_size=512, chunk_overlap=64),
-)
+# 프로세스 종료 시 service_factory.close()를 호출합니다.
 ```
 
 ---
@@ -227,7 +222,7 @@ documents = core.list_documents(user=user)
 first_doc = documents[0]
 
 print(first_doc.doc_id)
-print(first_doc.storage_path)
+print(first_doc.asset_reference)
 
 chunks = core.list_document_chunks(first_doc.doc_id, user=user)
 progress_rows = core.list_ingestion_progress(first_doc.doc_id, user=user)
@@ -242,7 +237,7 @@ print(deleted)
 
 ## bootstrap 경로
 
-DocMesh v0.5.0 설정이 프로세스 환경변수에 준비되어 있으면 service factory 기반 bootstrap 경로도 사용할 수 있습니다. `from_env()`는 별도의 환경 mapping을 받지 않고 현재 프로세스 환경을 읽습니다.
+DocMesh v0.5.0 설정이 프로세스 환경변수에 준비되어 있으면 service factory 기반 bootstrap 경로도 사용할 수 있습니다. `from_env()`는 별도의 환경 mapping을 받지 않고 현재 프로세스 환경을 읽으며, DMS의 공유 서비스 설정은 `DMS_` 접두사로 RAG 설정과 분리합니다.
 
 ```python
 from rag_system_core import DocmeshRAGServiceFactory, bootstrap_rag_core
@@ -253,8 +248,6 @@ try:
     core = bootstrap_rag_core(
         service_factory=service_factory,
         metadata_path="./data/metadata.db",
-        document_storage_dir="./data/documents",
-        storage_mode="local",
         chunk_size=512,
         chunk_overlap=64,
     )
@@ -263,7 +256,7 @@ finally:
     service_factory.close()
 ```
 
-이 경로에서 factory는 DocMesh service bundle의 lifecycle을 소유하며, 사용이 끝나면 `close()`해야 합니다.
+이 경로에서 factory는 DocMesh service bundle과 DMS SDK의 lifecycle을 소유하며, 사용이 끝나면 `close()`해야 합니다.
 
 ---
 
@@ -285,8 +278,8 @@ finally:
 - ingestion 중 batch embedding 호출
 - prompt 구조에 `[System Prompt]`, `[Retrieved Context]`, `[User Query]` 포함
 - user scope 기반 retrieval / 조회 / 삭제 제한
-- vector store 삭제 실패 시 metadata / asset 삭제를 진행하지 않아 재시도 가능
-- health check에서 metadata 및 사용 가능한 dependency status 집계
+- 삭제는 vector → DMS soft delete → RAG metadata 순서로 실행해 실패 시 metadata 기반 재시도를 보존
+- health check에서 metadata, Milvus, DMS 및 사용 가능한 dependency status 집계
 
 ---
 
@@ -303,6 +296,15 @@ finally:
 - `MILVUS_COLLECTION`
 - `MILVUS_REQUEST_TIMEOUT_SECONDS`
 - `MILVUS_CONNECT_TIMEOUT_SECONDS`
+
+### DMS / MinIO
+- `DMS_METADATA_BACKEND` (`sqlite` 또는 `postgresql`)
+- `DMS_SQLITE_PATH` 또는 `DMS_POSTGRES_*`
+- `DMS_MINIO_ENDPOINT`
+- `DMS_MINIO_ACCESS_KEY`
+- `DMS_MINIO_SECRET_KEY`
+- `DMS_MINIO_BUCKET`
+- `DMS_MINIO_SECURE`
 
 legacy 패턴은 현재 지원 대상으로 보지 않습니다.
 - `OLLAMA_EMBED__*`

@@ -11,8 +11,6 @@ def bootstrap_rag_core(
     *,
     service_factory: RAGServiceFactory,
     metadata_path,
-    document_storage_dir,
-    storage_mode="local",
     chunk_size=512,
     chunk_overlap=64,
 ):
@@ -21,10 +19,7 @@ def bootstrap_rag_core(
         generation_client=service_factory.create_generation_client(),
         vector_store=service_factory.create_vector_store(),
         metadata_store=service_factory.create_metadata_store(metadata_path=Path(metadata_path)),
-        document_storage=service_factory.create_document_storage(
-            storage_mode=storage_mode,
-            document_storage_dir=document_storage_dir,
-        ),
+        document_storage=service_factory.create_document_storage(),
         chunker=service_factory.create_chunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
         health_check_runner=run_health_checks,
     )

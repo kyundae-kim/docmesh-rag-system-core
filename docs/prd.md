@@ -18,7 +18,7 @@
 - **`user_id`**: persistence 및 filtering에 사용되는 저장된 사용자 식별자
 - **metadata store**: SQLite + SQLAlchemy 기반 document / chunk / ingestion progress persistence 계층
 - **vector store**: Milvus Lite 기반 embedding 저장 및 retrieval 계층
-- **document asset storage**: 문서 원문 자산을 `storage_path`로 추적하는 저장 계층
+- **document asset storage**: dms-core가 관리하는 원문을 opaque `asset_reference`로 추적하는 저장 계층
 - **restart recovery**: 동일한 metadata store 및 vector store 구성을 다시 열어 상태를 재사용하는 동작
 - **health check**: metadata 및 사용 가능한 의존 서비스 상태를 집계하는 점검 동작
 
@@ -43,7 +43,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 1. 조립 가능한 `RAGCore` 중심 API를 제공한다.
 2. 텍스트, 파일 스트림, 파일 경로 ingestion을 지원한다.
 3. 사용자별 문서/청크/검색 결과 격리를 보장한다.
-4. SQLite metadata + Milvus Lite vector store 기반 persistence를 제공한다.
+4. SQLite RAG metadata + Milvus Lite vector store + dms-core 원문 lifecycle을 제공한다.
 5. factory / service-factory 기반 구성 경로를 제공한다.
 6. health check와 DocMesh integration 경로를 제공한다.
 
@@ -65,7 +65,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 
 - 단일 클래스 진입점 `RAGCore`
 - service factory 기반 helper `bootstrap_rag_core`
-- 구성 helper (`create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store`, `create_rag_metadata_store`, `create_rag_document_storage`, `create_rag_chunker`)
+- 구성 helper 및 `DocmeshRAGServiceFactory`
 - 텍스트 / 파일 스트림 / 파일 경로 ingestion
 - 고정 길이 chunking + overlap
 - embedding batch 호출
@@ -73,7 +73,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - generation client 기반 답변 생성
 - `AuthenticatedUser.sub` 기반 user scope
 - SQLAlchemy ORM + SQLite metadata persistence
-- document asset storage (`memory`, `local`)
+- dms-core 기반 document asset storage (MinIO object storage + PostgreSQL/SQLite DMS metadata)
 - 문서 목록/단건/청크/progress 조회
 - 문서 삭제
 - health check 집계
@@ -159,9 +159,10 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 파일 기반 ingestion은 현재 구현상 UTF-8 decode 가능한 텍스트를 전제해야 한다.
 
 #### PRD-FR-5. document asset storage
-- 시스템은 `memory`와 `local` 두 가지 asset storage mode를 지원해야 한다.
-- 문서 본문은 metadata row에 직접 저장하지 않고 `storage_path`로 추적해야 한다.
-- `local` 모드에서는 저장 파일명이 원본 파일명과 다를 수 있으며 `doc_id + suffix` 형태가 가능해야 한다.
+- production bootstrap은 dms-core SDK를 통해 문서 원문을 저장해야 한다.
+- 문서 본문은 RAG metadata row에 직접 저장하지 않고 opaque `asset_reference`로 추적해야 한다.
+- DMS 업로드에는 RAG의 `doc_id`를 동일한 `document_id`로 전달하고, 내부 MinIO key는 노출하지 않아야 한다.
+- 업로드 요청은 `user_id`, `source`, ingestion `job_id` 기반 idempotency 정보를 DMS에 전달해야 한다.
 
 #### PRD-FR-6. 문서 metadata
 - 문서 metadata는 최소 다음 필드를 가져야 한다.
@@ -172,7 +173,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
   "user_id": "string",
   "source": "string",
   "created_at": "ISO-8601 string",
-  "storage_path": "string | null"
+  "asset_reference": "string | null"
 }
 ```
 

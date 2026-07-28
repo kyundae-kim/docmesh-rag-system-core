@@ -31,8 +31,8 @@ def test_delete_document_removes_metadata_chunks_asset_and_query_visibility(tmp_
     )
     stored = rig.core.get_document(target.doc_id, user=USER_A)
     assert stored is not None
-    assert stored.storage_path is not None
-    stored_path = Path(stored.storage_path)
+    assert stored.asset_reference is not None
+    stored_path = Path(stored.asset_reference)
     assert stored_path.exists()
     assert rig.core.list_ingestion_progress(target.doc_id, user=USER_A)
 
@@ -240,6 +240,25 @@ def test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_all
 
     assert rig.core.delete_document(ingested.doc_id, user=USER_A) is True
     assert rig.core.get_document(ingested.doc_id, user=USER_A) is None
+
+
+def test_delete_document_leaves_metadata_intact_when_asset_soft_delete_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    rig = create_test_rig(tmp_path, storage_mode="local")
+    ingested = rig.core.ingest_text(user=USER_A, text="alpha retry cleanup", source="retry.txt")
+
+    def fail_asset_delete(document) -> None:
+        del document
+        raise RuntimeError("dms delete failed")
+
+    monkeypatch.setattr(rig.core.document_storage, "delete", fail_asset_delete)
+
+    with pytest.raises(RuntimeError, match="dms delete failed"):
+        rig.core.delete_document(ingested.doc_id, user=USER_A)
+
+    assert rig.core.get_document(ingested.doc_id, user=USER_A) is not None
+    assert rig.core.list_document_chunks(ingested.doc_id, user=USER_A)
 
 
 def test_embedding_requests_are_batched_for_chunk_ingestion(tmp_path: Path) -> None:

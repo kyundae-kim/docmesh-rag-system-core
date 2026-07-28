@@ -20,7 +20,7 @@ class DocumentModel(Base):
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     source: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    storage_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    asset_reference: Mapped[str | None] = mapped_column("storage_path", String, nullable=True)
 
 
 class ChunkModel(Base):
@@ -69,7 +69,7 @@ class MetadataStore:
             user_id=document.user_id,
             source=document.source,
             created_at=document.created_at,
-            storage_path=document.storage_path,
+            asset_reference=document.asset_reference,
         )
         with self.session() as session:
             session.merge(model)
@@ -206,7 +206,7 @@ def document_record_from_model(row: DocumentModel | None) -> DocumentRecord | No
         user_id=row.user_id,
         source=row.source,
         created_at=row.created_at,
-        storage_path=row.storage_path,
+        asset_reference=row.asset_reference,
     )
 
 

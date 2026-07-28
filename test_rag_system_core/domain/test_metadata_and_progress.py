@@ -46,7 +46,7 @@ def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Pat
     assert row.doc_id == result.doc_id
     assert row.user_id == "user-a"
     assert row.source == "sqlite.txt"
-    assert row.storage_path == stored.storage_path
+    assert row.asset_reference == stored.asset_reference
 
 
 def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: Path) -> None:
@@ -277,4 +277,4 @@ def test_metadata_persists_across_restarts(tmp_path: Path) -> None:
     assert stored is not None
     assert stored.user_id == "user-a"
     assert stored.source == "persist.txt"
-    assert stored.storage_path is not None
+    assert stored.asset_reference is not None

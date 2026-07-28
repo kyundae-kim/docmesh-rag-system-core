@@ -49,11 +49,36 @@ class MetadataRepository(Protocol):
 
 
 class DocumentAssetStorage(Protocol):
-    def store_text(self, *, doc_id: str, text: str, source: str) -> str: ...
+    def store_text(
+        self,
+        *,
+        doc_id: str,
+        user_id: str,
+        text: str,
+        source: str,
+        idempotency_key: str,
+    ) -> str: ...
 
-    def store_file_stream(self, *, doc_id: str, file_stream: BinaryIO, source: str) -> str: ...
+    def store_file_stream(
+        self,
+        *,
+        doc_id: str,
+        user_id: str,
+        file_stream: BinaryIO,
+        size: int,
+        source: str,
+        idempotency_key: str,
+    ) -> str: ...
 
-    def store_file_path(self, *, doc_id: str, file_path: Path, source: str | None = None) -> str: ...
+    def store_file_path(
+        self,
+        *,
+        doc_id: str,
+        user_id: str,
+        file_path: Path,
+        source: str | None = None,
+        idempotency_key: str,
+    ) -> str: ...
 
     def load(self, document: DocumentRecord) -> str | None: ...
 

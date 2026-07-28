@@ -14,7 +14,16 @@ class DocumentStorage:
         self.base_dir = base_dir
         self._memory_documents: dict[str, str] = {}
 
-    def store_text(self, *, doc_id: str, text: str, source: str) -> str:
+    def store_text(
+        self,
+        *,
+        doc_id: str,
+        user_id: str,
+        text: str,
+        source: str,
+        idempotency_key: str,
+    ) -> str:
+        del user_id, idempotency_key
         if self.mode == "memory":
             storage_path = f"memory://{doc_id}/{source}"
             self._memory_documents[storage_path] = text
@@ -26,7 +35,17 @@ class DocumentStorage:
         target.write_text(text, encoding="utf-8")
         return str(target)
 
-    def store_file_stream(self, *, doc_id: str, file_stream: BinaryIO, source: str) -> str:
+    def store_file_stream(
+        self,
+        *,
+        doc_id: str,
+        user_id: str,
+        file_stream: BinaryIO,
+        size: int,
+        source: str,
+        idempotency_key: str,
+    ) -> str:
+        del user_id, size, idempotency_key
         data = file_stream.read()
         if self.mode == "memory":
             storage_path = f"memory://{doc_id}/{source}"
@@ -39,36 +58,47 @@ class DocumentStorage:
         target.write_bytes(data)
         return str(target)
 
-    def store_file_path(self, *, doc_id: str, file_path: Path, source: str | None = None) -> str:
+    def store_file_path(
+        self,
+        *,
+        doc_id: str,
+        user_id: str,
+        file_path: Path,
+        source: str | None = None,
+        idempotency_key: str,
+    ) -> str:
         with file_path.open("rb") as stream:
             return self.store_file_stream(
                 doc_id=doc_id,
+                user_id=user_id,
                 file_stream=stream,
+                size=file_path.stat().st_size,
                 source=source or file_path.name,
+                idempotency_key=idempotency_key,
             )
 
     def load(self, document: DocumentRecord) -> str | None:
-        if document.storage_path:
-            if document.storage_path.startswith("memory://"):
-                return self._memory_documents.get(document.storage_path)
-            path = Path(document.storage_path)
+        if document.asset_reference:
+            if document.asset_reference.startswith("memory://"):
+                return self._memory_documents.get(document.asset_reference)
+            path = Path(document.asset_reference)
             if path.exists():
                 return path.read_text(encoding="utf-8")
         return None
 
     def delete(self, document: DocumentRecord) -> None:
-        if not document.storage_path:
+        if not document.asset_reference:
             return
-        if document.storage_path.startswith("memory://"):
-            self._memory_documents.pop(document.storage_path, None)
+        if document.asset_reference.startswith("memory://"):
+            self._memory_documents.pop(document.asset_reference, None)
             return
-        path = Path(document.storage_path)
+        path = Path(document.asset_reference)
         if path.exists():
             path.unlink()
 
 
-def extract_doc_id_from_storage_path(storage_path: str) -> str:
-    name = Path(storage_path).stem
-    if storage_path.startswith("memory://"):
-        return storage_path.removeprefix("memory://").split("/", 1)[0]
+def extract_doc_id_from_asset_reference(asset_reference: str) -> str:
+    name = Path(asset_reference).stem
+    if asset_reference.startswith("memory://"):
+        return asset_reference.removeprefix("memory://").split("/", 1)[0]
     return name

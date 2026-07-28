@@ -4,19 +4,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+import dms
 from docmesh_py_core import ServiceBundle, ServiceConfigs
 
 import rag_system_core.composition.docmesh_runtime as docmesh_runtime
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
 from rag_system_core.composition.docmesh_runtime import (
+    RAG_SERVICES,
     create_docmesh_service_client,
     load_docmesh_settings,
     read_docmesh_milvus_settings,
     read_docmesh_ollama_settings,
 )
 from rag_system_core.ports import Chunker, DocumentAssetStorage, MetadataRepository, VectorStore
-from rag_system_core.storage.document_storage import DocumentStorage
+from rag_system_core.storage.dms_document_storage import DmsDocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 from rag_system_core.types import EmbeddingClient, GenerationClient
@@ -139,9 +141,7 @@ class RAGServiceFactory(Protocol):
 
     def create_vector_store(self) -> VectorStore: ...
 
-    def create_document_storage(
-        self, *, storage_mode: str, document_storage_dir: str | Path
-    ) -> DocumentAssetStorage: ...
+    def create_document_storage(self) -> DocumentAssetStorage: ...
 
     def create_metadata_store(self, *, metadata_path: str | Path) -> MetadataRepository: ...
 
@@ -151,7 +151,9 @@ class RAGServiceFactory(Protocol):
 @dataclass(slots=True)
 class DocmeshRAGServiceFactory:
     settings: ServiceConfigs
+    dms_sdk: dms.DefaultDocumentManagementSDK
     bundle: ServiceBundle | None = None
+    owns_dms_sdk: bool = False
 
     @classmethod
     def from_env(
@@ -159,15 +161,35 @@ class DocmeshRAGServiceFactory:
         *,
         check_on_startup: bool = False,
     ) -> "DocmeshRAGServiceFactory":
+        dms_settings = docmesh_runtime.load_dms_settings()
         bundle = docmesh_runtime.assemble_docmesh_services(
-            required={"ollama"},
+            services=RAG_SERVICES,
+            required=RAG_SERVICES,
+            one_of=(),
             check_on_startup=check_on_startup,
         )
-        return cls(settings=bundle.configs, bundle=bundle)
+        try:
+            dms_sdk = dms.create_sdk_from_service_configs(
+                dms_settings,
+                check_on_startup=check_on_startup,
+            )
+        except Exception:
+            bundle.close()
+            raise
+        return cls(
+            settings=bundle.configs,
+            dms_sdk=dms_sdk,
+            bundle=bundle,
+            owns_dms_sdk=True,
+        )
 
     def close(self) -> None:
-        if self.bundle is not None:
-            self.bundle.close()
+        try:
+            if self.owns_dms_sdk:
+                self.dms_sdk.close()
+        finally:
+            if self.bundle is not None:
+                self.bundle.close()
 
     def create_embedding_client(self) -> EmbeddingClient:
         return create_rag_embedding_client(settings=self.settings, bundle=self.bundle)
@@ -178,8 +200,8 @@ class DocmeshRAGServiceFactory:
     def create_vector_store(self) -> VectorStore:
         return create_rag_vector_store(settings=self.settings, bundle=self.bundle)
 
-    def create_document_storage(self, *, storage_mode: str, document_storage_dir: str | Path) -> DocumentStorage:
-        return DocumentStorage(storage_mode, Path(document_storage_dir))
+    def create_document_storage(self) -> DmsDocumentStorage:
+        return DmsDocumentStorage(self.dms_sdk)
 
     def create_metadata_store(self, *, metadata_path: str | Path) -> MetadataStore:
         return MetadataStore(Path(metadata_path))
