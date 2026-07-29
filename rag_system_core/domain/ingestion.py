@@ -7,11 +7,16 @@ from pathlib import Path
 from typing import BinaryIO, Callable, TypeVar
 from uuid import uuid4
 
-from rag_system_core.ports import Chunker, DocumentAssetStorage, MetadataRepository, VectorStore
+from rag_system_core.ports import (
+    Chunker,
+    DocumentAssetStorage,
+    EmbeddingClient,
+    MetadataRepository,
+    VectorStore,
+)
 from rag_system_core.types import (
     ChunkRecord,
     DocumentRecord,
-    EmbeddingClient,
     IngestionProgressRecord,
     IngestResult,
 )
@@ -163,12 +168,13 @@ class IngestionService:
             context,
             "vector_store",
             lambda: self._add_vectors(chunk_records, embeddings),
+            completion_failure_rollback=self.vector_store.delete_chunks,
         )
         self._run_step(
             context,
             "chunk_persistence",
             lambda: self._persist_chunks(chunk_records, generated_chunk_ids),
-            completion_failure_rollback=lambda: self._rollback_persisted_chunks(generated_chunk_ids),
+            completion_failure_rollback=lambda _: self._rollback_persisted_chunks(generated_chunk_ids),
         )
 
         return IngestResult(
@@ -194,19 +200,25 @@ class IngestionService:
         context: _ProgressContext,
         step_name: str,
         operation: Callable[[], T],
-        completion_failure_rollback: Callable[[], None] | None = None,
+        completion_failure_rollback: Callable[[T], None] | None = None,
     ) -> T:
         self._record_progress_transition(context=context, step_name=step_name, status="running")
         try:
             result = operation()
-        except Exception:
-            self._record_progress_transition(context=context, step_name=step_name, status="failed")
+        except Exception as operation_error:
+            try:
+                self._record_progress_transition(context=context, step_name=step_name, status="failed")
+            except Exception as progress_error:
+                operation_error.add_note(f"Failed to persist failed progress: {progress_error!r}")
             raise
         try:
             self._record_progress_transition(context=context, step_name=step_name, status="completed")
-        except Exception:
+        except Exception as completion_error:
             if completion_failure_rollback is not None:
-                completion_failure_rollback()
+                try:
+                    completion_failure_rollback(result)
+                except Exception as rollback_error:
+                    completion_error.add_note(f"Completion rollback failed: {rollback_error!r}")
             raise
         return result
 
@@ -241,8 +253,17 @@ class IngestionService:
             raise
 
     def _rollback_persisted_chunks(self, chunk_ids: list[str]) -> None:
-        self.metadata_store.delete_chunks(chunk_ids)
-        self.vector_store.delete_chunks(chunk_ids)
+        rollback_errors: list[Exception] = []
+        for rollback in (
+            lambda: self.metadata_store.delete_chunks(chunk_ids),
+            lambda: self.vector_store.delete_chunks(chunk_ids),
+        ):
+            try:
+                rollback()
+            except Exception as error:
+                rollback_errors.append(error)
+        if rollback_errors:
+            raise ExceptionGroup("Failed to rollback persisted chunks", rollback_errors)
 
     def _record_progress_transition(
         self,

@@ -10,9 +10,9 @@ import pytest
 
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
+from rag_system_core.composition.dms_runtime import load_dms_settings
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
-    load_dms_settings,
     load_docmesh_settings,
 )
 from rag_system_core.composition.factories import (
@@ -296,7 +296,7 @@ def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
         fake_assemble_docmesh_services,
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.docmesh_runtime.load_dms_settings",
+        "rag_system_core.composition.dms_runtime.load_dms_settings",
         lambda: dms_settings,
     )
 
@@ -350,7 +350,7 @@ def test_docmesh_factory_from_env_closes_bundle_when_dms_assembly_fails(monkeypa
         lambda *, services, required, one_of, check_on_startup, parallel_healthchecks: bundle,
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.docmesh_runtime.load_dms_settings",
+        "rag_system_core.composition.dms_runtime.load_dms_settings",
         lambda: dms_settings,
     )
 

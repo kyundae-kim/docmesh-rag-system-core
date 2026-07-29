@@ -1,15 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
-
-
-class EmbeddingClient(Protocol):
-    def embed(self, texts: list[str]) -> list[list[float]]: ...
-
-
-class GenerationClient(Protocol):
-    def generate(self, prompt: str) -> str: ...
 
 
 @dataclass(slots=True)
@@ -58,6 +49,10 @@ class QueryResult:
     answer: str
     prompt: str
     context_chunks: list[ChunkRecord]
+
+
+# Compatibility exports; canonical protocol definitions live in ports.py.
+from rag_system_core.ports import EmbeddingClient, GenerationClient
 
 
 __all__ = [

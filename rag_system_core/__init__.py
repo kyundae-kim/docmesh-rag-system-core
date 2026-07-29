@@ -9,11 +9,10 @@ from rag_system_core.adapters.ollama import (
 from rag_system_core.composition.bootstrap import bootstrap_rag_core, bootstrap_rag_core_from_env
 from rag_system_core.composition.factories import DocmeshRAGServiceFactory, RAGServiceFactory
 from rag_system_core.domain.core import RAGCore
+from rag_system_core.ports import EmbeddingClient, GenerationClient
 from rag_system_core.types import (
     ChunkRecord,
     DocumentRecord,
-    EmbeddingClient,
-    GenerationClient,
     IngestionProgressRecord,
     IngestResult,
     QueryResult,

@@ -32,7 +32,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 상위 애플리케이션이 `RAGCore`를 통해 ingestion / retrieval / generation / document management를 단일 진입점으로 사용할 수 있어야 한다.
 - metadata store와 vector store를 분리해 restart recovery가 가능해야 한다.
 - user scope를 기준으로 멀티유저 데이터가 섞이지 않아야 한다.
-- DocMesh settings / registry / health integration 경로를 선택적으로 사용할 수 있어야 한다.
+- DocMesh settings / service assembly / health integration 경로를 선택적으로 사용할 수 있어야 한다.
 
 ---
 
@@ -100,7 +100,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 2. **멀티유저 상위 애플리케이션**
    - 여러 사용자 데이터를 user scope 기준으로 분리해야 하는 시스템
 3. **DocMesh 통합 개발자**
-   - DocMesh settings / registry / health path를 재사용하려는 개발자
+   - DocMesh settings / assembled service clients / health path를 재사용하려는 개발자
 
 ### 5.2 핵심 사용 시나리오
 
@@ -110,7 +110,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 사용자는 `ingest_text(...)` 또는 파일 기반 ingestion 후 `query(...)`를 호출한다.
 
 #### 시나리오 2: service factory 기반 실행
-- 사용자는 DocMesh settings / registry 또는 사용자 정의 factory를 준비한다.
+- 사용자는 DocMesh settings / `ServiceBundle` 또는 사용자 정의 factory를 준비한다.
 - 사용자는 `bootstrap_rag_core(...)`로 코어를 조립한다.
 - helper는 service factory를 통해 의존 구성요소를 생성한다.
 
@@ -198,6 +198,8 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 각 ingestion 실행은 `job_id`로 구분되어야 한다.
 - progress status는 `running`, `completed`, `failed`를 표현할 수 있어야 한다.
 - progress 조회는 문서와 user scope 기준으로 제한되어야 한다.
+- vector insert 후 해당 단계의 `completed` progress 저장이 실패하면 방금 생성한 vector를 보상 삭제해야 한다.
+- 보상 작업 하나가 실패해도 나머지 보상은 계속 실행하고, 원래 pipeline 오류를 유지해야 한다.
 
 ### 6.4 Embedding / Generation 요구사항
 
@@ -259,14 +261,14 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 #### PRD-FR-18. health check
 - 시스템은 metadata health check를 항상 포함해야 한다.
 - vector store / embedding client / generation client가 `check()`를 제공하면 함께 포함해야 한다.
-- DocMesh aggregate health path 사용을 우선 시도해야 한다.
-- 실패 시 local health result로 fallback 해야 한다.
+- health aggregation은 `docmesh_py_core.check_all_services()` 경계를 사용해야 한다.
 
 #### PRD-FR-19. 구성 helper 및 DocMesh integration
 - 시스템은 구성 helper를 통해 `RAGCore` 조립을 단순화해야 한다.
-- 시스템은 `docmesh_py_core.load_settings()`와 `ServiceFactoryRegistry`를 활용할 수 있어야 한다.
+- 시스템은 `docmesh_py_core.load_available_service_configs()`와
+  `docmesh_py_core.assemble_services()`를 활용할 수 있어야 한다.
 - `bootstrap_rag_core(...)`는 service factory를 받아 코어 조립을 수행해야 한다.
-- `DocmeshRAGServiceFactory`는 DocMesh settings / registry와 함께 사용할 수 있어야 한다.
+- `DocmeshRAGServiceFactory`는 DocMesh settings / `ServiceBundle`과 함께 사용할 수 있어야 한다.
 
 ---
 
@@ -292,8 +294,10 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 
 ### 7.5 유지보수성
 - public API는 `RAGCore` 중심으로 단순해야 한다.
-- 타입/프로토콜은 `rag_system_core.types`에서 명확히 정의되어야 한다.
-- DocMesh integration 코드와 domain 로직은 분리되어야 한다.
+- 공개 record는 `rag_system_core.types`, dependency protocol의 canonical owner는
+  `rag_system_core.ports`여야 한다. 기존 `rag_system_core.types` protocol import는
+  호환 경로로 유지할 수 있다.
+- DocMesh RAG runtime, DMS runtime, domain 로직은 서로 분리되어야 한다.
 
 ---
 
@@ -310,14 +314,18 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 
 [Composition Layer]
  ├─ bootstrap_rag_core
+ ├─ bootstrap_rag_core_from_env
  ├─ DocmeshRAGServiceFactory
  ├─ create_rag_embedding_client
  ├─ create_rag_generation_client
  ├─ create_rag_vector_store
- ├─ create_rag_metadata_store
- ├─ create_rag_document_storage
- ├─ create_rag_chunker
- └─ load_docmesh_settings
+ ├─ docmesh_runtime (Ollama / Milvus settings and assembly)
+ ├─ dms_runtime (DMS-prefixed settings adaptation)
+ └─ health
+
+[Contract Layer]
+ ├─ types.py (public records)
+ └─ ports.py (dependency protocols)
 ```
 
 ### 8.1 설계 원칙
@@ -325,6 +333,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - 내부 구현은 역할별로 분리되어야 한다.
 - 구성은 직접 조립과 service-factory 조립을 모두 허용해야 한다.
 - persistence와 retrieval은 결합되지만 저장소 역할은 분리되어야 한다.
+- DMS 환경 해석은 RAG용 DocMesh runtime assembly와 별도 module이 소유해야 한다.
 
 ---
 
@@ -410,7 +419,7 @@ QueryResult
 - query / document management API
 - progress persistence / 조회
 - health check
-- DocMesh settings / registry integration
+- DocMesh settings / `ServiceBundle` integration
 - SQLite metadata persistence
 - Milvus Lite retrieval persistence
 

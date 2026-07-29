@@ -8,6 +8,7 @@ from typing import Protocol, Self
 import dms
 from docmesh_py_core import ServiceBundle, ServiceConfigs
 
+import rag_system_core.composition.dms_runtime as dms_runtime
 import rag_system_core.composition.docmesh_runtime as docmesh_runtime
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
@@ -18,11 +19,18 @@ from rag_system_core.composition.docmesh_runtime import (
     read_docmesh_milvus_settings,
     read_docmesh_ollama_settings,
 )
-from rag_system_core.ports import Chunker, DocumentAssetStorage, MetadataRepository, VectorStore
+from rag_system_core.ports import (
+    Chunker,
+    DocumentAssetStorage,
+    EmbeddingClient,
+    GenerationClient,
+    MetadataRepository,
+    VectorStore,
+)
 from rag_system_core.storage.dms_document_storage import DmsDocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
-from rag_system_core.types import EmbeddingClient, GenerationClient
+
 
 
 def _resolve_settings(
@@ -163,7 +171,7 @@ class DocmeshRAGServiceFactory:
         check_on_startup: bool = False,
         parallel_healthchecks: bool = True,
     ) -> "DocmeshRAGServiceFactory":
-        dms_settings = docmesh_runtime.load_dms_settings()
+        dms_settings = dms_runtime.load_dms_settings()
         bundle = docmesh_runtime.assemble_docmesh_services(
             services=RAG_SERVICES,
             required=RAG_SERVICES,

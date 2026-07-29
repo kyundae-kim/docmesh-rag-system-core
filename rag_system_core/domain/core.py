@@ -11,6 +11,8 @@ from rag_system_core.domain.retrieval import RetrievalService
 from rag_system_core.ports import (
     Chunker,
     DocumentAssetStorage,
+    EmbeddingClient,
+    GenerationClient,
     HealthCheckRunner,
     MetadataRepository,
     VectorStore,
@@ -18,8 +20,6 @@ from rag_system_core.ports import (
 from rag_system_core.types import (
     ChunkRecord,
     DocumentRecord,
-    EmbeddingClient,
-    GenerationClient,
     IngestionProgressRecord,
     IngestResult,
     QueryResult,

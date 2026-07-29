@@ -18,9 +18,8 @@ from rag_system_core.composition.factories import (
     create_rag_vector_store,
 )
 from rag_system_core.composition.health import run_health_checks
+from rag_system_core.ports import EmbeddingClient, GenerationClient, VectorStore
 from rag_system_core.storage.metadata_store import MetadataStore
-from rag_system_core.storage.vector_store import VectorStore
-from rag_system_core.types import EmbeddingClient, GenerationClient
 
 from test_rag_system_core.support import (
     authenticated_user,

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from rag_system_core.ports import VectorStore
 from rag_system_core.types import ChunkRecord
 
 

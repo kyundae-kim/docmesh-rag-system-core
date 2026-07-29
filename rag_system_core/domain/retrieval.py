@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from rag_system_core.ports import VectorStore
-from rag_system_core.types import ChunkRecord, EmbeddingClient
+from rag_system_core.ports import EmbeddingClient, VectorStore
+from rag_system_core.types import ChunkRecord
 
 
 class RetrievalService:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from rag_system_core.types import ChunkRecord, GenerationClient, QueryResult
+from rag_system_core.ports import GenerationClient
+from rag_system_core.types import ChunkRecord, QueryResult
 
 
 class GenerationService:

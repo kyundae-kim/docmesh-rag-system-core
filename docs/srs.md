@@ -18,7 +18,7 @@ At the software level, the system shall:
 - persist metadata in SQLite and vector data in Milvus Lite
 - support restart-time recovery by reopening the same metadata and vector storage
 - support composition through helper factories and service-factory-based bootstrap paths
-- integrate with DocMesh configuration, service registry, and health-check composition paths when used in a DocMesh environment
+- integrate with DocMesh configuration, assembled service bundles, and health-check composition paths when used in a DocMesh environment
 
 This SRS covers the current library behavior. It does not define an external HTTP service contract or frontend behavior.
 
@@ -41,8 +41,6 @@ This SRS covers the current library behavior. It does not define an external HTT
 This document is derived from and aligned with the following repository documents:
 
 - `docs/prd.md`
-- `docs/api.md`
-- `docs/test.md`
 
 ### 1.5 Overview
 The remainder of this document is organized as follows:
@@ -87,14 +85,17 @@ Document Storage
 
 [Composition Layer]
  - bootstrap_rag_core
+ - bootstrap_rag_core_from_env
  - DocmeshRAGServiceFactory
  - create_rag_embedding_client
  - create_rag_generation_client
  - create_rag_vector_store
- - create_rag_metadata_store
- - create_rag_document_storage
- - create_rag_chunker
- - load_docmesh_settings
+ - docmesh_runtime: Ollama / Milvus settings and assembly
+ - dms_runtime: DMS-prefixed settings adaptation
+
+[Contract Layer]
+ - types.py: public records
+ - ports.py: dependency protocols
 ```
 
 ### 2.2 Product Functions
@@ -117,7 +118,7 @@ The system provides the following software functions:
 |---|---|---|
 | Local consumer | Local or single-instance user ingesting and querying documents | Explicit user information and predictable behavior |
 | Multi-user integrator | Application/service integrating this library for multiple users | Strict user-scope isolation |
-| DocMesh-integrated developer | Developer using DocMesh settings, registry, and health integrations | Stable composition and reuse of runtime services |
+| DocMesh-integrated developer | Developer using DocMesh settings, service-bundle assembly, and health integrations | Stable composition and reuse of runtime services |
 
 ### 2.4 Operating Environment
 The software is expected to run in a Python environment with:
@@ -177,6 +178,7 @@ The system shall expose the following public construction paths:
 
 - `RAGCore(...)`
 - `bootstrap_rag_core(...)`
+- `bootstrap_rag_core_from_env(...)`
 
 #### 3.3.2 Public Operational Interfaces
 The system shall expose the following public operational interfaces:
@@ -211,19 +213,17 @@ The system shall support the following protocol contracts:
 The system shall support composition helpers including:
 
 - `DocmeshRAGServiceFactory`
+- `bootstrap_rag_core(...)`
+- `bootstrap_rag_core_from_env(...)`
 - `create_rag_embedding_client(...)`
 - `create_rag_generation_client(...)`
 - `create_rag_vector_store(...)`
-- `create_rag_metadata_store(...)`
-- `create_rag_document_storage(...)`
-- `create_rag_chunker(...)`
 - `load_docmesh_settings(...)`
-- `create_service_registry(...)`
 
 #### 3.3.6 External Runtime Integrations
 The system may integrate with the following external software services or packages:
 
-- DocMesh settings and service registry
+- DocMesh settings and assembled `ServiceBundle` clients
 - `docmesh_py_core.AuthenticatedUser` as the user information model
 - Ollama-compatible embedding and generation adapters
 - Milvus Lite vector storage
@@ -285,7 +285,7 @@ This feature accepts source content, normalizes it into text, processes it into 
 - **SRS-FR-019** The system shall chunk text using a fixed-length window with overlap.
 - **SRS-FR-020** The system shall execute ingestion pipeline stages in the following order: `load`, `preprocess`, `chunking`, `embedding`, `vector_store`, `chunk_persistence`.
 - **SRS-FR-021** The system shall create a `job_id` for each ingestion execution.
-- **SRS-FR-022** The system shall record ingestion progress using statuses that can represent `running`, `completed`, and `failed`.
+- **SRS-FR-022** The system shall record ingestion progress using statuses that can represent `running`, `completed`, and `failed`; if persisting `vector_store=completed` fails after insertion, the vectors created by that step shall be removed as compensation. A compensation failure shall not prevent remaining compensations or replace the original pipeline error.
 - **SRS-FR-023** The system shall limit ingestion progress queries by document and resolved user scope.
 
 ### 4.3 Feature: Document Asset Storage
@@ -391,10 +391,10 @@ This feature reports operational status and supports composition with helper fac
 - **SRS-FR-065** When the vector store provides `check()`, the system shall include vector-store health information.
 - **SRS-FR-066** When the embedding client provides `check()`, the system shall include embedding-client health information.
 - **SRS-FR-067** When the generation client provides `check()`, the system shall include generation-client health information.
-- **SRS-FR-068** The system shall prefer a DocMesh-provided aggregate health path when available.
-- **SRS-FR-069** If the aggregate health path is unavailable or fails, the system shall fall back to local health aggregation.
-- **SRS-FR-070** The system shall support composition through `docmesh_py_core.load_settings()`.
-- **SRS-FR-071** The system shall support composition through `ServiceFactoryRegistry` and `DocmeshRAGServiceFactory`.
+- **SRS-FR-068** The system shall aggregate health checks through `docmesh_py_core.check_all_services()`.
+- **SRS-FR-069** Errors from the aggregate health boundary shall propagate to the caller; the package defines no separate local result model.
+- **SRS-FR-070** The system shall support settings loading through `docmesh_py_core.load_available_service_configs()`.
+- **SRS-FR-071** The system shall support service assembly through `docmesh_py_core.assemble_services()`, `ServiceBundle`, and `DocmeshRAGServiceFactory`.
 - **SRS-FR-072** `bootstrap_rag_core(...)` shall provide a simplified service-factory-based assembly path.
 
 ---
@@ -426,8 +426,8 @@ This feature reports operational status and supports composition with helper fac
 ### 5.5 Maintainability Requirements
 
 - **SRS-NFR-011** The public API shall remain centered on `RAGCore`.
-- **SRS-NFR-012** Types and protocol boundaries shall remain explicit and separable.
-- **SRS-NFR-013** Composition/integration code and domain logic shall remain separable.
+- **SRS-NFR-012** Public records shall be owned by `rag_system_core.types`, and dependency protocols shall have `rag_system_core.ports` as their canonical owner.
+- **SRS-NFR-013** Composition/integration code and domain logic shall remain separable; DMS environment adaptation and RAG DocMesh runtime assembly shall have separate module owners.
 
 ### 5.6 Portability Requirements
 

@@ -8,7 +8,7 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 - 생성 모델 호출을 통한 답변 생성(generation)
 - SQLite + Milvus Lite 기반 검색 persistence
 - dms-core + MinIO 기반 원문 lifecycle
-- DocMesh settings / registry / health-check 연동을 위한 composition 경로 제공
+- DocMesh settings / `ServiceBundle` / health-check 연동을 위한 composition 경로 제공
 
 이 패키지는 **HTTP 서버가 아니라 라이브러리**입니다. 외부 애플리케이션이나 서비스가 `RAGCore`를 조립해 사용합니다.
 
@@ -16,12 +16,8 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 
 ## 관련 문서
 
-- [API 문서](docs/api.md)
-- [설정 가이드](docs/config.md)
 - [PRD](docs/prd.md)
 - [SRS](docs/srs.md)
-- [테스트 문서](docs/test.md)
-- [환경변수 예시](.env.example)
 
 ---
 
@@ -123,7 +119,7 @@ DMS_MINIO_SECURE=false
 - `DMS_SQLITE_PATH`가 가리키는 DMS metadata 파일 경로
 - `metadata_path.with_suffix(".milvus.db")`로 생성될 수 있는 Milvus Lite 파일 경로
 
-전체 canonical 예시는 [.env.example](.env.example), 세부 설명은 [docs/config.md](docs/config.md)를 참고하세요.
+위 환경변수 예시는 production bootstrap에 필요한 canonical 설정 이름을 보여 줍니다.
 
 ---
 
@@ -315,11 +311,3 @@ legacy 패턴은 현재 지원 대상으로 보지 않습니다.
 ```bash
 uv run pytest -q
 ```
-
-문서 동기화 시점 기준 테스트 결과:
-
-```text
-83 passed
-```
-
-테스트 범위와 요구사항 추적은 [docs/test.md](docs/test.md)를 참고하세요.

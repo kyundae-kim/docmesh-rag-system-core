@@ -7,8 +7,8 @@ import pytest
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.domain.ingestion import IngestionService
+from rag_system_core.ports import VectorStore
 from rag_system_core.storage.metadata_store import MetadataStore
-from rag_system_core.storage.vector_store import VectorStore
 from rag_system_core.types import ChunkRecord
 
 from test_rag_system_core.support import (
@@ -218,6 +218,130 @@ def test_ingest_text_rolls_back_persisted_chunks_when_completion_progress_fails(
     document = metadata_store.list_documents("user-a")[0]
     assert metadata_store.list_document_chunks(doc_id=document.doc_id, user_id="user-a") == []
     assert vector_store.deleted_chunk_ids == [["101", "102"]]
+
+
+def test_ingest_text_rolls_back_vectors_when_vector_completion_progress_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class TrackingVectorStore:
+        def __init__(self) -> None:
+            self.deleted_chunk_ids: list[list[str]] = []
+
+        def add(self, chunks, vectors):
+            del vectors
+            return [str(index + 101) for index, _ in enumerate(chunks)]
+
+        def delete_chunks(self, chunk_ids):
+            self.deleted_chunk_ids.append(list(chunk_ids))
+
+    vector_store = TrackingVectorStore()
+    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    add_progress = metadata_store.add_ingestion_progress
+
+    def fail_vector_store_completion(records) -> None:
+        record = records[0]
+        if record.step_name == "vector_store" and record.status == "completed":
+            raise RuntimeError("vector progress persistence failed")
+        add_progress(records)
+
+    monkeypatch.setattr(metadata_store, "add_ingestion_progress", fail_vector_store_completion)
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
+        embedding_client=FakeEmbeddingClient(),
+        vector_store=cast(VectorStore, vector_store),
+        metadata_store=metadata_store,
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
+    )
+
+    with pytest.raises(RuntimeError, match="vector progress persistence failed"):
+        service.ingest_text(user_id="user-a", text="alpha beta", source="vector-progress-failure.txt")
+
+    assert vector_store.deleted_chunk_ids == [["101", "102"]]
+
+
+def test_ingest_text_continues_vector_rollback_when_chunk_metadata_rollback_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class TrackingVectorStore:
+        def __init__(self) -> None:
+            self.deleted_chunk_ids: list[list[str]] = []
+
+        def add(self, chunks, vectors):
+            del vectors
+            return [str(index + 101) for index, _ in enumerate(chunks)]
+
+        def delete_chunks(self, chunk_ids):
+            self.deleted_chunk_ids.append(list(chunk_ids))
+
+    vector_store = TrackingVectorStore()
+    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    add_progress = metadata_store.add_ingestion_progress
+
+    def fail_chunk_persistence_completion(records) -> None:
+        record = records[0]
+        if record.step_name == "chunk_persistence" and record.status == "completed":
+            raise RuntimeError("progress persistence failed")
+        add_progress(records)
+
+    def fail_metadata_rollback(chunk_ids) -> None:
+        del chunk_ids
+        raise RuntimeError("metadata rollback failed")
+
+    monkeypatch.setattr(metadata_store, "add_ingestion_progress", fail_chunk_persistence_completion)
+    monkeypatch.setattr(metadata_store, "delete_chunks", fail_metadata_rollback)
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
+        embedding_client=FakeEmbeddingClient(),
+        vector_store=cast(VectorStore, vector_store),
+        metadata_store=metadata_store,
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
+    )
+
+    with pytest.raises(RuntimeError, match="progress persistence failed") as exc_info:
+        service.ingest_text(user_id="user-a", text="alpha beta", source="rollback-failure.txt")
+
+    assert vector_store.deleted_chunk_ids == [["101", "102"]]
+    assert any("metadata rollback failed" in note for note in exc_info.value.__notes__)
+
+
+def test_ingest_text_preserves_operation_error_when_failed_progress_write_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class MismatchedVectorStore:
+        def __init__(self) -> None:
+            self.deleted_chunk_ids: list[list[str]] = []
+
+        def add(self, chunks, vectors):
+            del chunks, vectors
+            return ["101"]
+
+        def delete_chunks(self, chunk_ids):
+            self.deleted_chunk_ids.append(list(chunk_ids))
+
+    vector_store = MismatchedVectorStore()
+    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    add_progress = metadata_store.add_ingestion_progress
+
+    def fail_failed_progress_write(records) -> None:
+        record = records[0]
+        if record.step_name == "vector_store" and record.status == "failed":
+            raise RuntimeError("failed progress persistence failed")
+        add_progress(records)
+
+    monkeypatch.setattr(metadata_store, "add_ingestion_progress", fail_failed_progress_write)
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
+        embedding_client=FakeEmbeddingClient(),
+        vector_store=cast(VectorStore, vector_store),
+        metadata_store=metadata_store,
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
+    )
+
+    with pytest.raises(RuntimeError, match="Milvus returned a mismatched number of chunk ids") as exc_info:
+        service.ingest_text(user_id="user-a", text="alpha beta", source="failed-progress.txt")
+
+    assert vector_store.deleted_chunk_ids == [["101"]]
+    assert any("failed progress persistence failed" in note for note in exc_info.value.__notes__)
 
 
 def test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_allows_retry(

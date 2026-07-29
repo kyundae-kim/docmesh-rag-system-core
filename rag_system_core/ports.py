@@ -3,6 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import BinaryIO, Callable, Protocol
 
+
+class EmbeddingClient(Protocol):
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+class GenerationClient(Protocol):
+    def generate(self, prompt: str) -> str: ...
+
+
+# These two client protocols must exist before importing records because
+# rag_system_core.types re-exports them for backward compatibility.
 from rag_system_core.types import ChunkRecord, DocumentRecord, IngestionProgressRecord
 
 
@@ -96,6 +107,8 @@ class HealthCheckRunner(Protocol):
 __all__ = [
     "Chunker",
     "DocumentAssetStorage",
+    "EmbeddingClient",
+    "GenerationClient",
     "HealthCheckRunner",
     "MetadataRepository",
     "VectorStore",
