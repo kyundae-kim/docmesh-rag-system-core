@@ -23,3 +23,8 @@ exclude = ["test_rag_system_core*"]
 [tool.uv.sources]
 docmesh-py-core = { git = "https://github.com/kyundae-kim/docmesh-py-core.git", rev = "v0.5.0" }
 dms = { git = "https://github.com/kyundae-kim/dms-core.git", rev = "v0.6.0" }
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires the devcontainer Ollama and MinIO services",
+]
