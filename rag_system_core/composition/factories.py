@@ -6,7 +6,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 import dms
-from docmesh_py_core import ServiceBundle, ServiceConfigs
+from docmesh_py_core import OllamaConfig, ServiceBundle, ServiceConfigs
 
 import rag_system_core.composition.dms_runtime as dms_runtime
 import rag_system_core.composition.docmesh_runtime as docmesh_runtime
@@ -16,8 +16,6 @@ from rag_system_core.composition.docmesh_runtime import (
     RAG_SERVICES,
     create_docmesh_service_client,
     load_docmesh_settings,
-    read_docmesh_milvus_settings,
-    read_docmesh_ollama_settings,
 )
 from rag_system_core.ports import (
     Chunker,
@@ -45,31 +43,22 @@ def _resolve_settings(
     return None
 
 
-def _resolve_ollama_settings(
+def _resolve_ollama(
     *,
     settings: ServiceConfigs | None,
     bundle: ServiceBundle | None,
     model: str | None,
     client: object | None,
-) -> ServiceConfigs | None:
+) -> tuple[object, OllamaConfig | None]:
     resolved_settings = _resolve_settings(settings=settings, bundle=bundle)
     if resolved_settings is None and (model is None or client is None):
-        return load_docmesh_settings(services={"ollama"})
-    return resolved_settings
-
-
-def _require_ollama_client(
-    *,
-    settings: ServiceConfigs | None = None,
-    bundle: ServiceBundle | None = None,
-    client: object | None = None,
-) -> object:
-    if client is not None:
-        return client
-    resolved_client = create_docmesh_service_client("ollama", settings=settings, bundle=bundle)
-    if resolved_client is None:
+        resolved_settings = load_docmesh_settings(services={"ollama"})
+    if client is None:
+        client = create_docmesh_service_client("ollama", settings=resolved_settings, bundle=bundle)
+    if client is None:
         raise RuntimeError("Failed to create Ollama service client")
-    return resolved_client
+    config = resolved_settings.ollama if resolved_settings is not None else None
+    return client, config
 
 
 def create_rag_embedding_client(
@@ -79,17 +68,15 @@ def create_rag_embedding_client(
     model: str | None = None,
     client: object | None = None,
 ) -> EmbeddingClient:
-    resolved_settings = _resolve_ollama_settings(
+    resolved_client, config = _resolve_ollama(
         settings=settings,
         bundle=bundle,
         model=model,
         client=client,
     )
-    _, configured_model, _, _ = read_docmesh_ollama_settings(resolved_settings)
-    resolved_model = configured_model if model is None else model
     return OllamaEmbeddingClient(
-        client=_require_ollama_client(settings=resolved_settings, bundle=bundle, client=client),
-        model=resolved_model if resolved_model is not None else "",
+        client=resolved_client,
+        model=(config.embedding_model if model is None and config is not None else model) or "",
     )
 
 
@@ -100,17 +87,15 @@ def create_rag_generation_client(
     model: str | None = None,
     client: object | None = None,
 ) -> GenerationClient:
-    resolved_settings = _resolve_ollama_settings(
+    resolved_client, config = _resolve_ollama(
         settings=settings,
         bundle=bundle,
         model=model,
         client=client,
     )
-    _, _, configured_model, _ = read_docmesh_ollama_settings(resolved_settings)
-    resolved_model = configured_model if model is None else model
     return OllamaGenerationClient(
-        client=_require_ollama_client(settings=resolved_settings, bundle=bundle, client=client),
-        model=resolved_model if resolved_model is not None else "",
+        client=resolved_client,
+        model=(config.generation_model if model is None and config is not None else model) or "",
     )
 
 
@@ -125,7 +110,9 @@ def create_rag_vector_store(
     resolved_settings = _resolve_settings(settings=settings, bundle=bundle)
     if resolved_settings is None:
         resolved_settings = load_docmesh_settings(services={"milvus"})
-    _, configured_collection_name, configured_timeout = read_docmesh_milvus_settings(resolved_settings)
+    config = resolved_settings.milvus
+    configured_collection_name = config.collection if config is not None else None
+    configured_timeout = float(config.request_timeout_seconds) if config is not None else None
     resolved_collection_name = collection_name
     if resolved_collection_name is None:
         resolved_collection_name = configured_collection_name if configured_collection_name is not None else "rag_chunks"

@@ -198,7 +198,7 @@ def test_assemble_docmesh_services_uses_v050_keyword_only_api(monkeypatch) -> No
 def test_ollama_factories_use_clients_from_service_bundle() -> None:
     settings = make_settings()
     ollama = FakeDocmeshOllamaWrapper()
-    bundle = SimpleNamespace(clients={"ollama": ollama})
+    bundle = SimpleNamespace(get_client=lambda service: ollama)
 
     embedding_client = create_rag_embedding_client(settings=settings, bundle=bundle)
     generation_client = create_rag_generation_client(settings=settings, bundle=bundle)
@@ -393,7 +393,7 @@ def test_ollama_factories_require_models_from_settings() -> None:
     with pytest.raises(ValueError, match="Ollama embed model must be configured"):
         create_rag_embedding_client(
             settings=settings,
-            bundle=SimpleNamespace(clients={"ollama": FakeDocmeshOllamaWrapper()}),
+            bundle=SimpleNamespace(get_client=lambda service: FakeDocmeshOllamaWrapper()),
         )
 
 

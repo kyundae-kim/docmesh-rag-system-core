@@ -188,16 +188,18 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         pass
 
     client = FakeMilvusClient()
-    monkeypatch.setattr(
-        "rag_system_core.composition.factories.read_docmesh_milvus_settings",
-        lambda settings=None: (str(tmp_path / "external-milvus.db"), "resolved_chunks", 7.25),
+    settings = SimpleNamespace(
+        milvus=SimpleNamespace(
+            collection="resolved_chunks",
+            request_timeout_seconds=7.25,
+        )
     )
     monkeypatch.setattr(
         "rag_system_core.composition.factories.create_docmesh_service_client",
         lambda service_name, *, settings=None, bundle=None: None,
     )
 
-    vector_store = create_rag_vector_store(client=client)
+    vector_store = create_rag_vector_store(settings=settings, client=client)
     core = RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),

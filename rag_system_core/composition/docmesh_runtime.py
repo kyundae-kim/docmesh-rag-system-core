@@ -42,7 +42,10 @@ def create_docmesh_service_client(
     bundle: ServiceBundle | None = None,
 ) -> object | None:
     if bundle is not None:
-        return bundle.clients.get(service_name)
+        try:
+            return bundle.get_client(service_name)
+        except docmesh_py_core.ConfigError:
+            return None
 
     resolved_settings = settings
     if resolved_settings is None:
@@ -57,42 +60,17 @@ def create_docmesh_service_client(
     raise ValueError(f"Unsupported RAG service: {service_name}")
 
 
-def read_docmesh_ollama_settings(
-    settings: ServiceConfigs | None = None,
-) -> tuple[str | None, str | None, str | None, float | None]:
-    if settings is None or getattr(settings, "ollama", None) is None:
-        return None, None, None, None
-    ollama_settings = settings.ollama
-    return (
-        ollama_settings.host,
-        ollama_settings.embedding_model,
-        ollama_settings.generation_model,
-        float(ollama_settings.request_timeout_seconds),
-    )
-
-
-def read_docmesh_milvus_settings(
-    settings: ServiceConfigs | None = None,
-) -> tuple[str | None, str | None, float | None]:
-    if settings is None or getattr(settings, "milvus", None) is None:
-        return None, None, None
-    milvus_settings = settings.milvus
-    return (
-        milvus_settings.uri,
-        milvus_settings.collection,
-        float(milvus_settings.request_timeout_seconds),
-    )
-
-
 def resolve_milvus_runtime_settings(
     *,
     fallback_uri: str,
     settings: ServiceConfigs | None = None,
 ) -> tuple[str, str, float]:
     resolved_settings = settings if settings is not None else load_docmesh_settings(services={"milvus"})
-    docmesh_uri, docmesh_collection_name, docmesh_timeout = read_docmesh_milvus_settings(resolved_settings)
+    config = resolved_settings.milvus
+    if config is None:
+        return fallback_uri, "rag_chunks", 30.0
     return (
-        docmesh_uri or fallback_uri,
-        docmesh_collection_name or "rag_chunks",
-        docmesh_timeout or 30.0,
+        config.uri or fallback_uri,
+        config.collection or "rag_chunks",
+        float(config.request_timeout_seconds) or 30.0,
     )
