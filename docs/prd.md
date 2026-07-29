@@ -11,7 +11,7 @@
 
 ### 1.1 용어 기준
 
-본 문서는 `docs/api.md`, `docs/srs.md`, `docs/test.md`와 동일한 용어 기준을 사용한다.
+본 문서는 `README.md`와 `docs/srs.md`에서 사용하는 용어 기준과 구현 계약을 따른다.
 
 - **user scope**: 현재 요청에 대해 해석된 사용자 경계
 - **authenticated user**: 상위 애플리케이션이 전달하는 `docmesh_py_core.AuthenticatedUser`
@@ -229,11 +229,9 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - 검색은 `user_id` filter를 강제해야 한다.
 
 #### PRD-FR-14. 설정 해석
-- Milvus runtime 설정은 가능하면 DocMesh settings에서 읽어야 한다.
-- 설정이 없으면 fallback을 사용해야 한다.
-  - URI: `metadata_path.with_suffix(".milvus.db")`
-  - Collection: `rag_chunks`
-  - Timeout: `30.0`
+- Milvus service client는 명시적으로 주입하거나 DocMesh settings / `ServiceBundle`에서 조립해야 한다.
+- service client를 조립할 수 없으면 명확한 구성 오류로 실패해야 한다.
+- collection과 timeout이 명시되지 않았고 DocMesh 설정에도 값이 없으면 각각 `rag_chunks`, `30.0`을 사용해야 한다.
 
 ### 6.6 Persistence 및 삭제 요구사항
 

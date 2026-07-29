@@ -344,6 +344,80 @@ def test_ingest_text_preserves_operation_error_when_failed_progress_write_fails(
     assert any("failed progress persistence failed" in note for note in exc_info.value.__notes__)
 
 
+def test_store_preserves_metadata_error_when_vector_cleanup_fails(monkeypatch, tmp_path: Path) -> None:
+    class FailingCleanupVectorStore:
+        def add(self, chunks, vectors):
+            del chunks, vectors
+            return ["101"]
+
+        def delete_chunks(self, chunk_ids):
+            del chunk_ids
+            raise RuntimeError("vector rollback failed")
+
+    metadata_store = MetadataStore(tmp_path / "metadata.db")
+
+    def fail_chunk_write(chunks) -> None:
+        del chunks
+        raise RuntimeError("metadata write failed")
+
+    monkeypatch.setattr(metadata_store, "add_chunks", fail_chunk_write)
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
+        embedding_client=FakeEmbeddingClient(),
+        vector_store=cast(VectorStore, FailingCleanupVectorStore()),
+        metadata_store=metadata_store,
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
+    )
+    chunks = [
+        ChunkRecord(
+            chunk_id="",
+            doc_id="doc-1",
+            user_id="user-a",
+            content="alpha",
+            metadata={"source": "metadata-failure.txt"},
+        )
+    ]
+
+    with pytest.raises(RuntimeError, match="metadata write failed") as exc_info:
+        service.store(chunks, [[1.0]])
+
+    assert any("vector rollback failed" in note for note in exc_info.value.__notes__)
+
+
+def test_store_preserves_id_mismatch_error_when_vector_cleanup_fails(tmp_path: Path) -> None:
+    class FailingCleanupVectorStore:
+        def add(self, chunks, vectors):
+            del chunks, vectors
+            return ["101"]
+
+        def delete_chunks(self, chunk_ids):
+            del chunk_ids
+            raise RuntimeError("vector rollback failed")
+
+    service = IngestionService(
+        chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
+        embedding_client=FakeEmbeddingClient(),
+        vector_store=cast(VectorStore, FailingCleanupVectorStore()),
+        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
+    )
+    chunks = [
+        ChunkRecord(
+            chunk_id="",
+            doc_id="doc-1",
+            user_id="user-a",
+            content=content,
+            metadata={"source": "mismatch-failure.txt"},
+        )
+        for content in ("alpha", "beta")
+    ]
+
+    with pytest.raises(RuntimeError, match="Milvus returned a mismatched number of chunk ids") as exc_info:
+        service.store(chunks, [[1.0], [2.0]])
+
+    assert any("vector rollback failed" in note for note in exc_info.value.__notes__)
+
+
 def test_delete_document_leaves_metadata_intact_when_milvus_delete_fails_and_allows_retry(
     monkeypatch, tmp_path: Path
 ) -> None:

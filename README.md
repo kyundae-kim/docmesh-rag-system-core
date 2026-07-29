@@ -117,7 +117,7 @@ DMS_MINIO_SECURE=false
 추가로 보통 아래 경로에 쓰기 가능해야 합니다.
 - `metadata_path`가 가리키는 SQLite 파일 경로
 - `DMS_SQLITE_PATH`가 가리키는 DMS metadata 파일 경로
-- `metadata_path.with_suffix(".milvus.db")`로 생성될 수 있는 Milvus Lite 파일 경로
+- DocMesh Milvus 설정이 local URI를 사용하는 경우 해당 파일 경로
 
 위 환경변수 예시는 production bootstrap에 필요한 canonical 설정 이름을 보여 줍니다.
 

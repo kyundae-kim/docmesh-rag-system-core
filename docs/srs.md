@@ -149,9 +149,8 @@ The current implementation imposes the following constraints:
 ### 2.6 User Documentation
 The primary companion development documents are:
 
+- `README.md`
 - `docs/prd.md`
-- `docs/api.md`
-- `docs/test.md`
 
 ### 2.7 Assumptions and Dependencies
 The following assumptions and dependencies apply:
@@ -334,10 +333,10 @@ This feature stores embeddings, retrieves relevant chunks, and applies user-scop
 - **SRS-FR-038** The default vector store implementation shall be Milvus Lite.
 - **SRS-FR-039** If the target collection does not exist, the system shall create it at first insert using the embedding dimension.
 - **SRS-FR-040** Retrieval operations shall enforce a `user_id` filter.
-- **SRS-FR-041** The system shall attempt to read Milvus runtime settings from DocMesh settings when available.
-- **SRS-FR-042** If no Milvus runtime settings are available, the system shall use `metadata_path.with_suffix(".milvus.db")` as the fallback URI.
-- **SRS-FR-043** If no Milvus runtime settings are available, the system shall use `rag_chunks` as the fallback collection name.
-- **SRS-FR-044** If no Milvus runtime settings are available, the system shall use `30.0` as the fallback timeout.
+- **SRS-FR-041** The system shall read configured Milvus collection and timeout values from DocMesh settings when available.
+- **SRS-FR-042** The composition layer shall use an explicitly injected Milvus client or assemble one through DocMesh settings / `ServiceBundle`; if no client can be created, it shall raise `RuntimeError`.
+- **SRS-FR-043** If neither an explicit collection override nor a configured collection is available, the system shall use `rag_chunks`.
+- **SRS-FR-044** If neither an explicit timeout override nor a configured timeout is available, the system shall use `30.0`.
 
 ### 4.6 Feature: Metadata Persistence and Restart Recovery
 
@@ -515,14 +514,14 @@ The implementation shall be considered conformant to this SRS when the following
 15. `bootstrap_rag_core(...)` assembles a core through a service factory.
 
 ### 7.2 Traceability Source
-The canonical automated traceability mapping for these requirement IDs is maintained in `docs/test.md`.
+Automated verification for these requirements is maintained under `test_rag_system_core/`.
 
 ### 7.3 Verification Approach
 Verification of this SRS is performed primarily through:
 
 - automated pytest scenarios under `test_rag_system_core/`
 - code-level inspection of public exports and composition helpers
-- document synchronization across `docs/prd.md`, `docs/api.md`, and `docs/test.md`
+- document synchronization across `README.md`, `docs/prd.md`, and `docs/srs.md`
 
 ---
 

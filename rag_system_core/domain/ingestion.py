@@ -231,8 +231,12 @@ class IngestionService:
     def _add_vectors(self, chunks: list[ChunkRecord], embeddings: list[list[float]]) -> list[str]:
         generated_chunk_ids = self.vector_store.add(chunks, embeddings)
         if len(generated_chunk_ids) != len(chunks):
-            self.vector_store.delete_chunks(generated_chunk_ids)
-            raise RuntimeError("Milvus returned a mismatched number of chunk ids")
+            mismatch_error = RuntimeError("Milvus returned a mismatched number of chunk ids")
+            try:
+                self.vector_store.delete_chunks(generated_chunk_ids)
+            except Exception as rollback_error:
+                mismatch_error.add_note(f"Vector rollback failed: {rollback_error!r}")
+            raise mismatch_error
         return generated_chunk_ids
 
     def _persist_chunks(self, chunks: list[ChunkRecord], generated_chunk_ids: list[str]) -> None:
@@ -248,8 +252,11 @@ class IngestionService:
         ]
         try:
             self.metadata_store.add_chunks(persisted_chunks)
-        except Exception:
-            self.vector_store.delete_chunks(generated_chunk_ids)
+        except Exception as persistence_error:
+            try:
+                self.vector_store.delete_chunks(generated_chunk_ids)
+            except Exception as rollback_error:
+                persistence_error.add_note(f"Vector rollback failed: {rollback_error!r}")
             raise
 
     def _rollback_persisted_chunks(self, chunk_ids: list[str]) -> None:
