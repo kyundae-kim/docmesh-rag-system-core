@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import BinaryIO, Callable
+
+from docmesh_py_core import AuthenticatedUser
+
+from rag_system_core.domain.generation import GenerationService
+from rag_system_core.domain.ingestion import IngestionService
+from rag_system_core.domain.retrieval import RetrievalService
+from rag_system_core.ports import (
+    Chunker,
+    DocumentAssetStorage,
+    EmbeddingClient,
+    GenerationClient,
+    HealthCheckRunner,
+    MetadataRepository,
+    VectorStore,
+)
+from rag_system_core.types import (
+    ChunkRecord,
+    DocumentRecord,
+    IngestionProgressRecord,
+    IngestResult,
+    QueryResult,
+)
+
+
+class RAGCore:
+    def __init__(
+        self,
+        *,
+        embedding_client: EmbeddingClient,
+        generation_client: GenerationClient,
+        vector_store: VectorStore,
+        metadata_store: MetadataRepository,
+        document_storage: DocumentAssetStorage,
+        chunker: Chunker,
+        health_check_runner: HealthCheckRunner,
+    ) -> None:
+        self.embedding_client = embedding_client
+        self.generation_client = generation_client
+        self.metadata_store = metadata_store
+        self.document_storage = document_storage
+        self.vector_store = vector_store
+        self.chunker = chunker
+        self.health_check_runner = health_check_runner
+        self.ingestor = IngestionService(
+            chunker=self.chunker,
+            embedding_client=embedding_client,
+            vector_store=self.vector_store,
+            metadata_store=self.metadata_store,
+            document_storage=self.document_storage,
+        )
+        self.retriever = RetrievalService(
+            embedding_client=embedding_client,
+            vector_store=self.vector_store,
+        )
+        self.generator = GenerationService(generation_client)
+
+    def ingest_text(self, *, user: AuthenticatedUser, text: str, source: str) -> IngestResult:
+        return self.ingestor.ingest_text(user_id=user.sub, text=text, source=source)
+
+    def ingest_file_stream(
+        self,
+        *,
+        user: AuthenticatedUser,
+        file_stream: BinaryIO,
+        source: str | None = None,
+    ) -> IngestResult:
+        if source is None or not source.strip():
+            raise ValueError("source is required for stream ingestion")
+        return self.ingestor.ingest_file_stream(
+            user_id=user.sub,
+            file_stream=file_stream,
+            source=source,
+        )
+
+    def ingest_file_path(
+        self,
+        *,
+        user: AuthenticatedUser,
+        file_path: str | Path,
+        source: str | None = None,
+    ) -> IngestResult:
+        return self.ingestor.ingest_file_path(
+            user_id=user.sub,
+            file_path=Path(file_path),
+            source=source,
+        )
+
+    def query(
+        self,
+        *,
+        user: AuthenticatedUser,
+        question: str,
+        top_k: int = 3,
+    ) -> QueryResult:
+        context = self.retriever.search(user_id=user.sub, question=question, top_k=top_k)
+        return self.generator.generate(question=question, context_chunks=context)
+
+    def list_documents(self, *, user: AuthenticatedUser) -> list[DocumentRecord]:
+        return self.metadata_store.list_documents(user.sub)
+
+    def get_document(self, doc_id: str, *, user: AuthenticatedUser) -> DocumentRecord | None:
+        return self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=user.sub)
+
+    def list_document_chunks(self, doc_id: str, *, user: AuthenticatedUser) -> list[ChunkRecord]:
+        return self.metadata_store.list_document_chunks(doc_id=doc_id, user_id=user.sub)
+
+    def list_ingestion_progress(
+        self,
+        doc_id: str,
+        *,
+        user: AuthenticatedUser,
+        job_id: str | None = None,
+    ) -> list[IngestionProgressRecord]:
+        return self.metadata_store.list_ingestion_progress(doc_id=doc_id, user_id=user.sub, job_id=job_id)
+
+    def delete_document(self, doc_id: str, *, user: AuthenticatedUser) -> bool:
+        document = self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=user.sub)
+        if document is None:
+            return False
+        self.vector_store.delete_document(doc_id)
+        self.document_storage.delete(document)
+        deleted_document = self.metadata_store.delete_document(doc_id=doc_id, user_id=user.sub)
+        if deleted_document is None:
+            return False
+        return True
+
+    def health_check(self):
+        service_checks: dict[str, Callable[[], None]] = {"metadata": self.metadata_store.check}
+        if hasattr(self.vector_store, "check"):
+            service_checks["milvus"] = self.vector_store.check
+        if hasattr(self.embedding_client, "check"):
+            service_checks["embedding"] = self.embedding_client.check
+        if hasattr(self.generation_client, "check"):
+            service_checks["generation"] = self.generation_client.check
+        if hasattr(self.document_storage, "check"):
+            service_checks["dms"] = self.document_storage.check
+        return self.health_check_runner(service_checks, required_services=set(service_checks))
+
+
+__all__ = [
+    "ChunkRecord",
+    "DocumentRecord",
+    "EmbeddingClient",
+    "GenerationClient",
+    "GenerationService",
+    "IngestionProgressRecord",
+    "IngestionService",
+    "IngestResult",
+    "QueryResult",
+    "RAGCore",
+    "RetrievalService",
+    "VectorStore",
+]

@@ -2,7 +2,7 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/postgres
 {
 	"name": "Docmesh RAG System Core Dev Container",
-	"dockerComposeFile": ["docker-compose.yml", "docker-compose.ollama.yml"],
+	"dockerComposeFile": ["docker-compose.yml", "docker-compose.ollama.yml", "docker-compose.db.yml"],
 	"service": "app",
 	"mounts": [
 		"source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached"
@@ -30,7 +30,7 @@
 	// "forwardPorts": [5432, 8000, 8080],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup"
+	// "postCreateCommand": "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup"
 
 	// Configure tool-specific properties.
 	// "customizations": {},
