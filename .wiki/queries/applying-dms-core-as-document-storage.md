@@ -1,7 +1,7 @@
 ---
 title: Applying dms-core as Document Storage
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-07-30
 type: query
 tags: [architecture, integration, sdk, persistence, decision]
 sources: [raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-examples-v0.6.0-2026-07-27.md, raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md]
@@ -122,3 +122,4 @@ DMS를 적용할 때 가장 먼저 바꿔야 하는 것은 storage 구현체보�
 - [[user-scope-isolation]]
 - [[persistence-and-restart-recovery]]
 - [[verifying-dms-core-contract]]
+- [[minimizing-consumer-implementation-with-dms-core-improvements]]

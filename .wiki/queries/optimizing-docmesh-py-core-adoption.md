@@ -1,7 +1,7 @@
 ---
 title: Optimizing docmesh-py-core adoption
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-07-30
 type: query
 tags: [sdk, integration, architecture, config, performance, testing]
 sources: [raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
@@ -145,3 +145,4 @@ healthcheck를 매 요청마다 반복하지 않는다. startup readiness, 주�
 - [[service-health-orchestration]]
 - [[separating-dms-service-environment-variables-with-prefixes]]
 - [[verifying-docmesh-py-core-contract]]
+- [[minimizing-consumer-implementation-with-docmesh-py-core-improvements]]

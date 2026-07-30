@@ -1,7 +1,7 @@
 ---
 title: docmesh-py-core
 created: 2026-06-19
-updated: 2026-07-27
+updated: 2026-07-30
 type: entity
 tags: [sdk, python, integration, config]
 sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md]
@@ -34,3 +34,4 @@ v0.5.0 설정 계약은 환경변수에서 공백·boolean·숫자형을 엄격�
 - [[service-factory-registry]]
 - [[service-health-orchestration]]
 - [[interface-roadmap]]
+- [[minimizing-consumer-implementation-with-docmesh-py-core-improvements]]

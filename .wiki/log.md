@@ -441,3 +441,31 @@
   - `index.md`
 - Verification: installed v0.5.0 API signatures checked; 36 composition tests and all 83 repository tests passed; compileall and `git diff --check` passed; mypy remained at the same 15 pre-existing errors as `HEAD` with no new regression.
 - Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
+
+## [2026-07-30] query | 소비자 구현 소스 최소화를 위한 docmesh-py-core 개선점
+- Question:
+  - 소비 프로젝트의 bootstrap·설정 변환·client 조회·health·cleanup 구현을 최소화할 upstream 개선점
+- Query filed:
+  - queries/minimizing-consumer-implementation-with-docmesh-py-core-improvements.md
+- Wiki pages updated:
+  - entities/docmesh-py-core.md
+  - queries/optimizing-docmesh-py-core-adoption.md
+  - index.md
+- Recommendation: prioritize injected environment mappings/namespaces, symmetric typed sync/async containers, diagnosis-preserving assembly, named service instances, managed NATS lifecycle, unified error serialization, and public test overrides.
+- Repository status: documentation-derived proposal only; no live package or repository implementation was performed.
+- Verification: 33 pages indexed; the new query passed frontmatter, index presence, and wikilink checks.
+- Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
+
+## [2026-07-30] query | 소비자 구현 소스 최소화를 위한 dms-core 개선점
+- Question:
+  - 소비 프로젝트의 설정 변환·조립·소유권·업로드·pagination·접근제어·테스트 구현을 최소화할 upstream 개선점
+- Query filed:
+  - queries/minimizing-consumer-implementation-with-dms-core-improvements.md
+- Wiki pages updated:
+  - entities/dms-core.md
+  - queries/applying-dms-core-as-document-storage.md
+  - index.md
+- Recommendation: prioritize environment mapping/namespaces, a shared assembly plan, typed ownership, capability protocols, high-level upload and iteration helpers, and a generic access-policy seam.
+- Repository status: documentation-derived proposal only; no live package or repository implementation was performed.
+- Verification: 34 pages indexed; the new query passed frontmatter, index presence, and wikilink checks.
+- Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.

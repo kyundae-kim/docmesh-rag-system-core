@@ -1,7 +1,7 @@
 ---
 title: dms-core
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-07-30
 type: entity
 tags: [sdk, python, integration, persistence]
 sources: [raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-examples-v0.6.0-2026-07-27.md, raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md]
@@ -27,3 +27,4 @@ confidence: medium
 - [[dms-configuration-and-assembly]]
 - [[public-api-surface]]
 - [[service-configuration-topology]]
+- [[minimizing-consumer-implementation-with-dms-core-improvements]]
