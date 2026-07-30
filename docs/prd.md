@@ -5,7 +5,7 @@
 - **문서명:** Product Requirements Document (PRD)
 - **대상 제품:** DocMesh RAG Core Service
 - **문서 목적:** 현재 저장소에 구현된 `rag_system_core`의 제품 목표, 범위, 제약, 운영 경계를 코드 기준으로 정의한다.
-- **문서 상태:** Aligned with current implementation
+- **문서 상태:** `v0.2.0` implementation baseline (`docmesh-py-core v0.5.0`, `dms-core v0.6.0`)
 
 이 문서는 미래 희망사항보다 **현재 코드가 실제로 제공하는 제품 동작**을 우선 서술한다.
 
@@ -17,8 +17,8 @@
 - **authenticated user**: 상위 애플리케이션이 전달하는 `docmesh_py_core.AuthenticatedUser`
 - **`user_id`**: persistence 및 filtering에 사용되는 저장된 사용자 식별자
 - **metadata store**: SQLite + SQLAlchemy 기반 document / chunk / ingestion progress persistence 계층
-- **vector store**: Milvus Lite 기반 embedding 저장 및 retrieval 계층
-- **document asset storage**: dms-core가 관리하는 원문을 opaque `asset_reference`로 추적하는 저장 계층
+- **vector store**: 표준 composition에서 Milvus adapter가 담당하는 embedding 저장 및 retrieval 계층
+- **document asset storage**: dms-core가 관리하는 source asset을 opaque `asset_reference`로 추적하는 저장 계층
 - **restart recovery**: 동일한 metadata store 및 vector store 구성을 다시 열어 상태를 재사용하는 동작
 - **health check**: metadata 및 사용 가능한 의존 서비스 상태를 집계하는 점검 동작
 
@@ -32,7 +32,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 상위 애플리케이션이 `RAGCore`를 통해 ingestion / retrieval / generation / document management를 단일 진입점으로 사용할 수 있어야 한다.
 - metadata store와 vector store를 분리해 restart recovery가 가능해야 한다.
 - user scope를 기준으로 멀티유저 데이터가 섞이지 않아야 한다.
-- DocMesh settings / service assembly / health integration 경로를 선택적으로 사용할 수 있어야 한다.
+- production 경로에서는 DocMesh settings로 Ollama/Milvus와 DMS SDK를 조립하고, 테스트·사용자 정의 경로에서는 동일한 port를 구현한 의존성을 직접 주입할 수 있어야 한다.
 
 ---
 
@@ -43,19 +43,21 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 1. 조립 가능한 `RAGCore` 중심 API를 제공한다.
 2. 텍스트, 파일 스트림, 파일 경로 ingestion을 지원한다.
 3. 사용자별 문서/청크/검색 결과 격리를 보장한다.
-4. SQLite RAG metadata + Milvus Lite vector store + dms-core 원문 lifecycle을 제공한다.
+4. SQLite RAG metadata + Milvus vector store adapter + dms-core source asset lifecycle을 제공한다.
 5. factory / service-factory 기반 구성 경로를 제공한다.
-6. health check와 DocMesh integration 경로를 제공한다.
+6. 환경 기반 production bootstrap과 소유 자원의 lifecycle 정리를 제공한다.
+7. metadata, Milvus, Ollama, DMS를 아우르는 health check 경로를 제공한다.
 
 ### 3.2 성공 기준
 
 - 사용자는 `RAGCore(...)`를 직접 조립할 수 있다.
 - 사용자는 `bootstrap_rag_core(...)`를 service factory와 함께 사용할 수 있다.
+- 사용자는 `bootstrap_rag_core_from_env(...)` context manager로 production 의존성을 조립하고 종료 시 소유 자원을 정리할 수 있다.
 - 사용자는 세 가지 ingestion 경로(`ingest_text`, `ingest_file_stream`, `ingest_file_path`)를 사용할 수 있다.
 - query는 항상 현재 user scope로 제한된 chunk만 사용한다.
 - metadata는 SQLite에 유지되고, 동일한 vector store 구성을 재사용하면 retrieval이 복원된다.
-- 문서 삭제 성공 시 metadata / progress / asset / Milvus 엔트리가 함께 제거된다.
-- health check는 metadata 및 사용 가능한 의존 서비스 상태를 집계한다.
+- 문서 삭제 성공 시 metadata / progress / Milvus 엔트리가 제거되고 DMS asset은 soft delete된다.
+- health check는 metadata, Milvus, embedding, generation, DMS 중 실제 구성요소가 제공하는 점검을 집계한다.
 
 ---
 
@@ -65,6 +67,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 
 - 단일 클래스 진입점 `RAGCore`
 - service factory 기반 helper `bootstrap_rag_core`
+- 환경 기반 lifecycle helper `bootstrap_rag_core_from_env`
 - 구성 helper 및 `DocmeshRAGServiceFactory`
 - 텍스트 / 파일 스트림 / 파일 경로 ingestion
 - 고정 길이 chunking + overlap
@@ -105,14 +108,19 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 ### 5.2 핵심 사용 시나리오
 
 #### 시나리오 1: 직접 조립 기반 실행
-- 사용자는 embedding client, generation client, vector store, metadata store, document storage, chunker를 준비한다.
+- 사용자는 embedding client, generation client, vector store, metadata store, document storage, chunker, `health_check_runner`를 준비한다.
 - 사용자는 `RAGCore(...)`를 조립한다.
 - 사용자는 `ingest_text(...)` 또는 파일 기반 ingestion 후 `query(...)`를 호출한다.
 
 #### 시나리오 2: service factory 기반 실행
-- 사용자는 DocMesh settings / `ServiceBundle` 또는 사용자 정의 factory를 준비한다.
+- 사용자는 DocMesh `ServiceConfigs`, `ServiceBundle`, DMS SDK를 가진 `DocmeshRAGServiceFactory` 또는 사용자 정의 factory를 준비한다.
 - 사용자는 `bootstrap_rag_core(...)`로 코어를 조립한다.
 - helper는 service factory를 통해 의존 구성요소를 생성한다.
+
+#### 시나리오 2-1: 환경 기반 production 실행
+- 사용자는 Ollama/Milvus 환경변수와 별도의 `DMS_` 접두사 환경변수를 준비한다.
+- `bootstrap_rag_core_from_env(...)`는 Ollama/Milvus bundle과 DMS SDK를 한 번 조립한다.
+- context 종료 시 DMS SDK와 DocMesh bundle을 정리한다.
 
 #### 시나리오 3: 사용자별 query
 - 상위 애플리케이션은 인증된 `AuthenticatedUser`를 제공한다.
@@ -127,9 +135,10 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 사용자는 문서 목록, 특정 문서, 청크, ingestion progress를 조회할 수 있다.
 - 사용자는 문서를 삭제할 수 있다.
 - vector store 삭제 실패 시 metadata / asset은 보존되어 재시도할 수 있다.
+- DMS soft delete 실패 시 RAG metadata는 보존되어 재시도할 수 있다.
 
 #### 시나리오 6: health check
-- 사용자는 `health_check()`로 metadata와 사용 가능한 의존 서비스 상태를 확인한다.
+- 사용자는 `health_check()`로 metadata와 Milvus/Ollama/DMS 등 사용 가능한 의존 서비스 상태를 확인한다.
 - DocMesh aggregate health path가 가능하면 이를 우선 사용한다.
 
 ---
@@ -140,13 +149,16 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 
 #### PRD-FR-1. 기본 사용자 식별
 - 시스템은 `docmesh_py_core.AuthenticatedUser`를 입력으로 받아야 한다.
-- 시스템은 `AuthenticatedUser.sub`를 `user_id`로 사용해야 한다.
+
+#### PRD-FR-2. resolved user identity
+- 시스템은 `AuthenticatedUser.sub`를 저장 및 filtering에 사용하는 `user_id`로 해석해야 한다.
 - 인증과 사용자 모델 생성은 상위 애플리케이션의 책임이어야 한다.
 
 #### PRD-FR-3. 멀티유저 격리
 - 모든 document metadata와 chunk metadata에는 `user_id`가 포함되어야 한다.
 - query는 반드시 `user_id` 기준 필터링을 적용해야 한다.
 - 문서 조회/청크 조회/progress 조회/삭제도 현재 user scope 기준으로 제한되어야 한다.
+- 삭제 격리는 `RAGCore`가 먼저 user-scoped document lookup을 성공한 경우에만 vector/DMS 삭제를 호출하는 방식으로 보장해야 한다.
 
 ### 6.2 문서 입력 및 저장 요구사항
 
@@ -159,10 +171,13 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 파일 기반 ingestion은 현재 구현상 UTF-8 decode 가능한 텍스트를 전제해야 한다.
 
 #### PRD-FR-5. document asset storage
-- production bootstrap은 dms-core SDK를 통해 문서 원문을 저장해야 한다.
+- production bootstrap은 dms-core SDK를 통해 document source asset을 저장해야 한다.
 - 문서 본문은 RAG metadata row에 직접 저장하지 않고 opaque `asset_reference`로 추적해야 한다.
 - DMS 업로드에는 RAG의 `doc_id`를 동일한 `document_id`로 전달하고, 내부 MinIO key는 노출하지 않아야 한다.
+- DMS가 요청한 `doc_id`와 다른 `document_id`를 반환하면 계약 위반으로 실패해야 한다.
 - 업로드 요청은 `user_id`, `source`, ingestion `job_id` 기반 idempotency 정보를 DMS에 전달해야 한다.
+- `ingest_text`는 `strip()`으로 정규화된 텍스트를 저장하고, file-stream API는 읽은 byte payload를, file-path API는 업로드 시점의 source file 내용을 source asset으로 저장해야 한다.
+- DMS asset이 없거나 이미 삭제된 경우 asset load는 `None`을 반환해야 한다.
 
 #### PRD-FR-6. 문서 metadata
 - 문서 metadata는 최소 다음 필드를 가져야 한다.
@@ -180,7 +195,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 ### 6.3 Ingestion 파이프라인 요구사항
 
 #### PRD-FR-7. 파이프라인 단계
-시스템은 다음 순서의 파이프라인 단계를 사용해야 한다.
+시스템은 progress tracking 시작 전에 API 경로별 source 읽기/UTF-8 decode와 DMS asset 업로드를 수행하고, `_finalize_ingest` 진입 후 document metadata를 생성한 뒤 다음 후속 처리 단계를 progress로 추적해야 한다.
 
 1. `load`
 2. `preprocess`
@@ -191,7 +206,8 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 
 #### PRD-FR-8. 전처리/청킹
 - 전처리는 현재 구현 기준 `strip()` 수준이어야 한다.
-- chunking은 고정 길이 window + overlap 방식을 사용해야 한다.
+- 표준 factory가 제공하는 chunking은 고정 길이 window + overlap 방식을 사용해야 한다.
+- `chunk_size`는 양수, `chunk_overlap`은 0 이상이면서 `chunk_size`보다 작아야 한다.
 - 빈 텍스트는 ingest할 수 없어야 한다.
 
 #### PRD-FR-9. progress persistence
@@ -199,18 +215,23 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - progress status는 `running`, `completed`, `failed`를 표현할 수 있어야 한다.
 - progress 조회는 문서와 user scope 기준으로 제한되어야 한다.
 - vector insert 후 해당 단계의 `completed` progress 저장이 실패하면 방금 생성한 vector를 보상 삭제해야 한다.
-- 보상 작업 하나가 실패해도 나머지 보상은 계속 실행하고, 원래 pipeline 오류를 유지해야 한다.
+- vector store가 chunk 수와 다른 개수의 ID를 반환하면 반환된 ID를 보상 삭제하고 ingestion을 실패시켜야 한다.
+- chunk metadata 저장이 실패하면 생성한 vector를 보상 삭제해야 한다.
+- `chunk_persistence=completed` progress 저장이 실패하면 metadata chunk와 vector를 모두 보상 삭제해야 한다.
+- 복수 보상 작업 중 하나가 실패해도 나머지 보상은 계속 실행하고, cleanup 오류는 원래 pipeline 오류를 대체하지 않아야 한다.
+- 위 보상 범위는 vector와 chunk metadata이며, 이미 생성된 document metadata, DMS asset, progress row의 전체 rollback을 보장하지 않아야 한다.
 
 ### 6.4 Embedding / Generation 요구사항
 
 #### PRD-FR-10. embedding 호출
 - embedding은 batch 호출을 지원해야 한다.
 - ingestion 시 chunk 전체는 하나의 `embed(chunks)` 호출로 처리되어야 한다.
-- embedding 반환 벡터 수는 chunk 수와 일치해야 한다.
+- embedding/vector-store adapter 계약은 chunk와 vector 개수 일치를 요구해야 하며, 표준 Milvus adapter는 불일치를 감지하면 ingestion을 실패시켜야 한다.
 
 #### PRD-FR-11. generation 호출
 - generation은 완성된 단일 prompt 문자열을 입력으로 받아야 한다.
 - generation 결과는 최종 답변 문자열이어야 한다.
+- 표준 Ollama adapter는 비어 있지 않은 embedding/generation model 설정을 요구하고 transport 또는 응답 형식 오류를 명확한 runtime 오류로 변환해야 한다.
 
 #### PRD-FR-12. prompt 구조
 prompt는 최소 아래 섹션을 포함해야 한다.
@@ -224,7 +245,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 ### 6.5 Vector Store 요구사항
 
 #### PRD-FR-13. 기본 vector store
-- 기본 구현은 Milvus Lite 기반 vector store여야 한다.
+- 표준 `DocmeshRAGServiceFactory`는 `MilvusLiteVectorStore` adapter를 제공해야 하며, 실제 local/remote 연결 방식은 주입되거나 DocMesh가 조립한 Milvus client/configuration을 따라야 한다.
 - collection이 없으면 첫 insert 시 embedding dimension 기준으로 생성해야 한다.
 - 검색은 `user_id` filter를 강제해야 한다.
 
@@ -232,11 +253,12 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - Milvus service client는 명시적으로 주입하거나 DocMesh settings / `ServiceBundle`에서 조립해야 한다.
 - service client를 조립할 수 없으면 명확한 구성 오류로 실패해야 한다.
 - collection과 timeout이 명시되지 않았고 DocMesh 설정에도 값이 없으면 각각 `rag_chunks`, `30.0`을 사용해야 한다.
+- 명시적 Milvus client는 client 생성을 대체할 뿐이며, `settings`/`bundle`이 없으면 collection/timeout 해석을 위해 Milvus DocMesh 설정을 로드해야 한다.
 
 ### 6.6 Persistence 및 삭제 요구사항
 
 #### PRD-FR-15. metadata persistence
-- SQLite + SQLAlchemy ORM을 사용해야 한다.
+- 표준 `DocmeshRAGServiceFactory`는 SQLite + SQLAlchemy ORM metadata store를 제공해야 하며, 직접 조립 경로는 다른 `MetadataRepository` 구현을 주입할 수 있어야 한다.
 - `documents`, `chunks`, `ingestion_progress` 테이블을 유지해야 한다.
 
 #### PRD-FR-16. restart recovery
@@ -249,16 +271,22 @@ prompt는 최소 아래 섹션을 포함해야 한다.
   - document metadata
   - chunk metadata
   - ingestion progress metadata
-  - stored asset
+  - DMS asset (soft delete)
   - Milvus 엔트리
 - vector store 삭제가 실패하면 metadata / asset 삭제를 진행하지 않아야 한다.
-- 실패 후 재시도 가능해야 한다.
+- DMS soft delete가 실패하면 RAG metadata를 삭제하지 않아야 한다.
+- DMS에서 이미 없거나 이미 삭제된 자산은 삭제 완료로 취급해야 한다.
+- 삭제 순서는 vector → DMS soft delete → RAG metadata여야 한다.
+- vector 삭제 실패 시 asset과 metadata를 보존해야 한다.
+- DMS soft delete 실패 시 metadata는 보존하지만 vector는 이미 삭제됐을 수 있어야 한다.
+- metadata 삭제 실패 시 vector와 DMS asset은 이미 정리됐을 수 있으며 분산 rollback을 제공하지 않아야 한다.
 
 ### 6.7 구성 및 운영성 요구사항
 
 #### PRD-FR-18. health check
 - 시스템은 metadata health check를 항상 포함해야 한다.
 - vector store / embedding client / generation client가 `check()`를 제공하면 함께 포함해야 한다.
+- document asset storage가 `check()`를 제공하면 DMS 상태를 함께 포함해야 한다.
 - health aggregation은 `docmesh_py_core.check_all_services()` 경계를 사용해야 한다.
 
 #### PRD-FR-19. 구성 helper 및 DocMesh integration
@@ -267,6 +295,9 @@ prompt는 최소 아래 섹션을 포함해야 한다.
   `docmesh_py_core.assemble_services()`를 활용할 수 있어야 한다.
 - `bootstrap_rag_core(...)`는 service factory를 받아 코어 조립을 수행해야 한다.
 - `DocmeshRAGServiceFactory`는 DocMesh settings / `ServiceBundle`과 함께 사용할 수 있어야 한다.
+- `DocmeshRAGServiceFactory.from_env(...)`는 Ollama와 Milvus를 필수 서비스로 조립하고 별도의 DMS SDK를 생성해야 한다.
+- DMS 설정은 현재 프로세스 환경에서 `DMS_METADATA_BACKEND`, `DMS_DOCMESH_*`, `DMS_SQLITE_*` 또는 `DMS_POSTGRES_*`, `DMS_MINIO_*` 이름으로 읽어 RAG 서비스 설정과 분리해야 한다.
+- 환경 기반 factory 또는 bootstrap이 소유한 DMS SDK와 `ServiceBundle`은 정상/예외 종료 모두에서 정리되어야 한다.
 
 ---
 
@@ -289,6 +320,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - metadata store persistence는 재시작 후에도 유지되어야 한다.
 - 동일한 vector store 구성을 재사용하면 restart recovery가 가능해야 한다.
 - document deletion 실패 시 부분 삭제로 인한 metadata 손실이 최소화되어야 한다.
+- 환경 기반 조립 중 DMS SDK 생성에 실패하면 이미 생성된 DocMesh bundle을 정리해야 한다.
 
 ### 7.5 유지보수성
 - public API는 `RAGCore` 중심으로 단순해야 한다.
@@ -344,7 +376,7 @@ doc_id (PK)
 user_id
 source
 created_at
-storage_path
+storage_path (DB 호환 column명, public record에서는 asset_reference)
 ```
 
 ### 9.2 chunks
@@ -382,27 +414,43 @@ IngestionProgressRecord
 QueryResult
 ```
 
+### 9.5 public surface 계층
+
+| 계층 | 지원 인터페이스 |
+|---|---|
+| package root `rag_system_core` | `RAGCore`, `RAGServiceFactory`, `DocmeshRAGServiceFactory`, 두 bootstrap helper, 두 Ollama adapter, public records, client protocols, `AuthenticatedUser` |
+| `rag_system_core.composition` | DocMesh runtime helper, `run_health_checks`, 두 bootstrap helper, 두 service-factory type |
+| `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
+
+advanced factory helper는 package-root export가 아니며 module-qualified import를 사용해야 한다.
+
 ---
 
 ## 10. 제약사항 및 리스크
 
 ### R1. 조립형 생성자
-- `RAGCore`는 고수준 convenience 생성자가 아니라 fully assembled dependency graph를 요구한다.
+- `RAGCore`는 고수준 convenience 생성자가 아니라 `health_check_runner`를 포함한 fully assembled dependency graph를 요구한다.
 - 따라서 사용자는 factory helper 또는 자체 조립 코드를 준비해야 한다.
 
 ### R2. 비텍스트 파일 처리 제한
 - 파일 ingestion은 현재 UTF-8 decode 가능한 텍스트를 가정한다.
 - 바이너리 문서, PDF, 이미지 등은 직접 지원하지 않는다.
 
-### R3. Milvus Lite 운영 한계
-- 기본 검색 저장소는 로컬/경량 Milvus Lite다.
-- 대규모 운영, 고가용성, 복잡한 멀티테넌시에는 부적합하다.
+### R3. Milvus 운영 경계
+- 표준 adapter의 실제 연결 방식은 Milvus client/configuration에 따르며 local file URI와 외부 Milvus 연결을 모두 사용할 수 있다.
+- 이 라이브러리는 외부 Milvus의 배포, 고가용성, 용량 계획을 제공하지 않는다.
 
 ### R4. 분산 트랜잭션 부재
 - delete는 vector store와 metadata / asset 전체에 대해 강한 원자성을 제공하지 않는다.
 
-### R5. memory storage의 휘발성
-- `memory` storage mode 자산은 프로세스 재시작 시 사라진다.
+### R5. 부분 ingestion 잔여물
+- source 읽기/일부 UTF-8 decode, asset 업로드, document metadata 저장은 progress로 추적되는 후속 처리보다 앞서 수행된다.
+- 후속 단계가 실패하면 progress에는 실패가 기록되지만 document metadata와 DMS asset이 자동으로 모두 제거되는 강한 트랜잭션은 제공하지 않는다.
+- file-path payload의 UTF-8 decode는 DMS 업로드 뒤 수행되므로 decode 실패 시 document metadata 없이 DMS asset만 남을 수 있다.
+
+### R6. lifecycle 소유권
+- `bootstrap_rag_core(...)`만 호출하면 전달된 service factory의 lifecycle은 호출자가 관리해야 한다.
+- production 환경에서는 소유 자원 정리를 위해 `bootstrap_rag_core_from_env(...)` 또는 `DocmeshRAGServiceFactory.from_env(...)`를 context manager로 사용해야 한다.
 
 ---
 
@@ -411,15 +459,19 @@ QueryResult
 ### 11.1 현재 구현 범위
 - `RAGCore`
 - `bootstrap_rag_core`
+- `bootstrap_rag_core_from_env`
 - `DocmeshRAGServiceFactory`
-- 구성 helper 일체
+- `RAGServiceFactory`
+- module-qualified advanced helpers: `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store`
 - 세 가지 ingestion API
 - query / document management API
 - progress persistence / 조회
 - health check
 - DocMesh settings / `ServiceBundle` integration
+- dms-core SDK / MinIO 기반 document asset lifecycle
+- `DMS_` 접두사 기반 RAG/DMS 환경 설정 분리
 - SQLite metadata persistence
-- Milvus Lite retrieval persistence
+- configured Milvus retrieval persistence
 
 ### 11.2 이후 확장 가능 범위
 - FastAPI 기반 서비스 래핑
@@ -436,20 +488,22 @@ QueryResult
 2. `AuthenticatedUser.sub`가 저장 및 검색의 `user_id`로 사용된다.
 3. 텍스트, 파일 스트림, 파일 경로 입력을 각각 적재할 수 있다.
 4. `ingest_file_stream()`은 `source`가 없으면 실패한다.
-5. ingestion은 `load -> preprocess -> chunking -> embedding -> vector_store -> chunk_persistence` 순서의 progress를 남긴다.
+5. 선행 source/DMS/document 작업 이후 ingestion은 `load -> preprocess -> chunking -> embedding -> vector_store -> chunk_persistence` 순서의 progress를 남긴다.
 6. embedding은 chunk 전체에 대해 batch 1회 호출로 처리된다.
 7. query 결과는 반드시 현재 user scope의 chunk만 포함한다.
 8. prompt에는 `[System Prompt]`, `[Retrieved Context]`, `[User Query]`가 포함된다.
 9. metadata는 SQLite에 저장된다.
 10. 동일한 vector store 구성을 다시 사용하면 재시작 후 retrieval이 가능하다.
 11. 문서별 chunk 목록과 ingestion progress를 조회할 수 있다.
-12. 삭제 성공 시 document / chunk / progress / asset / Milvus 엔트리가 함께 정리된다.
-13. vector store 삭제가 실패하면 metadata는 유지되어 재시도가 가능하다.
+12. 삭제 성공 시 document / chunk / progress / Milvus 엔트리가 제거되고 DMS asset은 soft delete된다.
+13. vector store 또는 DMS soft delete가 실패하면 metadata는 유지된다. DMS 실패 시 vector는 이미 삭제됐을 수 있다.
 14. health check는 metadata 및 사용 가능한 의존 서비스 상태를 집계한다.
 15. `bootstrap_rag_core(...)`는 service factory를 사용해 코어를 조립할 수 있다.
+16. `bootstrap_rag_core_from_env(...)`는 기본적으로 startup health check를 수행하며 context 종료 시 소유한 DMS SDK와 DocMesh bundle을 정리한다.
+17. DMS 업로드는 RAG `doc_id`, 사용자 metadata, ingestion `job_id` 기반 idempotency 정보를 보존한다.
 
 ---
 
 ## 13. 요약
 
-DocMesh RAG Core Service는 현재 **조립 가능한 Python RAG 라이브러리**로 구현되어 있다. 제품의 핵심 가치는 `RAGCore` 중심 API, user scope 격리, SQLite + Milvus Lite 기반 경량 persistence, 세분화된 document management API, 그리고 factory / DocMesh integration 경로에 있다. 이 PRD는 현재 코드가 실제로 보장하는 범위를 기준으로 유지한다.
+DocMesh RAG Core Service는 현재 **조립 가능한 Python RAG 라이브러리**로 구현되어 있다. 제품의 핵심 가치는 `RAGCore` 중심 API, user scope 격리, SQLite + configured Milvus adapter 기반 검색 persistence, dms-core 기반 source asset lifecycle, 세분화된 document management API, 그리고 lifecycle을 소유하는 환경 기반 DocMesh integration 경로에 있다. 이 PRD는 현재 코드가 실제로 보장하는 범위를 기준으로 유지한다.
