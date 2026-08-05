@@ -17,12 +17,12 @@ pytestmark = [
 
 def _ensure_dms_bucket_exists() -> None:
     client = Minio(
-        os.environ["DMS_MINIO_ENDPOINT"],
-        access_key=os.environ["DMS_MINIO_ACCESS_KEY"],
-        secret_key=os.environ["DMS_MINIO_SECRET_KEY"],
-        secure=os.environ.get("DMS_MINIO_SECURE", "false").lower() == "true",
+        endpoint='minio:9000',
+        access_key='admin',
+        secret_key='password',
+        secure=False,
     )
-    bucket = os.environ["DMS_MINIO_BUCKET"]
+    bucket = 'documents'
     if not client.bucket_exists(bucket):
         client.make_bucket(bucket)
 
