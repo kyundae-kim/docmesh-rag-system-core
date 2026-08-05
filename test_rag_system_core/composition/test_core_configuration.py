@@ -91,8 +91,8 @@ def test_storage_package_does_not_export_concrete_milvus_client() -> None:
 
 
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
-    milvus_uri = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
+    milvus_endpoint = tmp_path / "configured-milvus.db"
+    monkeypatch.setenv("MILVUS_ENDPOINT", str(milvus_endpoint))
     monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
     monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
 
@@ -102,7 +102,7 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
     assert ingested.chunk_count == 1
     assert rig.core.vector_store.collection_name == "configured_chunks"
     assert rig.core.vector_store.timeout == 9.0
-    assert milvus_uri.exists()
+    assert milvus_endpoint.exists()
 
     restarted = RAGCore(
         embedding_client=FakeEmbeddingClient(),
@@ -141,8 +141,8 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
             request_timeout_seconds=18.5,
         )
     )
-    milvus_uri = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
+    milvus_endpoint = tmp_path / "configured-milvus.db"
+    monkeypatch.setenv("MILVUS_ENDPOINT", str(milvus_endpoint))
     monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
     monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
     monkeypatch.setattr(

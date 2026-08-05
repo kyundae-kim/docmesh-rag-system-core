@@ -31,7 +31,7 @@ def test_bootstrap_from_env_creates_rag_core_instance(monkeypatch, tmp_path: Pat
     monkeypatch.setenv("OLLAMA_HOST", "http://ollama:11434")
     monkeypatch.setenv("OLLAMA_EMBEDDING_MODEL", "bge-m3")
     monkeypatch.setenv("OLLAMA_GENERATION_MODEL", "llama3.2")
-    monkeypatch.setenv("MILVUS_URI", str(tmp_path / "milvus.db"))
+    monkeypatch.setenv("MILVUS_ENDPOINT", str(tmp_path / "milvus.db"))
     monkeypatch.setenv("DMS_SQLITE_PATH", str(tmp_path / "dms.db"))
 
     with bootstrap_rag_core_from_env(metadata_path=tmp_path / "rag.db") as core:
@@ -42,7 +42,7 @@ def test_ingest_query_and_delete_work_across_integrated_services(monkeypatch, tm
     monkeypatch.setenv("OLLAMA_HOST", "http://ollama:11434")
     monkeypatch.setenv("OLLAMA_EMBEDDING_MODEL", "bge-m3")
     monkeypatch.setenv("OLLAMA_GENERATION_MODEL", "llama3.2")
-    monkeypatch.setenv("MILVUS_URI", str(tmp_path / "milvus.db"))
+    monkeypatch.setenv("MILVUS_ENDPOINT", str(tmp_path / "milvus.db"))
     monkeypatch.setenv("DMS_SQLITE_PATH", str(tmp_path / "dms.db"))
     user = authenticated_user("integration-user")
     text = "The integration verification code is cobalt-orchid-2718."

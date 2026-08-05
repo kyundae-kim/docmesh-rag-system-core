@@ -4,9 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from docmesh_py_core import AuthenticatedUser
-
 from rag_system_core import RAGCore
+from rag_system_core import AuthenticatedUser
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
 from rag_system_core.composition.health import run_health_checks

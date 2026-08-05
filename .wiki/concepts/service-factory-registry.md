@@ -1,16 +1,16 @@
 ---
 title: Service Factory Registry
 created: 2026-06-19
-updated: 2026-07-16
+updated: 2026-08-04
 type: concept
 tags: [sdk, python, integration, config, decision]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md]
+sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md, raw/articles/docmesh-config-configuration-v0.1.0-2026-08-04.md, raw/articles/docmesh-config-examples-v0.1.0-2026-08-04.md, raw/articles/docmesh-config-env-example-v0.1.0-2026-08-04.md, raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md]
 confidence: medium
 ---
 
 # Service Factory Registry
 
-이 페이지의 이전 registry 중심 설명은 초기 SDK 가이드를 반영한다. v0.2.0의 현재 공개 경계는 `ServiceFactoryRegistry`가 아니라 assembly API다. 동기 lifecycle은 `assemble_services()`가, NATS를 포함한 async lifecycle은 `assemble_service_runtime()`이 설정 로드·available 서비스 탐지·`required`/`one_of` 검증·client 생성·선택적 startup healthcheck를 하나의 조정 계층으로 제공한다.^[raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md]
+이 페이지의 이전 registry 중심 설명은 초기 SDK 가이드를 반영한다. v0.6.0의 현재 공개 경계는 `ServiceFactoryRegistry`가 아니라 `RuntimePlan` 기반 assembly/lifespan API다. `docmesh_config`가 설정·plan·진단을 소유하고, `assemble_services(plan=...)`, `assemble_service_runtime(plan=...)`, `service_lifespan(plan=...)`이 검증된 config를 client/container·startup healthcheck·rollback·cleanup으로 변환한다.^[raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md]^[raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md]
 
 ## Why this boundary matters
 
@@ -20,9 +20,17 @@ confidence: medium
 
 설정 가이드는 registry 앞단의 `load_settings()`가 단순 파서가 아니라 서비스별 필수값, 조건부 필수값, 기본값, 보안 규칙을 함께 검증하는 계층임을 분명히 한다. 따라서 registry는 단순 factory라기보다 [[settings-loading-and-validation]]에서 이미 정규화된 설정 객체를 전제로 동작하며, 서비스 선택도 별도 backend selector보다 `POSTGRES_*`, `SQLITE_*` 같은 실제 설정 존재 여부에 결합된다.^[raw/articles/docmesh-py-core-config-guide-2026-06-19.md]
 
+## Configuration and assembly ownership
+
+`docmesh-config` v0.1.0은 환경변수 전용 typed config, `ServiceConfigs`, `RuntimePlan`, `diagnose_services()`와 secret-safe metadata를 제공하지만 외부 서비스 연결이나 client 생성을 수행하지 않는다. 따라서 [[docmesh-config]]가 설정·preflight·선택 정책을 소유하고, `docmesh-py-core`의 assembly API가 그 결과를 client/lifecycle로 변환하는 계층 분리가 소비자 구현의 결합도를 낮춘다.^[raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md]^[raw/articles/docmesh-config-configuration-v0.1.0-2026-08-04.md]
+
 ## Usage constraints
 
 registry가 반환하는 값은 서비스마다 성격이 다를 수 있다. 특히 `create_client("nats")`는 즉시 연결된 동기 client가 아니라 `NatsConnectionBuilder`를 돌려주므로 `await builder.connect()` 또는 `await builder.check()` 패턴을 강제한다. 따라서 소비 프로젝트는 서비스별 반환 계약 차이를 흡수하는 래퍼 계층을 둘지 여부를 검토해야 한다.^[raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md]
+
+## Catalog and ownership
+
+v0.6.0은 `SERVICE_CATALOG`과 `ServiceDescriptor`로 서비스별 config type·factory·sync 지원·환경 요구사항을 immutable metadata로 제공하고, `generate_environment_template()`과 `generate_configuration_reference()`로 deterministic 문서를 생성한다. 모든 `create_*_client()` factory는 이미 검증된 `docmesh_config` 모델을 받고 임의 kwargs나 test override를 공개하지 않는다. NATS의 persistent connection은 `connect()` 호출자가 소유하며 builder 자체는 자원을 소유하지 않는다.^[raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md]^[raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md]
 
 ## RAG bootstrap implications
 
@@ -30,15 +38,16 @@ RAG Core API reference는 `bootstrap_rag_core(...)`가 settings를 직접 로드
 
 ## Return contract
 
-v0.2.0 direct factory의 반환 규칙은 `keycloak`, `postgres`, `sqlite`, `minio`, `milvus`, `ollama`가 대체로 `ServiceClientWrapper`, 비활성 Langfuse가 `None`, NATS가 `NatsConnectionBuilder`라는 점이다. 그러나 일반 앱은 factory를 직접 조합하기보다 `ServiceBundle` 또는 `ServiceRuntime`을 사용해야 하며, NATS는 동기 bundle에서 제외되어 async runtime으로 조립한다. `factory_overrides` 및 keyword-only factory hooks는 테스트·특수 실행 환경의 명시적 대체 지점이다.^[raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md]
+v0.6.0 direct assembly의 반환 경계는 서비스별 `ServiceClientWrapper`/`NatsConnectionBuilder`와 `ServiceBundle` 또는 `ServiceRuntime`이다. 일반 앱은 `service_lifespan()` 또는 context manager가 lifecycle을 소유하는 bundle/runtime을 사용해야 하며, NATS persistent connection의 drain/close는 caller가 수행한다. `get()`·`require()`·`get_client()`는 선택/초기화 실패를 서로 다른 수준으로 표현하고, `require_client()`는 concrete client type을 검증한다.^[raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md]^[raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md]
 
 ## Operational notes
 
-권장 종료 패턴은 애플리케이션 수명주기 끝에서 `registry.close_all()`을 호출해 engine/client/flush/dispose를 한 번에 정리하는 것이다. 이 수명주기 관리 패턴은 [[service-health-orchestration]]과 결합될 때 startup readiness와 shutdown cleanup을 한 흐름으로 정리할 수 있다.^[raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md]
+권장 종료 패턴은 `with ServiceBundle` 또는 `async with service_lifespan(...)`을 사용해 engine/client/flush/dispose를 한 번에 정리하는 것이다. assembly 또는 startup healthcheck가 실패해도 이미 만든 client를 best-effort rollback하고, 전체 close 실패는 `ServiceCloseError.failures`에 집계한다. 이 수명주기 관리 패턴은 [[service-health-orchestration]]과 결합될 때 startup readiness와 shutdown cleanup을 한 흐름으로 정리할 수 있다.^[raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md]
 
 ## Related pages
 
 - [[construction-paths-and-adapter-contracts]]
+- [[docmesh-config]]
 - [[docmesh-py-core]]
 - [[service-health-orchestration]]
 - [[public-api-surface]]

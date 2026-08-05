@@ -4,7 +4,6 @@ import ast
 from pathlib import Path
 from typing import get_type_hints
 
-import docmesh_py_core
 import rag_system_core.composition.health as health_module
 
 
@@ -46,4 +45,28 @@ def test_dms_and_rag_runtime_adaptation_have_separate_module_owners() -> None:
 def test_health_module_exposes_only_the_docmesh_aggregate_boundary() -> None:
     assert not hasattr(health_module, "LocalHealthServiceResult")
     assert not hasattr(health_module, "LocalHealthCheckResult")
-    assert get_type_hints(health_module.run_health_checks)["return"] is docmesh_py_core.HealthCheckResult
+    assert get_type_hints(health_module.run_health_checks)["return"] is health_module.HealthCheckResult
+
+
+def test_active_runtime_has_no_docmesh_py_core_reference() -> None:
+    runtime_files = Path("rag_system_core").rglob("*.py")
+
+    references = [
+        str(path)
+        for path in runtime_files
+        if "docmesh_py_core" in path.read_text(encoding="utf-8")
+    ]
+
+    assert references == []
+
+
+def test_active_runtime_has_no_external_docmesh_config_reference() -> None:
+    runtime_files = Path("rag_system_core").rglob("*.py")
+
+    references = [
+        str(path)
+        for path in runtime_files
+        if "docmesh_config" in path.read_text(encoding="utf-8")
+    ]
+
+    assert references == []

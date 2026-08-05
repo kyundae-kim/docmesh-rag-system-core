@@ -1,10 +1,10 @@
 ---
 title: Service Health Orchestration
 created: 2026-06-19
-updated: 2026-07-27
+updated: 2026-08-04
 type: concept
 tags: [sdk, integration, testing, deployment, observability]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md]
+sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md, raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md, raw/articles/docmesh-config-configuration-v0.1.0-2026-08-04.md, raw/articles/docmesh-config-examples-v0.1.0-2026-08-04.md, raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md]
 confidence: medium
 ---
 
@@ -14,7 +14,11 @@ confidence: medium
 
 ## Aggregated readiness
 
-여러 서비스를 함께 점검할 때는 `check_all_services()`로 health 함수를 맵으로 넘기고 `required_services` 집합으로 필수 의존성과 선택 의존성을 구분한다. `parallel=True`를 선택할 수 있으며, required 실패의 `HealthCheckError`는 결과를 보존하므로 서버 readiness 정책은 부분 장애와 필수 장애를 구별할 수 있다. async lifecycle에는 sync 함수와 awaitable을 함께 처리하고 서비스별·전체 timeout을 구분하는 `async_check_all_services()`를 사용한다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+여러 서비스를 함께 점검할 때는 `check_all_services()` 또는 `async_check_all_services()`로 health 함수를 집계하고 `required_services` 집합으로 필수 의존성과 선택 의존성을 구분한다. `parallel=True`와 서비스별·전체 timeout을 선택할 수 있으며, required 실패의 `HealthCheckError`는 결과를 보존한다. `ServiceRuntime.check_with_policy()`는 `StartupFailureMode.FAIL/REPORT`, retry, delay 정책을 적용하지만 runtime 자체를 닫지는 않는다.^[raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md]
+
+## Configuration preflight versus network health
+
+`docmesh-config`의 `diagnose_services(plan=...)`는 health check를 실행하지 않는다. 대신 서비스별 환경 상태를 `absent`, `complete`, `partial`, `invalid`로 분류하고, required/alternative 선택과 production transport 정책을 네트워크 연결 전에 진단한다. `RuntimePlan.healthcheck`와 `HealthcheckPolicy`도 실행 결과가 아니라 runtime 계층이 소비할 정책 메타데이터다. 실제 socket/API readiness와 lifecycle cleanup은 [[docmesh-py-core]]의 assembly·health 경계에서 수행해야 한다.^[raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md]^[raw/articles/docmesh-config-examples-v0.1.0-2026-08-04.md]
 
 ## Result and failure model
 
@@ -35,6 +39,7 @@ RAG Core의 SRS는 모든 health-check 결과에 metadata health를 포함해야
 ## Related pages
 
 - [[software-requirements-and-traceability]]
+- [[docmesh-config]]
 - [[docmesh-py-core]]
 - [[service-factory-registry]]
 - [[product-scope-and-requirements]]

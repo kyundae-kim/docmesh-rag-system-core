@@ -6,7 +6,6 @@ from types import TracebackType
 from typing import Protocol, Self
 
 import dms
-from docmesh_py_core import OllamaConfig, ServiceBundle, ServiceConfigs
 
 import rag_system_core.composition.dms_runtime as dms_runtime
 import rag_system_core.composition.docmesh_runtime as docmesh_runtime
@@ -14,9 +13,12 @@ from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
 from rag_system_core.composition.docmesh_runtime import (
     RAG_SERVICES,
+    ServiceBundle,
+    build_docmesh_runtime_plan,
     create_docmesh_service_client,
     load_docmesh_settings,
 )
+from rag_system_core.composition.configuration import OllamaConfig, ServiceConfigs
 from rag_system_core.ports import (
     Chunker,
     DocumentAssetStorage,
@@ -159,15 +161,16 @@ class DocmeshRAGServiceFactory:
         parallel_healthchecks: bool = True,
     ) -> "DocmeshRAGServiceFactory":
         dms_settings = dms_runtime.load_dms_settings()
-        bundle = docmesh_runtime.assemble_docmesh_services(
+        plan = build_docmesh_runtime_plan(
             services=RAG_SERVICES,
             required=RAG_SERVICES,
             one_of=(),
             check_on_startup=check_on_startup,
             parallel_healthchecks=parallel_healthchecks,
         )
+        bundle = docmesh_runtime.assemble_docmesh_services(plan=plan)
         try:
-            dms_sdk = dms.create_sdk_from_service_configs(
+            dms_sdk = dms_runtime.create_dms_sdk(
                 dms_settings,
                 check_on_startup=check_on_startup,
             )

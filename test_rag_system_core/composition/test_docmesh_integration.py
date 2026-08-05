@@ -5,14 +5,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import dms
-import docmesh_py_core
 import pytest
 
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.dms_runtime import load_dms_settings
+import rag_system_core.composition.docmesh_runtime as docmesh_runtime
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
+    build_docmesh_runtime_plan,
     load_docmesh_settings,
 )
 from rag_system_core.composition.factories import (
@@ -62,14 +63,14 @@ def make_settings() -> SimpleNamespace:
             request_timeout_seconds=12.5,
         ),
         milvus=SimpleNamespace(
-            uri="/tmp/docmesh-milvus.db",
+            endpoint="/tmp/docmesh-milvus.db",
             collection="docmesh_chunks",
             request_timeout_seconds=9.5,
         ),
     )
 
 
-def test_load_docmesh_settings_uses_v050_keyword_only_api(monkeypatch) -> None:
+def test_load_docmesh_settings_uses_docmesh_runtime_keyword_only_api(monkeypatch) -> None:
     records: dict[str, object] = {}
     expected_settings = object()
 
@@ -78,7 +79,7 @@ def test_load_docmesh_settings_uses_v050_keyword_only_api(monkeypatch) -> None:
         return expected_settings
 
     monkeypatch.setattr(
-        docmesh_py_core,
+        docmesh_runtime,
         "load_available_service_configs",
         fake_load_available_service_configs,
     )
@@ -131,19 +132,14 @@ def test_load_dms_settings_uses_dms_prefixed_service_environment(
 
     settings = load_dms_settings()
 
-    assert settings.common.env == "dms-development"
-    assert settings.minio is not None
-    assert settings.minio.endpoint == "dms-minio:9000"
-    assert settings.minio.bucket == "dms-documents"
-    selected_service = getattr(settings, service_name)
-    assert selected_service is not None
+    assert settings.minio_endpoint == "dms-minio:9000"
+    assert settings.minio_bucket == "dms-documents"
     if service_name == "sqlite":
-        assert selected_service.path == "/tmp/dms-prefixed.db"
-        assert selected_service.enable_wal is True
-        assert settings.postgres is None
+        assert settings.sqlite_path == "/tmp/dms-prefixed.db"
+        assert settings.postgres_host is None
     else:
-        assert selected_service.host == "dms-postgres"
-        assert settings.sqlite is None
+        assert settings.postgres_host == "dms-postgres"
+        assert settings.sqlite_path is None
 
 
 def test_load_dms_settings_reports_prefixed_missing_environment_keys(monkeypatch) -> None:
@@ -169,30 +165,46 @@ def test_load_dms_settings_reports_prefixed_missing_environment_keys(monkeypatch
     assert "DMS_MINIO_ENDPOINT" in exc_info.value.diagnosis.missing_required_keys
 
 
-def test_assemble_docmesh_services_uses_v050_keyword_only_api(monkeypatch) -> None:
+def test_assemble_docmesh_services_uses_runtime_plan_api(monkeypatch) -> None:
     records: dict[str, object] = {}
-    expected_bundle = object()
+    expected_settings = make_settings()
 
-    def fake_assemble_services(**kwargs):
-        records.update(kwargs)
-        return expected_bundle
+    class FakeServiceClient:
+        def check(self) -> None:
+            return None
 
-    monkeypatch.setattr(docmesh_py_core, "assemble_services", fake_assemble_services)
+    expected_clients = {"milvus": FakeServiceClient(), "ollama": FakeServiceClient()}
 
-    bundle = assemble_docmesh_services(
+    def fake_load_docmesh_settings(*, services):
+        records["services"] = services
+        return expected_settings
+
+    def fake_create_docmesh_service_client(service_name, *, settings, bundle=None):
+        records.setdefault("settings", settings)
+        del bundle
+        return expected_clients[service_name]
+
+    monkeypatch.setattr(docmesh_runtime, "load_docmesh_settings", fake_load_docmesh_settings)
+    monkeypatch.setattr(
+        docmesh_runtime,
+        "create_docmesh_service_client",
+        fake_create_docmesh_service_client,
+    )
+
+    plan = build_docmesh_runtime_plan(
+        services={"milvus", "ollama"},
         required={"ollama"},
         check_on_startup=True,
         parallel_healthchecks=True,
     )
+    bundle = assemble_docmesh_services(plan=plan)
 
-    assert bundle is expected_bundle
-    assert records == {
-        "services": {"milvus", "ollama"},
-        "required": {"ollama"},
-        "one_of": (),
-        "check_on_startup": True,
-        "parallel_healthchecks": True,
-    }
+    assert bundle.configs is expected_settings
+    assert bundle.clients == expected_clients
+    assert records == {"services": {"milvus", "ollama"}, "settings": expected_settings}
+    assert plan.required_services == {"ollama"}
+    assert plan.healthcheck.on_startup is True
+    assert plan.healthcheck.parallel is True
 
 
 def test_ollama_factories_use_clients_from_service_bundle() -> None:
@@ -251,11 +263,14 @@ def test_direct_ollama_factory_loads_v050_service_config_once(monkeypatch) -> No
         return settings
 
     monkeypatch.setattr(
-        docmesh_py_core,
+        docmesh_runtime,
         "load_available_service_configs",
         fake_load_available_service_configs,
     )
-    monkeypatch.setattr(docmesh_py_core, "create_ollama_client", lambda config: ollama)
+    monkeypatch.setattr(
+        "rag_system_core.composition.factories.create_docmesh_service_client",
+        lambda service_name, *, settings=None, bundle=None: ollama,
+    )
 
     client = create_rag_embedding_client()
 
@@ -274,21 +289,8 @@ def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
     )
     dms_sdk = SimpleNamespace(close=lambda: records.update(dms_closed=True))
 
-    def fake_assemble_docmesh_services(
-        *,
-        services,
-        required,
-        one_of,
-        check_on_startup,
-        parallel_healthchecks,
-    ):
-        records["assembly"] = {
-            "services": services,
-            "required": required,
-            "one_of": one_of,
-            "check_on_startup": check_on_startup,
-            "parallel_healthchecks": parallel_healthchecks,
-        }
+    def fake_assemble_docmesh_services(*, plan):
+        records["assembly"] = plan
         return bundle
 
     monkeypatch.setattr(
@@ -306,7 +308,7 @@ def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
         return dms_sdk
 
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.dms.create_sdk_from_service_configs",
+        "rag_system_core.composition.factories.dms_runtime.create_dms_sdk",
         fake_create_dms_sdk,
     )
 
@@ -321,13 +323,12 @@ def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
     assert factory.bundle is bundle
     assert storage.sdk is dms_sdk
     assert records == {
-        "assembly": {
-            "services": {"milvus", "ollama"},
-            "required": {"milvus", "ollama"},
-            "one_of": (),
-            "check_on_startup": True,
-            "parallel_healthchecks": True,
-        },
+        "assembly": build_docmesh_runtime_plan(
+            services={"milvus", "ollama"},
+            required={"milvus", "ollama"},
+            check_on_startup=True,
+            parallel_healthchecks=True,
+        ),
         "bundle_closed": True,
         "dms_check_on_startup": True,
         "dms_closed": True,
@@ -347,7 +348,7 @@ def test_docmesh_factory_from_env_closes_bundle_when_dms_assembly_fails(monkeypa
 
     monkeypatch.setattr(
         "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
-        lambda *, services, required, one_of, check_on_startup, parallel_healthchecks: bundle,
+        lambda *, plan: bundle,
     )
     monkeypatch.setattr(
         "rag_system_core.composition.dms_runtime.load_dms_settings",
@@ -360,7 +361,7 @@ def test_docmesh_factory_from_env_closes_bundle_when_dms_assembly_fails(monkeypa
         raise RuntimeError("dms assembly failed")
 
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.dms.create_sdk_from_service_configs",
+        "rag_system_core.composition.factories.dms_runtime.create_dms_sdk",
         fail_dms_assembly,
     )
 
@@ -397,18 +398,7 @@ def test_ollama_factories_require_models_from_settings() -> None:
         )
 
 
-def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Path) -> None:
-    records: dict[str, object] = {}
-
-    def fake_check_all_services(service_checks, *, required_services=None):
-        records["services"] = sorted(service_checks)
-        records["required"] = required_services
-        for check in service_checks.values():
-            check()
-        return SimpleNamespace(ok=True)
-
-    monkeypatch.setattr(docmesh_py_core, "check_all_services", fake_check_all_services)
-
+def test_rag_core_health_check_uses_docmesh_aggregate(tmp_path: Path) -> None:
     class CheckedEmbedding(FakeEmbeddingClient):
         def check(self) -> None:
             return None
@@ -431,8 +421,16 @@ def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Pat
         health_check_runner=run_health_checks,
     )
 
-    assert core.health_check().ok is True
-    assert records["services"] == ["dms", "embedding", "generation", "metadata", "milvus"]
+    result = core.health_check()
+
+    assert result.ok is True
+    assert sorted(status.service_name for status in result.services) == [
+        "dms",
+        "embedding",
+        "generation",
+        "metadata",
+        "milvus",
+    ]
 
 
 def test_vector_store_requires_client_when_milvus_is_not_configured(tmp_path: Path) -> None:

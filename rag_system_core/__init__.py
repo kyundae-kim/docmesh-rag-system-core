@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from docmesh_py_core import AuthenticatedUser
-
 from rag_system_core.adapters.ollama import (
     OllamaEmbeddingClient,
     OllamaGenerationClient,
@@ -11,6 +9,7 @@ from rag_system_core.composition.factories import DocmeshRAGServiceFactory, RAGS
 from rag_system_core.domain.core import RAGCore
 from rag_system_core.ports import EmbeddingClient, GenerationClient
 from rag_system_core.types import (
+    AuthenticatedUser,
     ChunkRecord,
     DocumentRecord,
     IngestionProgressRecord,

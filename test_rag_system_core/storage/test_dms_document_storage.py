@@ -20,7 +20,8 @@ from rag_system_core.types import DocumentRecord
 class FakeDmsSdk:
     def __init__(self) -> None:
         self.upload_requests: list[object] = []
-        self.soft_delete_calls: list[str] = []
+        self.upload_file_calls: list[dict[str, object]] = []
+        self.delete_calls: list[str] = []
         self.content: bytes = b"stored content"
         self.health_ok = True
         self.content_error: Exception | None = None
@@ -34,6 +35,19 @@ class FakeDmsSdk:
         self.upload_requests.append(request)
         return SimpleNamespace(document_id=request.document_id)
 
+    def upload_file(self, path, *, filename, content_type, document_id, metadata, created_by):
+        self.upload_file_calls.append(
+            {
+                "path": path,
+                "filename": filename,
+                "content_type": content_type,
+                "document_id": document_id,
+                "metadata": metadata,
+                "created_by": created_by,
+            }
+        )
+        return SimpleNamespace(document_id=document_id)
+
     def get_document_content(self, document_id: str):
         if self.content_error is not None:
             raise self.content_error
@@ -45,8 +59,8 @@ class FakeDmsSdk:
             size=len(self.content),
         )
 
-    def soft_delete_document(self, document_id: str):
-        self.soft_delete_calls.append(document_id)
+    def delete_document(self, document_id: str):
+        self.delete_calls.append(document_id)
         if self.delete_error is not None:
             raise self.delete_error
         return SimpleNamespace(deleted=True)
@@ -112,12 +126,11 @@ def test_store_file_stream_uses_known_size_request_without_closing_caller_stream
     assert request.filename == "paper.pdf"
     assert request.content_type == "application/pdf"
     assert request.document_id == "doc-2"
-    assert request.idempotency_scope == "user-a"
-    assert request.idempotency_key == "job-2"
+
     assert stream.closed is False
 
 
-def test_store_file_path_uses_file_size_and_keeps_source_name(tmp_path: Path) -> None:
+def test_store_file_path_delegates_file_lifecycle_to_dms(tmp_path: Path) -> None:
     sdk = FakeDmsSdk()
     storage = DmsDocumentStorage(sdk)
     source_file = tmp_path / "source.md"
@@ -132,11 +145,16 @@ def test_store_file_path_uses_file_size_and_keeps_source_name(tmp_path: Path) ->
     )
 
     assert asset_reference == "doc-3"
-    request = sdk.upload_requests[0]
-    assert isinstance(request, UploadDocumentStreamRequest)
-    assert request.size == 5
-    assert request.filename == "source.md"
-    assert request.content_type == "text/markdown"
+    assert sdk.upload_file_calls == [
+        {
+            "path": source_file,
+            "filename": "source.md",
+            "content_type": "text/markdown",
+            "document_id": "doc-3",
+            "metadata": {"user_id": "user-a", "source": "source.md"},
+            "created_by": "user-a",
+        }
+    ]
 
 
 def test_load_returns_utf8_text_and_maps_missing_or_deleted_documents_to_none() -> None:
@@ -162,7 +180,7 @@ def test_delete_soft_deletes_by_public_asset_reference_and_is_idempotent() -> No
     sdk.delete_error = DocumentDeletedError("deleted", document_id="doc-1")
     storage.delete(document)
 
-    assert sdk.soft_delete_calls == ["doc-1", "doc-1"]
+    assert sdk.delete_calls == ["doc-1", "doc-1"]
 
 
 def test_check_rejects_unhealthy_dms_status() -> None:
