@@ -5,6 +5,15 @@ from typing import Any
 import ollama
 
 
+def _check_ollama_client(client: Any) -> None:
+    if hasattr(client, "check"):
+        client.check()
+    elif hasattr(client, "ps"):
+        client.ps()
+    else:
+        raise RuntimeError("Ollama client does not support health checks")
+
+
 class OllamaEmbeddingClient:
     def __init__(self, *, client: Any, model: str) -> None:
         if not model or not model.strip():
@@ -29,13 +38,7 @@ class OllamaEmbeddingClient:
         return [[float(value) for value in vector] for vector in embeddings]
 
     def check(self) -> None:
-        if hasattr(self._client, "check"):
-            self._client.check()
-            return
-        if hasattr(self._client, "ps"):
-            self._client.ps()
-            return
-        raise RuntimeError("Ollama client does not support health checks")
+        _check_ollama_client(self._client)
 
 
 class OllamaGenerationClient:
@@ -59,10 +62,4 @@ class OllamaGenerationClient:
         return str(generated_text)
 
     def check(self) -> None:
-        if hasattr(self._client, "check"):
-            self._client.check()
-            return
-        if hasattr(self._client, "ps"):
-            self._client.ps()
-            return
-        raise RuntimeError("Ollama client does not support health checks")
+        _check_ollama_client(self._client)

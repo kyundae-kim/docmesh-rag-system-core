@@ -162,7 +162,7 @@ def create_dms_sdk(
     *,
     check_on_startup: bool = False,
 ) -> dms.DefaultDocumentManagementSDK:
-    """Create the v0.7 DMS SDK from host-created Engine and MinIO clients."""
+    """Create the v0.7 DMS SDK by resolving settings and creating its clients."""
     engine = _create_metadata_engine(settings)
     try:
         minio_client = Minio(
@@ -195,8 +195,29 @@ def create_dms_sdk(
         raise
 
 
+def create_dms_sdk_from_clients(
+    *,
+    engine: Engine,
+    minio_client: object,
+    bucket_name: str,
+    plan: dms.DmsAssemblyPlan | None = None,
+) -> dms.DefaultDocumentManagementSDK:
+    """Create DMS from host-owned SQLAlchemy and MinIO clients.
+
+    The injected clients remain caller-owned; this helper does not register
+    them as SDK-owned resources.
+    """
+    return dms.create_sdk_from_clients(
+        engine=engine,
+        minio_client=minio_client,
+        bucket_name=bucket_name,
+        plan=plan,
+    )
+
+
 __all__ = [
     "DmsEnvironmentDiagnosis",
     "create_dms_sdk",
+    "create_dms_sdk_from_clients",
     "load_dms_settings",
 ]

@@ -63,10 +63,17 @@ def test_factory_functions_declare_composition_contract_return_types() -> None:
         assert get_type_hints(factory)["return"] is expected_return_type
 
 
-def test_docmesh_factory_from_env_does_not_use_a_lazy_import() -> None:
-    source = inspect.getsource(DocmeshRAGServiceFactory.from_env)
+def test_docmesh_factory_does_not_expose_environment_constructor() -> None:
+    assert not hasattr(DocmeshRAGServiceFactory, "from_env")
 
-    assert " import " not in source
+
+def test_docmesh_factory_does_not_accept_or_store_settings_or_bundle() -> None:
+    parameters = inspect.signature(DocmeshRAGServiceFactory).parameters
+
+    assert "settings" not in parameters
+    assert "bundle" not in parameters
+    assert not hasattr(DocmeshRAGServiceFactory, "settings")
+    assert not hasattr(DocmeshRAGServiceFactory, "bundle")
 
 
 def test_factories_module_has_no_constructor_only_free_functions() -> None:

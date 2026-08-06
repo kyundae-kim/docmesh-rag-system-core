@@ -4,7 +4,6 @@ from rag_system_core.adapters.ollama import (
     OllamaEmbeddingClient,
     OllamaGenerationClient,
 )
-from rag_system_core.composition.bootstrap import bootstrap_rag_core, bootstrap_rag_core_from_env
 from rag_system_core.composition.factories import DocmeshRAGServiceFactory, RAGServiceFactory
 from rag_system_core.domain.core import RAGCore
 from rag_system_core.ports import EmbeddingClient, GenerationClient
@@ -29,8 +28,6 @@ __all__ = [
     "OllamaGenerationClient",
     "QueryResult",
     "RAGCore",
-    "bootstrap_rag_core",
-    "bootstrap_rag_core_from_env",
     "DocmeshRAGServiceFactory",
     "RAGServiceFactory",
 ]

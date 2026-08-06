@@ -63,6 +63,9 @@ class MetadataStore:
     def _initialize(self) -> None:
         Base.metadata.create_all(self.engine)
 
+    def close(self) -> None:
+        self.engine.dispose()
+
     def add_document(self, document: DocumentRecord) -> None:
         model = DocumentModel(
             doc_id=document.doc_id,
