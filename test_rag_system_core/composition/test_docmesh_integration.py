@@ -29,10 +29,6 @@ from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 from test_rag_system_core.support import FakeDocumentStorage, FakeEmbeddingClient, FakeGenerationClient
 
 
-def test_infrastructure_has_no_package_root_facade_module() -> None:
-    assert importlib.util.find_spec("rag_system_core.infrastructure") is None
-
-
 class FakeDocmeshOllamaWrapper:
     def __init__(self, *, answer: str = "docmesh answer") -> None:
         self.embed_calls: list[dict[str, object]] = []

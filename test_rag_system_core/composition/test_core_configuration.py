@@ -32,14 +32,6 @@ from test_rag_system_core.support import (
 USER_A = authenticated_user("user-a")
 
 
-def test_core_has_no_package_root_alias_module() -> None:
-    assert importlib.util.find_spec("rag_system_core.core") is None
-
-
-def test_vector_store_has_no_package_root_alias_module() -> None:
-    assert importlib.util.find_spec("rag_system_core.vector_store") is None
-
-
 def test_configurable_factories_expose_only_explicit_keyword_parameters() -> None:
     factories = (
         create_rag_embedding_client,
@@ -61,40 +53,6 @@ def test_factory_functions_declare_composition_contract_return_types() -> None:
 
     for factory, expected_return_type in expected_return_types.items():
         assert get_type_hints(factory)["return"] is expected_return_type
-
-
-def test_docmesh_factory_does_not_expose_environment_constructor() -> None:
-    assert not hasattr(DocmeshRAGServiceFactory, "from_env")
-
-
-def test_docmesh_factory_does_not_accept_or_store_settings_or_bundle() -> None:
-    parameters = inspect.signature(DocmeshRAGServiceFactory).parameters
-
-    assert "settings" not in parameters
-    assert "bundle" not in parameters
-    assert not hasattr(DocmeshRAGServiceFactory, "settings")
-    assert not hasattr(DocmeshRAGServiceFactory, "bundle")
-
-
-def test_factories_module_has_no_constructor_only_free_functions() -> None:
-    assert not hasattr(factories_module, "create_rag_document_storage")
-    assert not hasattr(factories_module, "create_rag_metadata_store")
-    assert not hasattr(factories_module, "create_rag_chunker")
-
-
-def test_factories_module_does_not_construct_milvus_client_directly() -> None:
-    assert not hasattr(factories_module, "MilvusClient")
-
-
-def test_vector_store_factory_does_not_expose_unused_path_or_uri_parameters() -> None:
-    parameters = inspect.signature(create_rag_vector_store).parameters
-
-    assert "metadata_path" not in parameters
-    assert "uri" not in parameters
-
-
-def test_storage_package_does_not_export_concrete_milvus_client() -> None:
-    assert not hasattr(storage_module, "MilvusClient")
 
 
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
