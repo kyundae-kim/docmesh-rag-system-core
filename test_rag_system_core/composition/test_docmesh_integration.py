@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,9 +25,13 @@ from rag_system_core.composition.factories import (
     create_rag_vector_store,
 )
 from rag_system_core.composition.health import run_health_checks
-from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
-from test_rag_system_core.support import FakeDocumentStorage, FakeEmbeddingClient, FakeGenerationClient
+from test_rag_system_core.support import (
+    FakeDocumentStorage,
+    FakeEmbeddingClient,
+    FakeGenerationClient,
+    create_metadata_store,
+)
 
 
 class FakeDocmeshOllamaWrapper:
@@ -318,7 +323,7 @@ def test_rag_core_health_check_uses_docmesh_aggregate(tmp_path: Path) -> None:
         embedding_client=CheckedEmbedding(),
         generation_client=CheckedGeneration(),
         vector_store=create_rag_vector_store(),
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=CheckedDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
         health_check_runner=run_health_checks,
@@ -462,6 +467,7 @@ def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_sett
 
 def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_settings(monkeypatch) -> None:
     engine = object()
+    metadata_engine = object()
     minio_client = object()
     ollama_client = object()
     milvus_client = object()
@@ -501,6 +507,7 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
 
     factory = DocmeshRAGServiceFactory.from_host_clients(
         engine=engine,
+        metadata_engine=metadata_engine,
         minio_client=minio_client,
         bucket_name="documents",
         ollama_client=ollama_client,
@@ -514,6 +521,7 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
 
     assert factory.dms_sdk is dms_sdk
     assert factory.owns_dms_sdk is True
+    assert factory.metadata_engine is metadata_engine
     embedding_adapter = factory.create_embedding_client()
     generation_adapter = factory.create_generation_client()
     vector_adapter = factory.create_vector_store()
@@ -533,17 +541,50 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
     assert records["plan"].check_on_startup is True
 
 
-def test_docmesh_factory_create_rag_core_assembles_core_and_closes_created_metadata_store(
+def test_docmesh_factory_uses_host_owned_metadata_engine_for_metadata_store(monkeypatch, tmp_path: Path) -> None:
+    import rag_system_core.composition.factories as factories_module
+
+    metadata_engine = object()
+    records: list[str] = []
+
+    class FakeMetadataStore:
+        def __init__(self, engine) -> None:
+            self.engine = engine
+
+        def close(self) -> None:
+            records.append("metadata")
+
+    monkeypatch.setattr(factories_module, "MetadataStore", FakeMetadataStore)
+    factory = DocmeshRAGServiceFactory(
+        dms_sdk=SimpleNamespace(close=lambda: records.append("dms")),
+        owns_dms_sdk=True,
+        embedding_client=object(),
+        generation_client=object(),
+        vector_store=object(),
+        metadata_engine=metadata_engine,
+    )
+
+    metadata_store = factory.create_metadata_store()
+
+    assert metadata_store.engine is metadata_engine
+    assert not (tmp_path / "metadata.db").exists()
+
+    factory.close()
+
+    assert records == ["dms"]
+
+
+def test_docmesh_factory_create_rag_core_uses_host_owned_metadata_engine(
     monkeypatch,
-    tmp_path: Path,
 ) -> None:
     import rag_system_core.composition.factories as factories_module
 
     records: list[object] = []
+    metadata_engine = object()
 
     class FakeMetadataStore:
-        def __init__(self, path: Path) -> None:
-            self.path = path
+        def __init__(self, engine) -> None:
+            self.engine = engine
 
         def close(self) -> None:
             records.append("metadata")
@@ -560,18 +601,19 @@ def test_docmesh_factory_create_rag_core_assembles_core_and_closes_created_metad
         embedding_client=embedding_client,
         generation_client=generation_client,
         vector_store=vector_store,
+        metadata_engine=metadata_engine,
     )
 
     core = factory.create_rag_core(
-        metadata_path=tmp_path / "metadata.db",
         chunk_size=64,
         chunk_overlap=8,
     )
 
+    assert "metadata_path" not in inspect.signature(factory.create_rag_core).parameters
     assert core.embedding_client is embedding_client
     assert core.generation_client is generation_client
     assert core.vector_store is vector_store
-    assert core.metadata_store.path == tmp_path / "metadata.db"
+    assert core.metadata_store.engine is metadata_engine
     assert core.document_storage.sdk is dms_sdk
     assert core.chunker.chunk_size == 64
     assert core.chunker.chunk_overlap == 8
@@ -579,11 +621,39 @@ def test_docmesh_factory_create_rag_core_assembles_core_and_closes_created_metad
 
     factory.close()
 
+    assert records == ["dms"]
+
+
+def test_docmesh_factory_create_metadata_store_keeps_path_compatibility(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import rag_system_core.composition.factories as factories_module
+
+    records: list[str] = []
+
+    class FakeMetadataStore:
+        def __init__(self, engine) -> None:
+            self.engine = engine
+
+        def close(self) -> None:
+            records.append("metadata")
+
+    dms_sdk = SimpleNamespace(close=lambda: records.append("dms"))
+    monkeypatch.setattr(factories_module, "MetadataStore", FakeMetadataStore)
+
+    factory = DocmeshRAGServiceFactory(dms_sdk=dms_sdk, owns_dms_sdk=True)
+    metadata_store = factory.create_metadata_store(metadata_path=tmp_path / "metadata.db")
+
+    assert metadata_store.engine.url.database == str(tmp_path / "metadata.db")
+
+    factory.close()
+
     assert records == ["metadata", "dms"]
 
 
 def test_metadata_store_close_disposes_sqlalchemy_engine(monkeypatch, tmp_path: Path) -> None:
-    store = MetadataStore(tmp_path / "metadata.db")
+    store = create_metadata_store(tmp_path)
     records: list[str] = []
     monkeypatch.setattr(store.engine, "dispose", lambda: records.append("disposed"))
 

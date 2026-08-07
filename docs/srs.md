@@ -191,7 +191,7 @@ The system shall expose the following public construction paths:
 - `RAGCore(...)`
 - `DocmeshRAGServiceFactory.from_host_clients(...)`
 
-`DocmeshRAGServiceFactory.from_host_clients(...)` shall accept host-created SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client, model names, vector collection/timeout, and the DMS bucket name. It shall return a context-managed Factory that assembles the RAG adapters without loading DocMesh or DMS environment configuration. The transport clients shall remain caller-owned, and `create_rag_core(...)` shall assemble the final core. `DocmeshRAGServiceFactory.from_clients(...)` shall accept an explicitly created DMS SDK and explicit embedding, generation, and vector collaborators; it shall not store `ServiceConfigs` or `ServiceBundle` instances or lazily create collaborators from them.
+`DocmeshRAGServiceFactory.from_host_clients(...)` shall accept host-created DMS and metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, model names, vector collection/timeout, and the DMS bucket name. It shall return a context-managed Factory that assembles the RAG adapters without loading DocMesh or DMS environment configuration. The injected engines and transport clients shall remain caller-owned, and `create_rag_core(...)` shall assemble the final core. `DocmeshRAGServiceFactory.from_clients(...)` shall accept an explicitly created DMS SDK and explicit embedding, generation, vector, and optional metadata-engine collaborators; it shall not store `ServiceConfigs` or `ServiceBundle` instances or lazily create collaborators from them.
 
 #### 3.3.2 Public Operational Interfaces
 The system shall expose the following public operational interfaces:
@@ -540,7 +540,7 @@ The implementation shall be considered conformant to this SRS when the following
 12. Successful deletion removes document metadata, chunk metadata, progress metadata, and Milvus entries and invokes asset deletion; the production DMS adapter uses soft delete.
 13. Failed vector-store deletion preserves metadata for retry.
 14. Health checking aggregates metadata and available dependency checks.
-15. `DocmeshRAGServiceFactory.from_host_clients(...)` assembles embedding/generation/vector adapters from explicitly supplied Ollama/Milvus clients and settings without loading environment configuration, and closes only its created DMS SDK and MetadataStore.
+15. `DocmeshRAGServiceFactory.from_host_clients(...)` assembles embedding/generation/vector adapters from explicitly supplied DMS/metadata engines, Ollama/Milvus clients, and settings without loading environment configuration, and closes only its created DMS SDK.
 16. DMS uploads preserve the RAG document identifier, user metadata, and ingestion idempotency information.
 17. DMS soft-delete failure preserves RAG metadata for retry.
 

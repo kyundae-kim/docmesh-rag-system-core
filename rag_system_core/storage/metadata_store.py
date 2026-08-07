@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine, select, text
+from sqlalchemy import JSON, ForeignKey, Integer, String, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -53,10 +51,8 @@ class MetadataStore:
     ChunkModel = ChunkModel
     IngestionProgressModel = IngestionProgressModel
 
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.engine: Engine = create_engine(f"sqlite+pysqlite:///{self.path}")
+    def __init__(self, engine: Engine) -> None:
+        self.engine: Engine = engine
         self.session = sessionmaker(bind=self.engine, expire_on_commit=False)
         self._initialize()
 

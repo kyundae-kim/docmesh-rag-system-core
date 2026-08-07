@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
-from typing import Protocol, Self
+from typing import NoReturn, Protocol, Self
 
 import dms
 from minio import Minio as _Minio
 from ollama import Client as _OllamaClient
 from pymilvus import MilvusClient as _MilvusClient
+from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 import rag_system_core.composition.dms_runtime as dms_runtime
@@ -34,6 +35,14 @@ from rag_system_core.ports import (
 from rag_system_core.storage.dms_document_storage import DmsDocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
+
+
+def _create_metadata_engine(metadata_path: str | Path) -> Engine:
+    path = Path(metadata_path).expanduser()
+    if str(path) != ":memory:":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return create_engine(f"sqlite+pysqlite:///{path}")
+    return create_engine("sqlite+pysqlite:///:memory:")
 
 
 
@@ -145,7 +154,7 @@ class RAGServiceFactory(Protocol):
 
     def create_document_storage(self) -> DocumentAssetStorage: ...
 
-    def create_metadata_store(self, *, metadata_path: str | Path) -> MetadataRepository: ...
+    def create_metadata_store(self, *, metadata_path: str | Path | None = None) -> MetadataRepository: ...
 
     def create_chunker(self, *, chunk_size: int, chunk_overlap: int) -> Chunker: ...
 
@@ -157,6 +166,7 @@ class DocmeshRAGServiceFactory:
     embedding_client: EmbeddingClient | None = None
     generation_client: GenerationClient | None = None
     vector_store: VectorStore | None = None
+    metadata_engine: Engine | None = None
     _metadata_stores: list[MetadataStore] = field(default_factory=list, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -170,6 +180,7 @@ class DocmeshRAGServiceFactory:
         embedding_client: EmbeddingClient,
         generation_client: GenerationClient,
         vector_store: VectorStore,
+        metadata_engine: Engine | None = None,
         check_on_startup: bool = False,
     ) -> "DocmeshRAGServiceFactory":
         """Assemble RAG services exclusively from host-owned clients."""
@@ -185,6 +196,7 @@ class DocmeshRAGServiceFactory:
             embedding_client=embedding_client,
             generation_client=generation_client,
             vector_store=vector_store,
+            metadata_engine=metadata_engine,
         )
 
     @classmethod
@@ -192,6 +204,7 @@ class DocmeshRAGServiceFactory:
         cls,
         *,
         engine: Engine,
+        metadata_engine: Engine,
         minio_client: _Minio,
         bucket_name: str,
         ollama_client: _OllamaClient,
@@ -218,6 +231,7 @@ class DocmeshRAGServiceFactory:
         )
         return cls.from_clients(
             engine=engine,
+            metadata_engine=metadata_engine,
             minio_client=minio_client,
             bucket_name=bucket_name,
             embedding_client=embedding_client,
@@ -229,13 +243,12 @@ class DocmeshRAGServiceFactory:
     def create_rag_core(
         self,
         *,
-        metadata_path: str | Path,
         chunk_size: int = 512,
         chunk_overlap: int = 64,
         health_check_runner: HealthCheckRunner = run_health_checks,
     ) -> RAGCore:
         """Create an RAGCore from this factory's assembled collaborators."""
-        metadata_store = self.create_metadata_store(metadata_path=metadata_path)
+        metadata_store = self.create_metadata_store()
         try:
             return RAGCore(
                 embedding_client=self.create_embedding_client(),
@@ -250,6 +263,8 @@ class DocmeshRAGServiceFactory:
                 health_check_runner=health_check_runner,
             )
         except Exception as exc:
+            if metadata_store not in self._metadata_stores:
+                raise
             self._metadata_stores.remove(metadata_store)
             try:
                 metadata_store.close()
@@ -291,26 +306,34 @@ class DocmeshRAGServiceFactory:
         if cleanup_errors:
             raise ExceptionGroup("Failed to close RAG service resources", cleanup_errors)
 
+    def _raise_missing_client(self, name: str) -> NoReturn:
+        raise RuntimeError(f"{name} was not provided")
+
     def create_embedding_client(self) -> EmbeddingClient:
-        if self.embedding_client is None:
-            raise RuntimeError("Embedding client was not provided")
-        return self.embedding_client
+        return self.embedding_client if self.embedding_client is not None else self._raise_missing_client("Embedding client")
 
     def create_generation_client(self) -> GenerationClient:
-        if self.generation_client is None:
-            raise RuntimeError("Generation client was not provided")
-        return self.generation_client
+        return self.generation_client if self.generation_client is not None else self._raise_missing_client("Generation client")
 
     def create_vector_store(self) -> VectorStore:
-        if self.vector_store is None:
-            raise RuntimeError("Vector store was not provided")
-        return self.vector_store
+        return self.vector_store if self.vector_store is not None else self._raise_missing_client("Vector store")
 
     def create_document_storage(self) -> DmsDocumentStorage:
         return DmsDocumentStorage(self.dms_sdk)
 
-    def create_metadata_store(self, *, metadata_path: str | Path) -> MetadataStore:
-        metadata_store = MetadataStore(Path(metadata_path))
+    def create_metadata_store(self, *, metadata_path: str | Path | None = None) -> MetadataStore:
+        if self.metadata_engine is not None:
+            return MetadataStore(self.metadata_engine)
+
+        if metadata_path is None:
+            raise ValueError("metadata_path is required when metadata_engine is not provided")
+
+        engine = _create_metadata_engine(metadata_path)
+        try:
+            metadata_store = MetadataStore(engine)
+        except Exception:
+            engine.dispose()
+            raise
         self._metadata_stores.append(metadata_store)
         return metadata_store
 

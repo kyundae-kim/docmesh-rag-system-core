@@ -51,7 +51,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 ### 3.2 성공 기준
 
 - 사용자는 `RAGCore(...)`를 직접 조립할 수 있다.
-- 사용자는 `DocmeshRAGServiceFactory.from_host_clients(...)`로 직접 만든 SQLAlchemy `Engine`, MinIO, Ollama, Milvus transport client와 명시적 model/store 설정을 전달하고 `create_rag_core(...)`를 호출하거나, 이미 구성된 의존성으로 `DocmeshRAGServiceFactory.from_clients(...)`를 직접 조립할 수 있다.
+- 사용자는 `DocmeshRAGServiceFactory.from_host_clients(...)`로 직접 만든 DMS용 SQLAlchemy `Engine`, metadata용 SQLAlchemy `Engine`, MinIO, Ollama, Milvus transport client와 명시적 model/store 설정을 전달하고 `create_rag_core(...)`를 호출하거나, 이미 구성된 의존성으로 `DocmeshRAGServiceFactory.from_clients(...)`를 직접 조립할 수 있다.
 - 사용자는 세 가지 ingestion 경로(`ingest_text`, `ingest_file_stream`, `ingest_file_path`)를 사용할 수 있다.
 - query는 항상 현재 user scope로 제한된 chunk만 사용한다.
 - metadata는 SQLite에 유지되고, 동일한 vector store 구성을 재사용하면 retrieval이 복원된다.
@@ -116,9 +116,9 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - `DocmeshRAGServiceFactory`는 settings나 `ServiceBundle`을 보관하지 않고, 전달된 collaborator만 반환한다.
 
 #### 시나리오 2-1: host-owned client 기반 실행
-- 상위 애플리케이션은 SQLAlchemy `Engine`, MinIO client, DMS bucket name, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 준비한다.
-- `DocmeshRAGServiceFactory.from_host_clients(...)`는 DMS 입력을 dms-core의 `create_sdk_from_clients()`에 전달하고, Ollama/Milvus transport client로 RAG embedding client, generation client, vector store를 조립한 Factory를 반환한다. `create_rag_core(...)`가 이를 `RAGCore`에 전달한다.
-- 이 경로는 DocMesh/DMS 환경 설정을 읽지 않는다. Factory가 정리하는 것은 Factory가 생성한 DMS SDK와 MetadataStore이며 raw transport client는 상위 애플리케이션이 소유한다.
+- 상위 애플리케이션은 DMS용 SQLAlchemy `Engine`, metadata용 SQLAlchemy `Engine`, MinIO client, DMS bucket name, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 준비한다.
+- `DocmeshRAGServiceFactory.from_host_clients(...)`는 DMS 입력을 dms-core의 `create_sdk_from_clients()`에 전달하고, metadata용 Engine과 Ollama/Milvus transport client로 RAG embedding client, generation client, vector store를 조립한 Factory를 반환한다. `create_rag_core(...)`가 이를 `RAGCore`에 전달한다.
+- 이 경로는 DocMesh/DMS 환경 설정을 읽지 않는다. Factory가 정리하는 것은 Factory가 생성한 DMS SDK이며, 주입된 두 Engine과 raw transport client는 상위 애플리케이션이 소유한다.
 
 #### 시나리오 3: 사용자별 query
 - 상위 애플리케이션은 인증된 `AuthenticatedUser`를 제공한다.
@@ -444,7 +444,7 @@ advanced factory helper는 package-root export가 아니며 module-qualified imp
 
 ### R6. lifecycle 소유권
 - 직접 구성한 service factory의 lifecycle은 caller가 관리해야 한다.
-- `DocmeshRAGServiceFactory.from_host_clients(...)`는 생성한 DMS SDK와 MetadataStore를 context 종료 시 정리하고, 주입된 DMS/RAG transport client는 호출자가 정리해야 한다. Factory가 만든 RAG adapter는 transport client를 소유하지 않는다.
+- `DocmeshRAGServiceFactory.from_host_clients(...)`는 생성한 DMS SDK를 context 종료 시 정리하고, 주입된 DMS/metadata Engine과 RAG transport client는 호출자가 정리해야 한다. Factory가 만든 RAG adapter와 MetadataStore는 주입된 client를 소유하지 않는다.
 
 ---
 
@@ -491,7 +491,7 @@ advanced factory helper는 package-root export가 아니며 module-qualified imp
 12. 삭제 성공 시 document / chunk / progress / Milvus 엔트리가 제거되고 DMS asset은 soft delete된다.
 13. vector store 또는 DMS soft delete가 실패하면 metadata는 유지된다. DMS 실패 시 vector는 이미 삭제됐을 수 있다.
 14. health check는 metadata 및 사용 가능한 의존 서비스 상태를 집계한다.
-15. `DocmeshRAGServiceFactory.from_host_clients(...)`는 환경 설정을 읽지 않고 직접 전달된 DMS, Ollama, Milvus clients와 명시적 model/store 설정으로 RAG adapters를 조립하며 생성한 DMS SDK와 MetadataStore를 정리한다.
+15. `DocmeshRAGServiceFactory.from_host_clients(...)`는 환경 설정을 읽지 않고 직접 전달된 DMS/metadata Engine, DMS, Ollama, Milvus clients와 명시적 model/store 설정으로 RAG adapters를 조립하며 생성한 DMS SDK만 정리한다.
 16. DMS 업로드는 RAG `doc_id`, 사용자 metadata, ingestion `job_id` 기반 idempotency 정보를 보존한다.
 
 ---

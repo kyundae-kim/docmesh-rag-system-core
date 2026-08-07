@@ -217,11 +217,11 @@ print(deleted)
 
 ## 조립 경로
 
-`RAGCore(...)`는 fully assembled dependency graph를 받는 의존성 주입형 생성자입니다. environment runtime이 필요한 경우 상위 애플리케이션이 설정과 service bundle을 직접 조립하고 `create_rag_*` helper와 DMS runtime으로 명시적 collaborator를 만든 뒤 `RAGCore(...)`에 전달하며 lifecycle을 관리해야 합니다. 이미 조립된 RAG collaborator를 주입하는 사용자 정의 경로에서는 `DocmeshRAGServiceFactory.from_clients(...)`를 사용할 수 있고, 원시 host-owned transport client에서 시작하면서 Factory를 직접 사용할 경우에는 `DocmeshRAGServiceFactory.from_host_clients(...)`를 사용할 수 있습니다. Factory의 `create_rag_core(...)`는 보유한 collaborator를 최종 `RAGCore`로 조립합니다. 두 Factory 경로 모두 context manager이며, Factory가 생성한 DMS SDK와 MetadataStore를 소유합니다.
+`RAGCore(...)`는 fully assembled dependency graph를 받는 의존성 주입형 생성자입니다. environment runtime이 필요한 경우 상위 애플리케이션이 설정과 service bundle을 직접 조립하고 `create_rag_*` helper와 DMS runtime으로 명시적 collaborator를 만든 뒤 `RAGCore(...)`에 전달하며 lifecycle을 관리해야 합니다. 이미 조립된 RAG collaborator를 주입하는 사용자 정의 경로에서는 `DocmeshRAGServiceFactory.from_clients(...)`를 사용할 수 있고, 원시 host-owned transport client에서 시작하면서 Factory를 직접 사용할 경우에는 `DocmeshRAGServiceFactory.from_host_clients(...)`를 사용할 수 있습니다. Factory의 `create_rag_core(...)`는 보유한 collaborator를 최종 `RAGCore`로 조립합니다. 두 Factory 경로 모두 context manager이며, Factory가 생성한 DMS SDK를 소유합니다. `metadata_path`로 생성한 MetadataStore는 Factory가 소유하지만 host-owned `metadata_engine`을 주입한 MetadataStore와 Engine은 상위 애플리케이션이 소유합니다.
 
 ### host-owned clients
 
-DMS와 RAG runtime 설정을 환경변수에서 읽지 않고 상위 애플리케이션이 직접 만든 transport client를 전달할 수도 있습니다. `DocmeshRAGServiceFactory.from_host_clients(...)`는 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client를 받아 Ollama embedding/generation adapter와 Milvus vector store를 조립한 Factory를 반환합니다. Factory의 `create_rag_core(...)`가 최종 `RAGCore`를 조립하며, 이 경로는 `ServiceBundle`이나 runtime settings를 만들지 않습니다.
+DMS와 RAG runtime 설정을 환경변수에서 읽지 않고 상위 애플리케이션이 직접 만든 transport client를 전달할 수도 있습니다. `DocmeshRAGServiceFactory.from_host_clients(...)`는 DMS용 및 metadata용 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client를 받아 Ollama embedding/generation adapter와 Milvus vector store를 조립한 Factory를 반환합니다. Factory의 `create_rag_core(...)`가 최종 `RAGCore`를 조립하며, 이 경로는 `ServiceBundle`이나 runtime settings를 만들지 않습니다.
 
 ```python
 from minio import Minio
@@ -232,6 +232,7 @@ from sqlalchemy import create_engine
 from rag_system_core import DocmeshRAGServiceFactory
 
 engine = create_engine("sqlite+pysqlite:///./data/dms.db")
+metadata_engine = create_engine("sqlite+pysqlite:///./data/metadata.db")
 minio_client = Minio(
     "minio:9000",
     access_key="replace-me",
@@ -243,6 +244,7 @@ milvus_client = MilvusClient(uri="./data/metadata.milvus.db")
 
 with DocmeshRAGServiceFactory.from_host_clients(
     engine=engine,
+    metadata_engine=metadata_engine,
     minio_client=minio_client,
     bucket_name="documents",
     ollama_client=ollama_client,
@@ -253,13 +255,11 @@ with DocmeshRAGServiceFactory.from_host_clients(
     timeout=30.0,
     check_on_startup=True,
 ) as service_factory:
-    core = service_factory.create_rag_core(
-        metadata_path="./data/metadata.db",
-    )
+    core = service_factory.create_rag_core()
     print(core.health_check().ok)
 ```
 
-context 종료 시 Factory가 닫는 것은 Factory가 생성한 DMS SDK와 MetadataStore입니다. `Engine`, MinIO, Ollama, Milvus raw client는 caller-owned이며 상위 애플리케이션 lifecycle에서 정리합니다. Factory가 생성한 RAG adapter는 이 transport client를 소유하지 않습니다. `DocmeshRAGServiceFactory.from_clients(...)`는 이미 만들어진 RAG collaborator를 주입받는 경로입니다. Factory를 직접 사용할 때는 context 안에서 `create_rag_core(...)`를 호출하고, 반환된 Core도 같은 context 안에서 사용해야 합니다.
+context 종료 시 host-client 경로에서 Factory가 닫는 것은 Factory가 생성한 DMS SDK입니다. `Engine`, `metadata_engine`, MinIO, Ollama, Milvus raw client는 caller-owned이며 상위 애플리케이션 lifecycle에서 정리합니다. Factory가 생성한 RAG adapter와 MetadataStore는 이 transport client를 소유하지 않습니다. `DocmeshRAGServiceFactory.from_clients(...)`는 이미 만들어진 RAG collaborator를 주입받는 경로입니다. Factory를 직접 사용할 때는 context 안에서 `create_rag_core(...)`를 호출하고, 반환된 Core도 같은 context 안에서 사용해야 합니다.
 
 ---
 
@@ -309,7 +309,7 @@ context 종료 시 Factory가 닫는 것은 Factory가 생성한 DMS SDK와 Meta
 - `DMS_MINIO_BUCKET`
 - `DMS_MINIO_SECURE`
 
-`DocmeshRAGServiceFactory.from_host_clients(...)`를 사용하는 경우 위 `OLLAMA_*`, `MILVUS_*`, `DMS_*` 환경변수는 필요하지 않습니다. 상위 애플리케이션이 만든 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 전달합니다.
+`DocmeshRAGServiceFactory.from_host_clients(...)`를 사용하는 경우 위 `OLLAMA_*`, `MILVUS_*`, `DMS_*` 환경변수는 필요하지 않습니다. 상위 애플리케이션이 만든 DMS용 및 metadata용 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 전달합니다.
 
 legacy 패턴은 현재 지원 대상으로 보지 않습니다.
 - `OLLAMA_EMBED__*`

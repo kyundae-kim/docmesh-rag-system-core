@@ -13,6 +13,7 @@ from rag_system_core.types import ChunkRecord
 
 from test_rag_system_core.support import (
     authenticated_user,
+    create_metadata_store,
     create_test_rig,
     FakeDocumentStorage,
     FakeEmbeddingClient,
@@ -161,7 +162,7 @@ def test_ingest_text_rolls_back_generated_ids_when_vector_store_returns_wrong_co
             self.deleted_chunk_ids.append(list(chunk_ids))
 
     vector_store = MismatchedVectorStore()
-    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    metadata_store = create_metadata_store(tmp_path)
     service = IngestionService(
         chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
         embedding_client=FakeEmbeddingClient(),
@@ -194,7 +195,7 @@ def test_ingest_text_rolls_back_persisted_chunks_when_completion_progress_fails(
             self.deleted_chunk_ids.append(list(chunk_ids))
 
     vector_store = TrackingVectorStore()
-    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    metadata_store = create_metadata_store(tmp_path)
     add_progress = metadata_store.add_ingestion_progress
 
     def fail_chunk_persistence_completion(records) -> None:
@@ -235,7 +236,7 @@ def test_ingest_text_rolls_back_vectors_when_vector_completion_progress_fails(
             self.deleted_chunk_ids.append(list(chunk_ids))
 
     vector_store = TrackingVectorStore()
-    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    metadata_store = create_metadata_store(tmp_path)
     add_progress = metadata_store.add_ingestion_progress
 
     def fail_vector_store_completion(records) -> None:
@@ -274,7 +275,7 @@ def test_ingest_text_continues_vector_rollback_when_chunk_metadata_rollback_fail
             self.deleted_chunk_ids.append(list(chunk_ids))
 
     vector_store = TrackingVectorStore()
-    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    metadata_store = create_metadata_store(tmp_path)
     add_progress = metadata_store.add_ingestion_progress
 
     def fail_chunk_persistence_completion(records) -> None:
@@ -319,7 +320,7 @@ def test_ingest_text_preserves_operation_error_when_failed_progress_write_fails(
             self.deleted_chunk_ids.append(list(chunk_ids))
 
     vector_store = MismatchedVectorStore()
-    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    metadata_store = create_metadata_store(tmp_path)
     add_progress = metadata_store.add_ingestion_progress
 
     def fail_failed_progress_write(records) -> None:
@@ -354,7 +355,7 @@ def test_store_preserves_metadata_error_when_vector_cleanup_fails(monkeypatch, t
             del chunk_ids
             raise RuntimeError("vector rollback failed")
 
-    metadata_store = MetadataStore(tmp_path / "metadata.db")
+    metadata_store = create_metadata_store(tmp_path)
 
     def fail_chunk_write(chunks) -> None:
         del chunks
@@ -398,7 +399,7 @@ def test_store_preserves_id_mismatch_error_when_vector_cleanup_fails(tmp_path: P
         chunker=FixedWindowChunker(chunk_size=5, chunk_overlap=0),
         embedding_client=FakeEmbeddingClient(),
         vector_store=cast(VectorStore, FailingCleanupVectorStore()),
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
     )
     chunks = [

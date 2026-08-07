@@ -19,10 +19,10 @@ from rag_system_core.composition.factories import (
 )
 from rag_system_core.composition.health import run_health_checks
 from rag_system_core.ports import EmbeddingClient, GenerationClient, VectorStore
-from rag_system_core.storage.metadata_store import MetadataStore
 
 from test_rag_system_core.support import (
     authenticated_user,
+    create_metadata_store,
     FakeDocumentStorage,
     FakeEmbeddingClient,
     FakeGenerationClient,
@@ -73,7 +73,7 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
         vector_store=create_rag_vector_store(),
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
         health_check_runner=run_health_checks,
@@ -123,7 +123,7 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
         embedding_client=create_rag_embedding_client(settings=settings),
         generation_client=create_rag_generation_client(settings=settings),
         vector_store=create_rag_vector_store(),
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
         health_check_runner=run_health_checks,
@@ -169,7 +169,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
         vector_store=vector_store,
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
         health_check_runner=run_health_checks,

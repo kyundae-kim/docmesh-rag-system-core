@@ -3,14 +3,14 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from sqlalchemy import inspect
+from sqlalchemy import create_engine, inspect
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
 from rag_system_core.composition.health import run_health_checks
 from rag_system_core.storage.metadata_store import MetadataStore
 
-from test_rag_system_core.support import authenticated_user, create_test_rig, FakeDocumentStorage
+from test_rag_system_core.support import authenticated_user, create_metadata_store, create_test_rig, FakeDocumentStorage
 
 USER_A = authenticated_user("user-a")
 USER_B = authenticated_user("user-b")
@@ -18,6 +18,17 @@ USER_B = authenticated_user("user-b")
 
 def test_metadata_store_has_no_package_root_alias_module() -> None:
     assert importlib.util.find_spec("rag_system_core.metadata_store") is None
+
+
+def test_metadata_store_uses_injected_sqlalchemy_engine(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
+
+    store = MetadataStore(engine)
+
+    try:
+        assert store.engine is engine
+    finally:
+        store.close()
 
 
 def test_metadata_store_uses_sqlalchemy_orm_models_and_chunk_table(tmp_path: Path) -> None:
@@ -88,7 +99,7 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
         embedding_client=rig.embedding_client,
         generation_client=rig.generation_client,
         vector_store=vector_store,
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
         health_check_runner=run_health_checks,
