@@ -3,12 +3,9 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 
 import dms
-from minio import Minio
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine, URL
+from sqlalchemy.engine import Engine
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,64 +134,6 @@ def load_dms_settings(env: Mapping[str, str] | None = None) -> dms.DmsServiceCon
     )
 
 
-def _create_metadata_engine(settings: dms.DmsServiceConfigs) -> Engine:
-    if settings.sqlite_path is not None:
-        path = Path(settings.sqlite_path).expanduser()
-        if str(path) != ":memory:":
-            path.parent.mkdir(parents=True, exist_ok=True)
-        return create_engine(
-            "sqlite+pysqlite:///:memory:" if str(path) == ":memory:" else f"sqlite+pysqlite:///{path}",
-        )
-    return create_engine(
-        URL.create(
-            "postgresql+psycopg",
-            username=settings.postgres_user,
-            password=settings.postgres_password,
-            host=settings.postgres_host,
-            port=settings.postgres_port,
-            database=settings.postgres_database,
-        )
-    )
-
-
-def create_dms_sdk(
-    settings: dms.DmsServiceConfigs,
-    *,
-    check_on_startup: bool = False,
-) -> dms.DefaultDocumentManagementSDK:
-    """Create the v0.7 DMS SDK by resolving settings and creating its clients."""
-    engine = _create_metadata_engine(settings)
-    try:
-        minio_client = Minio(
-            settings.minio_endpoint,
-            access_key=settings.minio_access_key,
-            secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure,
-        )
-        managed_resources = (
-            dms.ManagedResource(
-                resource=engine,
-                ownership=dms.ResourceOwnership.SDK,
-                close=engine.dispose,
-                name="dms-metadata-engine",
-            ),
-        )
-        plan = dms.DmsAssemblyPlan(
-            metadata_backend="sqlite" if settings.sqlite_path is not None else "postgresql",
-            check_on_startup=check_on_startup,
-        )
-        return dms.create_sdk_from_clients(
-            engine=engine,
-            minio_client=minio_client,
-            bucket_name=settings.minio_bucket,
-            managed_resources=managed_resources,
-            plan=plan,
-        )
-    except Exception:
-        engine.dispose()
-        raise
-
-
 def create_dms_sdk_from_clients(
     *,
     engine: Engine,
@@ -217,7 +156,6 @@ def create_dms_sdk_from_clients(
 
 __all__ = [
     "DmsEnvironmentDiagnosis",
-    "create_dms_sdk",
     "create_dms_sdk_from_clients",
     "load_dms_settings",
 ]

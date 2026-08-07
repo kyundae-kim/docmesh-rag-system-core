@@ -119,11 +119,6 @@ class MetadataStore:
             session.add_all(models)
             session.commit()
 
-    def get_document(self, doc_id: str) -> DocumentRecord | None:
-        with self.session() as session:
-            row = session.get(DocumentModel, doc_id)
-        return document_record_from_model(row)
-
     def get_document_for_user(self, *, doc_id: str, user_id: str) -> DocumentRecord | None:
         statement = select(DocumentModel).where(DocumentModel.doc_id == doc_id, DocumentModel.user_id == user_id)
         with self.session() as session:
@@ -140,14 +135,6 @@ class MetadataStore:
             if record is not None:
                 documents.append(record)
         return documents
-
-    def list_chunks(self, user_id: str | None = None) -> list[ChunkRecord]:
-        statement = select(ChunkModel).order_by(ChunkModel.user_id, ChunkModel.doc_id, ChunkModel.chunk_index)
-        if user_id is not None:
-            statement = statement.where(ChunkModel.user_id == user_id)
-        with self.session() as session:
-            rows = session.scalars(statement).all()
-        return [chunk_record_from_model(row) for row in rows]
 
     def list_document_chunks(self, *, doc_id: str, user_id: str) -> list[ChunkRecord]:
         statement = (

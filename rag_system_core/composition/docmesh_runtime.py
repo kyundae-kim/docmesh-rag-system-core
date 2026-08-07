@@ -191,22 +191,6 @@ def create_docmesh_service_client(
     raise ValueError(f"Unsupported RAG service: {service_name}")
 
 
-def resolve_milvus_runtime_settings(
-    *,
-    fallback_uri: str,
-    settings: ServiceConfigs | None = None,
-) -> tuple[str, str, float]:
-    resolved_settings = settings if settings is not None else load_docmesh_settings(services={"milvus"})
-    config = resolved_settings.milvus
-    if config is None:
-        return fallback_uri, "rag_chunks", 30.0
-    return (
-        config.endpoint or fallback_uri,
-        config.collection or "rag_chunks",
-        float(config.request_timeout_seconds) or 30.0,
-    )
-
-
 __all__ = [
     "RAG_SERVICES",
     "ServiceBundle",
@@ -214,5 +198,4 @@ __all__ = [
     "build_docmesh_runtime_plan",
     "create_docmesh_service_client",
     "load_docmesh_settings",
-    "resolve_milvus_runtime_settings",
 ]

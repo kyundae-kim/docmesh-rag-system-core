@@ -228,7 +228,7 @@ The system shall distinguish composition interfaces by canonical import path:
 | Surface | Canonical interfaces |
 |---|---|
 | Package root `rag_system_core` | `RAGCore`, `RAGServiceFactory`, `DocmeshRAGServiceFactory`, `OllamaEmbeddingClient`, `OllamaGenerationClient`, public records, client protocols, and `AuthenticatedUser` |
-| `rag_system_core.composition` | `assemble_docmesh_services`, `load_docmesh_settings`, `create_docmesh_service_client`, `create_dms_sdk_from_clients`, `resolve_milvus_runtime_settings`, `run_health_checks`, and the two service-factory types |
+| `rag_system_core.composition` | `assemble_docmesh_services`, `load_docmesh_settings`, `create_docmesh_service_client`, `create_dms_sdk_from_clients`, `run_health_checks`, and the two service-factory types |
 | Advanced factory module `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
 
 Module-qualified advanced helpers shall not be described as package-root exports.
