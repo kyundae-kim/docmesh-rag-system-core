@@ -93,11 +93,9 @@ Metadata  Vector   Model Clients
 Document Storage
 
 [Composition Layer]
- - DocmeshRAGServiceFactory.from_host_clients
- - DocmeshRAGServiceFactory
- - create_rag_embedding_client
- - create_rag_generation_client
- - create_rag_vector_store
+ - service_factory.py: DMS-backed Factory and RAGCore assembly
+ - rag_factories.py: RAG adapter/store construction
+ - factories.py: stable advanced re-export surface
  - docmesh_runtime: Ollama / Milvus settings and assembly
  - dms_runtime: DMS-prefixed settings adaptation
 
@@ -232,6 +230,11 @@ The system shall distinguish composition interfaces by canonical import path:
 | Advanced factory module `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
 
 Module-qualified advanced helpers shall not be described as package-root exports.
+
+The implementation owners are separated inside the composition package:
+`rag_factories.py` owns RAG adapter/store construction, `service_factory.py`
+owns the DMS-backed Factory and lifecycle, and `factories.py` preserves the
+established advanced import path as a compatibility surface.
 
 #### 3.3.6 External Runtime Integrations
 The system may integrate with the following external software services or packages:

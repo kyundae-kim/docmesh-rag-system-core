@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, get_type_hints
 
-import rag_system_core.composition.factories as factories_module
+import rag_system_core.composition.rag_factories as rag_factories_module
 import rag_system_core.storage as storage_module
 import pytest
 from rag_system_core import RAGCore
@@ -87,7 +87,7 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
 def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Path) -> None:
     embed_calls: list[dict[str, Any]] = []
     chat_calls: list[dict[str, Any]] = []
-    create_service_client = factories_module.create_docmesh_service_client
+    create_service_client = rag_factories_module.create_docmesh_service_client
 
     class FakeOllamaClient:
         def embed(self, *, model: str, input: list[str]) -> dict[str, list[list[float]]]:
@@ -111,7 +111,7 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
     monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.create_docmesh_service_client",
+        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
         lambda service_name, *, settings, bundle=None: (
             FakeOllamaClient()
             if service_name == "ollama"
@@ -160,7 +160,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         )
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.create_docmesh_service_client",
+        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
         lambda service_name, *, settings=None, bundle=None: None,
     )
 
@@ -182,7 +182,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
 
 def test_create_rag_vector_store_requires_docmesh_or_explicit_client(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.create_docmesh_service_client",
+        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
         lambda service_name, *, settings=None, bundle=None: None,
     )
 

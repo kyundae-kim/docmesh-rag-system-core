@@ -13,6 +13,7 @@ from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
 from rag_system_core.composition.dms_runtime import load_dms_settings
 import rag_system_core.composition.docmesh_runtime as docmesh_runtime
+import rag_system_core.composition.service_factory as service_factory_module
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
     build_docmesh_runtime_plan,
@@ -271,7 +272,7 @@ def test_direct_ollama_factory_loads_v050_service_config_once(monkeypatch) -> No
         fake_load_available_service_configs,
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.create_docmesh_service_client",
+        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
         lambda service_name, *, settings=None, bundle=None: ollama,
     )
 
@@ -352,7 +353,7 @@ def test_vector_store_requires_client_when_milvus_is_not_configured(tmp_path: Pa
 
 def test_vector_store_explicit_client_values_do_not_load_docmesh_settings(monkeypatch) -> None:
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.load_docmesh_settings",
+        "rag_system_core.composition.rag_factories.load_docmesh_settings",
         lambda **kwargs: pytest.fail("explicit vector-store clients must not load DocMesh settings"),
     )
     client = object()
@@ -421,11 +422,11 @@ def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_sett
         lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.load_docmesh_settings",
+        "rag_system_core.composition.rag_factories.load_docmesh_settings",
         lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.dms_runtime.load_dms_settings",
+        "rag_system_core.composition.service_factory.dms_runtime.load_dms_settings",
         lambda **kwargs: pytest.fail("client assembly must not load DMS settings"),
     )
 
@@ -439,7 +440,7 @@ def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_sett
         return dms_sdk
 
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.dms_runtime.create_dms_sdk_from_clients",
+        "rag_system_core.composition.service_factory.dms_runtime.create_dms_sdk_from_clients",
         fake_create_dms_sdk_from_clients,
     )
 
@@ -483,11 +484,11 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
         lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.load_docmesh_settings",
+        "rag_system_core.composition.rag_factories.load_docmesh_settings",
         lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.dms_runtime.load_dms_settings",
+        "rag_system_core.composition.service_factory.dms_runtime.load_dms_settings",
         lambda **kwargs: pytest.fail("host-client assembly must not load DMS settings"),
     )
 
@@ -501,7 +502,7 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
         return dms_sdk
 
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.dms_runtime.create_dms_sdk_from_clients",
+        "rag_system_core.composition.service_factory.dms_runtime.create_dms_sdk_from_clients",
         fake_create_dms_sdk_from_clients,
     )
 
@@ -542,8 +543,6 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
 
 
 def test_docmesh_factory_uses_host_owned_metadata_engine_for_metadata_store(monkeypatch, tmp_path: Path) -> None:
-    import rag_system_core.composition.factories as factories_module
-
     metadata_engine = object()
     records: list[str] = []
 
@@ -554,7 +553,7 @@ def test_docmesh_factory_uses_host_owned_metadata_engine_for_metadata_store(monk
         def close(self) -> None:
             records.append("metadata")
 
-    monkeypatch.setattr(factories_module, "MetadataStore", FakeMetadataStore)
+    monkeypatch.setattr(service_factory_module, "MetadataStore", FakeMetadataStore)
     factory = DocmeshRAGServiceFactory(
         dms_sdk=SimpleNamespace(close=lambda: records.append("dms")),
         owns_dms_sdk=True,
@@ -577,8 +576,6 @@ def test_docmesh_factory_uses_host_owned_metadata_engine_for_metadata_store(monk
 def test_docmesh_factory_create_rag_core_uses_host_owned_metadata_engine(
     monkeypatch,
 ) -> None:
-    import rag_system_core.composition.factories as factories_module
-
     records: list[object] = []
     metadata_engine = object()
 
@@ -593,7 +590,7 @@ def test_docmesh_factory_create_rag_core_uses_host_owned_metadata_engine(
     embedding_client = object()
     generation_client = object()
     vector_store = object()
-    monkeypatch.setattr(factories_module, "MetadataStore", FakeMetadataStore)
+    monkeypatch.setattr(service_factory_module, "MetadataStore", FakeMetadataStore)
 
     factory = DocmeshRAGServiceFactory(
         dms_sdk=dms_sdk,
@@ -628,8 +625,6 @@ def test_docmesh_factory_create_metadata_store_keeps_path_compatibility(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    import rag_system_core.composition.factories as factories_module
-
     records: list[str] = []
 
     class FakeMetadataStore:
@@ -640,7 +635,7 @@ def test_docmesh_factory_create_metadata_store_keeps_path_compatibility(
             records.append("metadata")
 
     dms_sdk = SimpleNamespace(close=lambda: records.append("dms"))
-    monkeypatch.setattr(factories_module, "MetadataStore", FakeMetadataStore)
+    monkeypatch.setattr(service_factory_module, "MetadataStore", FakeMetadataStore)
 
     factory = DocmeshRAGServiceFactory(dms_sdk=dms_sdk, owns_dms_sdk=True)
     metadata_store = factory.create_metadata_store(metadata_path=tmp_path / "metadata.db")

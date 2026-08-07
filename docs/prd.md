@@ -338,11 +338,9 @@ prompt는 최소 아래 섹션을 포함해야 한다.
  └─ MilvusLiteVectorStore (default)
 
 [Composition Layer]
- ├─ DocmeshRAGServiceFactory.from_host_clients
- ├─ DocmeshRAGServiceFactory
- ├─ create_rag_embedding_client
- ├─ create_rag_generation_client
- ├─ create_rag_vector_store
+ ├─ service_factory.py (DMS-backed Factory and RAGCore assembly)
+ ├─ rag_factories.py (RAG adapter/store construction)
+ ├─ factories.py (stable advanced re-export surface)
  ├─ docmesh_runtime (Ollama / Milvus settings and assembly)
  ├─ dms_runtime (DMS-prefixed settings adaptation)
  └─ health
