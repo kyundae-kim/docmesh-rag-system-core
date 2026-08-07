@@ -1,12 +1,14 @@
 ---
 title: Developing with docmesh-py-core
 created: 2026-06-19
-updated: 2026-08-04
+updated: 2026-08-08
 type: query
 tags: [sdk, python, integration, config, testing]
-sources: [raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-guide-2026-06-19.md, raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-env-example-v0.6.0-2026-08-04.md]
-confidence: medium
+sources: []
+confidence: low
 ---
+
+> **Source status (2026-08-08):** The `docmesh-py-core` raw captures previously cited by this page were removed during wiki cleanup. Re-ingest an authoritative source before relying on these implementation-specific claims.
 
 # Developing with docmesh-py-core
 
@@ -16,7 +18,7 @@ confidence: medium
 
 ## Short answer
 
-가장 좋은 활용 방식은 `docmesh-py-core`를 **애플리케이션의 공통 client/lifecycle SDK**로 두고, `docmesh-config`를 설정·진단·runtime plan의 canonical 경계로 두는 것이다. 비즈니스 로직은 앱/도메인 패키지에 두고, PostgreSQL·SQLite·MinIO·NATS·Ollama·Milvus·Keycloak 접속과 운영 규칙은 두 SDK의 config/assembly/health 경계에 위임한다. v0.6.0의 일반 애플리케이션 권장 경로는 registry 직접 조립이 아니라 `docmesh_config.RuntimePlan`을 `docmesh_py_core`의 assembly/lifespan API에 전달하는 **canonical split + assembly-first**다.^[raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md]^[raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md]
+가장 좋은 활용 방식은 `docmesh-py-core`를 **애플리케이션의 공통 client/lifecycle SDK**로 두고, `docmesh-config`를 설정·진단·runtime plan의 canonical 경계로 두는 것이다. 비즈니스 로직은 앱/도메인 패키지에 두고, PostgreSQL·SQLite·MinIO·NATS·Ollama·Milvus·Keycloak 접속과 운영 규칙은 두 SDK의 config/assembly/health 경계에 위임한다. v0.6.0의 일반 애플리케이션 권장 경로는 registry 직접 조립이 아니라 `docmesh_config.RuntimePlan`을 `docmesh_py_core`의 assembly/lifespan API에 전달하는 **canonical split + assembly-first**다.
 
 ## Recommended development flow
 
@@ -32,7 +34,7 @@ confidence: medium
 
 ### 1. FastAPI / backend service bootstrap
 
-Backend service의 lifespan에서는 `docmesh_config`로 plan을 만든 뒤 `with ServiceBundle` 또는 `async with service_lifespan(plan=plan)`으로 client 생성, startup healthcheck, rollback과 종료 cleanup을 응집시킬 수 있다. NATS persistent connection의 drain/close는 caller가 소유해야 한다.^[raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md]^[raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md]
+Backend service의 lifespan에서는 `docmesh_config`로 plan을 만든 뒤 `with ServiceBundle` 또는 `async with service_lifespan(plan=plan)`으로 client 생성, startup healthcheck, rollback과 종료 cleanup을 응집시킬 수 있다. NATS persistent connection의 drain/close는 caller가 소유해야 한다.
 
 ### 2. Worker / batch / CLI jobs
 

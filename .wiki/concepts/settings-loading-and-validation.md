@@ -1,20 +1,20 @@
 ---
 title: Settings Loading and Validation
 created: 2026-06-19
-updated: 2026-08-04
+updated: 2026-08-08
 type: concept
 tags: [config, sdk, python, security, decision]
-sources: [raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md, raw/articles/docmesh-config-configuration-v0.1.0-2026-08-04.md, raw/articles/docmesh-config-examples-v0.1.0-2026-08-04.md, raw/articles/docmesh-config-env-example-v0.1.0-2026-08-04.md, raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md, raw/articles/docmesh-py-core-env-example-v0.6.0-2026-08-04.md, raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md, raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md, raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
+sources: [raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md, raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md, raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
 confidence: medium
 ---
 
 # Settings Loading and Validation
 
-`docmesh-config` v0.1.0은 canonical 설정 package로서 process environment에서 typed config를 읽고 `ServiceConfigs`와 `RuntimePlan`으로 선택·검증한다. `docmesh-py-core`는 이 결과를 client/assembly/lifecycle로 변환하며, partial 설정·잘못된 bool/int/range·production transport 보안 위반을 구조화된 오류로 다룬다.^[raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md]^[raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md]
+`docmesh-config` v0.1.0은 canonical 설정 package로서 process environment에서 typed config를 읽고 `ServiceConfigs`와 `RuntimePlan`으로 선택·검증한다. `docmesh-py-core`는 이 결과를 client/assembly/lifecycle로 변환하며, partial 설정·잘못된 bool/int/range·production transport 보안 위반을 구조화된 오류로 다룬다.
 
 ## Validation scope
 
-검증 대상은 단순 필수 여부를 넘어 조건부 필수 규칙과 보안 규칙까지 포함한다. 예를 들어 Langfuse 비활성화, PostgreSQL field 조합, Keycloak credential grant, production TLS 설정은 서비스별 선택 경로에서 다르게 적용된다. `RuntimePlan.healthcheck`는 network 실행 결과가 아니라 runtime이 사용할 startup/readiness policy다.^[raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md]^[raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md]
+검증 대상은 단순 필수 여부를 넘어 조건부 필수 규칙과 보안 규칙까지 포함한다. 예를 들어 Langfuse 비활성화, PostgreSQL field 조합, Keycloak credential grant, production TLS 설정은 서비스별 선택 경로에서 다르게 적용된다. `RuntimePlan.healthcheck`는 network 실행 결과가 아니라 runtime이 사용할 startup/readiness policy다.
 
 ## DMS v0.7.0 configuration boundary
 

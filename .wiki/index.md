@@ -2,7 +2,7 @@
 
 > Content catalog. Every wiki page listed under its type with a one-line summary.
 > Read this first to find relevant pages for any query.
-> Last updated: 2026-08-04 | Total pages: 35
+> Last updated: 2026-08-08 | Total pages: 35
 
 ## Entities
 - [[dms-core]] — host가 만든 client/component를 주입받아 문서 lifecycle·정합성 복구·public-safe metadata를 제공하는 DMS Python SDK.

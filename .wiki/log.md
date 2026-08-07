@@ -582,3 +582,36 @@
 - Separated `EnvironmentDiagnosis` (`ok`, `issues`, `warnings`) from `ConfigError` raised by loading/requirement validation and Pydantic `ValidationError` raised by direct model construction.
 - Documented explicit versus automatic loading, partial-configuration failure, constructor `TypeError`, production-mode precedence, RuntimePlan invariants, Milvus endpoint migration boundary, conditional Keycloak/Langfuse/NATS rules, and the limited scope of secret masking.
 - Added `raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md` as provenance for the cross-package assembly boundary.
+
+## [2026-08-08] delete | docmesh-py-core raw captures
+- Removed 11 current raw captures matching `raw/articles/docmesh-py-core-*.md`:
+  - raw/articles/docmesh-py-core-api-guide-2026-06-19.md
+  - raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-config-guide-2026-06-19.md
+  - raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-env-example-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md
+- Also pruned page references to three already-removed v0.2.0 raw capture names.
+- Wiki pages updated: 13 affected pages; three pages now have `sources: []`, `confidence: low`, and a re-ingest warning.
+- Historical log entries were preserved because `log.md` is append-only.
+
+## [2026-08-08] delete | docmesh-config raw captures
+- Removed 4 raw captures matching `raw/articles/docmesh-config-*.md`:
+  - raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-configuration-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-env-example-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-examples-v0.1.0-2026-08-04.md
+- Wiki pages updated:
+  - entities/docmesh-config.md
+  - entities/docmesh-py-core.md
+  - concepts/service-configuration-topology.md
+  - concepts/service-factory-registry.md
+  - concepts/service-health-orchestration.md
+  - concepts/settings-loading-and-validation.md
+- Two pages now have `sources: []`, `confidence: low`, and a re-ingest warning.
+- Historical log entries were preserved because `log.md` is append-only.
