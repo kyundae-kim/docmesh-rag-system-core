@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import BinaryIO, Callable
 
-from docmesh_py_core import AuthenticatedUser
-
 from rag_system_core.domain.generation import GenerationService
 from rag_system_core.domain.ingestion import IngestionService
 from rag_system_core.domain.retrieval import RetrievalService
@@ -18,6 +16,7 @@ from rag_system_core.ports import (
     VectorStore,
 )
 from rag_system_core.types import (
+    AuthenticatedUser,
     ChunkRecord,
     DocumentRecord,
     IngestionProgressRecord,

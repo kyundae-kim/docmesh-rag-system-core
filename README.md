@@ -24,13 +24,13 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 ## 핵심 개념
 
 ### user scope
-- 각 공개 메서드는 `docmesh_py_core.AuthenticatedUser`를 `user` 인자로 받습니다.
+- 각 공개 메서드는 `rag_system_core.types.AuthenticatedUser`를 `user` 인자로 받습니다.
 - 저장 및 검색 격리에는 `user.sub`를 `user_id`로 사용합니다.
 - 사용자 인증과 사용자 모델 생성은 상위 애플리케이션의 책임입니다.
 
 ### document asset storage
 - 문서 본문은 document metadata row에 직접 저장하지 않습니다.
-- production bootstrap에서는 `DmsDocumentStorage`가 dms-core의 원문 lifecycle을 사용합니다.
+- 표준 composition에서는 `DmsDocumentStorage`가 dms-core의 원문 lifecycle을 사용합니다.
 - RAG metadata에는 내부 MinIO key가 아니라 opaque `asset_reference`만 기록되며, 기본값은 동일한 DMS `document_id`입니다.
 - 테스트나 사용자 정의 직접 조립에서는 `DocumentAssetStorage` protocol 구현체를 주입할 수 있습니다.
 
@@ -50,8 +50,6 @@ from rag_system_core import (
     RAGCore,
     OllamaEmbeddingClient,
     OllamaGenerationClient,
-    bootstrap_rag_core,
-    bootstrap_rag_core_from_env,
     DocmeshRAGServiceFactory,
     RAGServiceFactory,
     DocumentRecord,
@@ -64,10 +62,10 @@ from rag_system_core import (
 )
 ```
 
-실무적으로는 아래 세 경로가 핵심입니다.
+실무적으로는 아래 조립 경로가 핵심입니다.
 
-1. **production 기본 경로: `bootstrap_rag_core_from_env(...)` context manager**
-2. **고급 조립 경로: `DocmeshRAGServiceFactory` + `bootstrap_rag_core(...)`**
+1. **host-owned client 경로: `DocmeshRAGServiceFactory.from_host_clients(...)` + `create_rag_core(...)`**
+2. **이미 조립된 collaborator 경로: `DocmeshRAGServiceFactory.from_clients(...)` + `create_rag_core(...)`**
 3. **테스트·사용자 정의 경로: factory helper + `RAGCore(...)` 직접 조립**
 
 ---
@@ -76,10 +74,10 @@ from rag_system_core import (
 
 `pyproject.toml` 기준 요구사항:
 - Python `>= 3.11`
-- `docmesh-py-core`
-- `dms-core`
-- `pydantic-settings`
-- `pymilvus[milvus-lite]`
+- `dms-core v0.7.0` (Python package name `dms`)
+- `ollama>=0.6.2`
+- `pydantic-settings>=2.14.1`
+- `pymilvus[milvus-lite]>=3.0.0`
 
 권장 설치:
 
@@ -87,24 +85,19 @@ from rag_system_core import (
 uv sync
 ```
 
-`OllamaEmbeddingClient`, `OllamaGenerationClient`, `create_rag_embedding_client(...)`, `create_rag_generation_client(...)`를 사용할 경우 Python 패키지 `ollama`도 필요합니다.
-
-```bash
-uv pip install ollama
-```
+`ollama`는 위 선언 의존성에 포함되어 있으므로 별도 설치가 필요하지 않습니다.
 
 ---
 
-## 최소 설정
+## 환경 설정을 직접 사용하는 경우
 
-첫 성공 호출 기준 최소 권장 env:
+환경 기반 runtime 조립은 convenience factory가 자동으로 수행하지 않습니다. 환경 설정을 사용할 경우 상위 애플리케이션이 composition layer의 settings와 service bundle을 읽고 `create_rag_*` helper로 RAG adapter를 만든 뒤, DMS용 Engine/MinIO client와 RAG collaborator를 `DocmeshRAGServiceFactory` 또는 `RAGCore(...)`에 전달해야 합니다. `DocmeshRAGServiceFactory`는 settings나 bundle을 보관하거나 이를 이용해 collaborator를 지연 생성하지 않습니다.
 
 ```env
 OLLAMA_HOST=http://ollama:11434
 OLLAMA_EMBEDDING_MODEL=bge-m3
 OLLAMA_GENERATION_MODEL=gpt-oss:20b
-MILVUS_URI=./data/metadata.milvus.db
-DMS_DOCMESH_ENV=development
+MILVUS_ENDPOINT=./data/metadata.milvus.db
 DMS_METADATA_BACKEND=sqlite
 DMS_SQLITE_PATH=./data/dms.db
 DMS_MINIO_ENDPOINT=minio:9000
@@ -119,27 +112,13 @@ DMS_MINIO_SECURE=false
 - `DMS_SQLITE_PATH`가 가리키는 DMS metadata 파일 경로
 - DocMesh Milvus 설정이 local URI를 사용하는 경우 해당 파일 경로
 
-위 환경변수 예시는 production bootstrap에 필요한 canonical 설정 이름을 보여 줍니다.
+위 환경변수 예시는 직접 조립하는 environment runtime에서 사용할 canonical 설정 이름을 보여 줍니다. client-injection 경로는 아래와 같이 필요한 transport/client와 모델·저장소 값을 직접 전달하므로 이 환경변수 세트를 읽지 않습니다.
 
 ---
 
 ## 가장 단순한 사용 경로
 
-현재 구현 기준으로 `RAGCore`는 **의존성 주입형 생성자**입니다. production 기본 경로는 DocMesh 설정으로 Ollama·Milvus·DMS를 함께 조립하는 service factory입니다.
-
-가장 현실적인 첫 성공 경로는 `bootstrap_rag_core_from_env(...)`가 구성요소와 DMS SDK를 한 번 조립하고 context 종료 시 소유 자원을 정리하는 방식입니다. startup health check는 기본적으로 활성화되며 Ollama와 Milvus를 병렬 점검합니다.
-
-```python
-from rag_system_core import bootstrap_rag_core_from_env
-
-with bootstrap_rag_core_from_env(
-    metadata_path="./data/metadata.db",
-    chunk_size=512,
-    chunk_overlap=64,
-) as core:
-    # 이 context 안에서 API 서버, worker 또는 batch 작업을 실행합니다.
-    print(core.health_check().ok)
-```
+현재 구현 기준으로 `RAGCore`는 **의존성 주입형 생성자**입니다. 상위 애플리케이션이 service factory를 직접 구성하거나 아래의 host-owned client service-factory 경로를 사용해야 합니다.
 
 ---
 
@@ -231,23 +210,51 @@ deleted = core.delete_document(first_doc.doc_id, user=user)
 print(deleted)
 ```
 
-## bootstrap 경로
+## 조립 경로
 
-DocMesh v0.5.0 설정이 프로세스 환경변수에 준비되어 있으면 lifecycle을 소유하는 environment bootstrap 경로를 사용합니다. `from_env()`는 별도의 환경 mapping을 받지 않고 현재 프로세스 환경을 읽으며, DMS의 공유 서비스 설정은 `DMS_` 접두사로 RAG 설정과 분리합니다.
+`RAGCore(...)`는 fully assembled dependency graph를 받는 의존성 주입형 생성자입니다. environment runtime이 필요한 경우 상위 애플리케이션이 설정과 service bundle을 직접 조립하고 `create_rag_*` helper와 DMS runtime으로 명시적 collaborator를 만든 뒤 `RAGCore(...)`에 전달하며 lifecycle을 관리해야 합니다. 이미 조립된 RAG collaborator와 DMS용 Engine/MinIO client를 주입하는 경로에서는 `DocmeshRAGServiceFactory.from_clients(...)`를 사용할 수 있고, 원시 host-owned transport client에서 시작하면서 Factory를 직접 사용할 경우에는 `DocmeshRAGServiceFactory.from_host_clients(...)`를 사용할 수 있습니다. Factory의 `create_rag_core(...)`는 보유한 collaborator를 최종 `RAGCore`로 조립하며, 정상적인 Factory 조립에는 `metadata_engine`이 필요합니다. 두 classmethod 경로 모두 context manager이며, classmethod가 생성한 DMS SDK를 소유합니다. `metadata_path`로 생성한 MetadataStore와 host-owned `metadata_engine`을 주입한 MetadataStore/Engine의 lifecycle은 각각 호출 경로의 소유자 규칙을 따릅니다.
+
+### host-owned clients
+
+DMS와 RAG runtime 설정을 환경변수에서 읽지 않고 상위 애플리케이션이 직접 만든 transport client를 전달할 수도 있습니다. `DocmeshRAGServiceFactory.from_host_clients(...)`는 DMS용 및 metadata용 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client를 받아 Ollama embedding/generation adapter와 Milvus vector store를 조립한 Factory를 반환합니다. Factory의 `create_rag_core(...)`가 최종 `RAGCore`를 조립하며, 이 경로는 `ServiceBundle`이나 runtime settings를 만들지 않습니다.
 
 ```python
-from rag_system_core import bootstrap_rag_core_from_env
+from minio import Minio
+from ollama import Client as OllamaClient
+from pymilvus import MilvusClient
+from sqlalchemy import create_engine
 
-with bootstrap_rag_core_from_env(
-    metadata_path="./data/metadata.db",
+from rag_system_core import DocmeshRAGServiceFactory
+
+engine = create_engine("sqlite+pysqlite:///./data/dms.db")
+metadata_engine = create_engine("sqlite+pysqlite:///./data/metadata.db")
+minio_client = Minio(
+    "minio:9000",
+    access_key="replace-me",
+    secret_key="replace-me",
+    secure=False,
+)
+ollama_client = OllamaClient(host="http://ollama:11434")
+milvus_client = MilvusClient(uri="./data/metadata.milvus.db")
+
+with DocmeshRAGServiceFactory.from_host_clients(
+    engine=engine,
+    metadata_engine=metadata_engine,
+    minio_client=minio_client,
+    bucket_name="documents",
+    ollama_client=ollama_client,
+    milvus_client=milvus_client,
+    embedding_model="bge-m3",
+    generation_model="gpt-oss:20b",
+    collection_name="rag_chunks",
+    timeout=30.0,
     check_on_startup=True,
-    parallel_healthchecks=True,
-) as core:
-    # 여기에서 core를 사용하는 애플리케이션을 실행합니다.
-    ...
+) as service_factory:
+    core = service_factory.create_rag_core()
+    print(core.health_check().ok)
 ```
 
-이 helper는 DocMesh service bundle과 DMS SDK의 lifecycle을 소유합니다. context가 정상 종료되거나 예외로 종료되면 DMS SDK와 RAG bundle을 순서대로 정리합니다. 사용자 정의 조립이 필요한 경우 `DocmeshRAGServiceFactory.from_env(...)` 자체도 context manager로 사용할 수 있습니다.
+context 종료 시 host-client 경로에서 Factory가 닫는 것은 Factory가 생성한 DMS SDK입니다. `Engine`, `metadata_engine`, MinIO, Ollama, Milvus raw client는 caller-owned이며 상위 애플리케이션 lifecycle에서 정리합니다. Factory가 생성한 RAG adapter와 MetadataStore는 이 transport client를 소유하지 않습니다. `DocmeshRAGServiceFactory.from_clients(...)`는 이미 만들어진 RAG collaborator를 주입받는 경로입니다. Factory를 직접 사용할 때는 context 안에서 `create_rag_core(...)`를 호출하고, 반환된 Core도 같은 context 안에서 사용해야 합니다.
 
 ---
 
@@ -283,7 +290,7 @@ with bootstrap_rag_core_from_env(
 - `OLLAMA_REQUEST_TIMEOUT_SECONDS`
 
 ### Milvus
-- `MILVUS_URI`
+- `MILVUS_ENDPOINT`
 - `MILVUS_COLLECTION`
 - `MILVUS_REQUEST_TIMEOUT_SECONDS`
 - `MILVUS_CONNECT_TIMEOUT_SECONDS`
@@ -296,6 +303,9 @@ with bootstrap_rag_core_from_env(
 - `DMS_MINIO_SECRET_KEY`
 - `DMS_MINIO_BUCKET`
 - `DMS_MINIO_SECURE`
+- `DMS_CONFIGURATION_STRICT`
+
+`DocmeshRAGServiceFactory.from_host_clients(...)`를 사용하는 경우 위 `OLLAMA_*`, `MILVUS_*`, `DMS_*` 환경변수는 필요하지 않습니다. 상위 애플리케이션이 만든 DMS용 및 metadata용 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 전달합니다.
 
 legacy 패턴은 현재 지원 대상으로 보지 않습니다.
 - `OLLAMA_EMBED__*`

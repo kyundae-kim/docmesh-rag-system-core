@@ -1,10 +1,10 @@
 ---
 title: Applying dms-core as Document Storage
 created: 2026-07-27
-updated: 2026-07-30
+updated: 2026-08-04
 type: query
-tags: [architecture, integration, sdk, persistence, decision]
-sources: [raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-examples-v0.6.0-2026-07-27.md, raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md]
+tags: [architecture, integration, sdk, persistence, decision, security]
+sources: [raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-examples-v0.6.0-2026-07-27.md, raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md, raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md, raw/articles/dms-core-examples-v0.7.0-2026-08-04.md, raw/articles/docmesh-rag-core-api-reference-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md]
 confidence: medium
 ---
 
@@ -12,104 +12,92 @@ confidence: medium
 
 ## 질문
 
-`dms-core`를 DocMesh RAG Core의 `DocumentStorage`로 어떻게 적용해야 하는가?
+`dms-core` v0.7.0을 DocMesh RAG Core의 `DocumentStorage`로 어떻게 적용해야 하는가?
 
 ## 결론
 
-권장 방식은 `dms-core`를 단순 MinIO client로 축소하지 않고 **원문 자산의 저장·조회·삭제·무결성·복구를 소유하는 document-management 경계**로 적용하는 것이다. RAG Core의 `MetadataStore`는 청크, ingestion progress, 검색 및 user-scope 관계처럼 RAG 고유 상태만 유지한다. 두 경계는 동일한 `document_id`로 연결한다.
-
-기존 `DocumentStorage`가 로컬 `storage_path`를 반환한다면 DMS adapter에서 내부 `storage_key`를 노출하지 말아야 한다. 대신 공개 `document_id`를 opaque asset reference로 사용하도록 계약을 바꾸거나 별도 `DmsDocumentStorage` port를 둔다. `dms-core`의 `DocumentMetadata.storage_key`와 internal 조회는 관리·복구 경계에만 남겨야 한다.^[raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md]
+`dms-core`를 단순 MinIO client로 축소하지 않고 **원문 자산의 저장·조회·삭제·무결성·복구를 소유하는 document-management 경계**로 적용한다. RAG Core의 `MetadataStore`는 chunk·embedding·ingestion progress·검색·user-scope 관계 같은 RAG 고유 상태를 유지하고, 두 경계는 공개 `document_id`로 연결한다. DMS의 `storage_key`는 public asset reference나 기존 `storage_path` 필드로 복사하지 않는다.
 
 ## 책임 분리
 
 | 책임 | 권장 소유자 |
 | --- | --- |
-| 원문 bytes/stream 저장과 다운로드 | `dms-core` |
-| 원문 checksum, 크기 제한, content type | `dms-core` |
-| 원문 soft/hard delete와 복구 검사 | `dms-core` |
-| DMS 문서 상태와 object `storage_key` | `dms-core` 내부 |
-| RAG document와 DMS document 연결 | RAG `MetadataStore`의 `dms_document_id` 또는 동일 `document_id` |
+| 원문 bytes/stream 저장·다운로드·checksum·size·content type | `dms-core` |
+| DMS document 상태, soft/hard delete, object 정합성 복구 | `dms-core` |
+| DMS internal `storage_key` | `dms-core` 관리·복구 경계 |
+| RAG document와 DMS document 연결 | RAG `MetadataStore`의 동일 `document_id` 또는 `dms_document_id` |
 | chunk, embedding/vector ID, ingestion progress | RAG Core |
-| user scope와 검색 필터 | RAG Core |
-| API/MCP 오류 변환 | 전송 adapter; 필요하면 `recommended_http_error()` 사용 |
+| user-scope 제품 관계와 검색 필터 | RAG Core 및 host policy |
+| HTTP/API/MCP 오류 변환 | transport adapter; 필요하면 `recommended_http_error()` |
 
-이 분리는 [[rag-service-architecture]]의 원문 자산과 RAG metadata 분리를 유지하면서 [[dms-metadata-and-recovery]]의 관리 경계를 보존한다. DMS metadata store를 RAG의 `documents`, `chunks`, `ingestion_progress` 전체 저장소로 재사용하려 하면 두 SDK의 상태 모델과 삭제 의미가 결합되므로 초기 적용 범위를 넘는다.
+이 분리는 [[rag-service-architecture]]의 원문 자산과 RAG metadata 분리를 유지하면서 [[dms-metadata-and-recovery]]의 public/internal 경계를 보존한다. DMS metadata store를 RAG의 `documents`, `chunks`, `ingestion_progress` 전체 저장소로 재사용하면 두 상태 모델과 삭제 의미가 결합된다.
 
-## 조립 위치
+## v0.7.0 조립 위치
 
-DMS SDK는 `composition` 계층에서 애플리케이션 수명주기당 한 번 조립하고 adapter에 주입한다. 요청이나 ingestion 호출마다 SDK를 만들고 닫지 않는다.
+v0.7.0 DMS는 환경변수나 `.env`를 읽지 않고, host가 만든 client/component를 받는다. application composition에서 process lifecycle당 한 번 조립하고 adapter에 주입한다.
 
-1. 이미 `docmesh_py_core.ServiceConfigs`를 조립하는 bootstrap이 있으면 `create_sdk_from_service_configs(configs, check_on_startup=True)`를 우선한다.
-2. 독립 실행 애플리케이션이면 `diagnose_environment(dict(os.environ))` 후 `create_sdk_from_environment()`를 사용한다.
-3. 기존 SQLAlchemy Engine과 MinIO client를 공유해야 할 때만 `create_sdk_from_clients(...)`를 사용하고 자원 종료 주체를 명시한다.
-4. 테스트에서는 fake metadata/object adapter와 `create_sdk_from_components(...)`를 사용한다.
+1. host가 설정·secret manager를 읽어 SQLAlchemy `Engine`과 MinIO client를 만들거나 metadata/object/operation store를 준비한다.
+2. client 경로면 `create_sdk_from_clients()` 또는 async variant를, adapter/test fake 경로면 `create_sdk_from_components()` 또는 async variant를 사용한다.
+3. `DmsAssemblyPlan`에 max size, startup check, access policy, observer, audit hook과 metadata policy를 묶어 전달한다.
+4. 기본 injected resource는 caller-owned로 두고, DMS가 닫을 자원만 `ManagedResource(SDK)` 또는 `close_callbacks`로 등록한다.
+5. bootstrap 종료에서 `close()`/`aclose()`를 정확한 ownership에 따라 호출한다.
 
-환경·설정 factory가 만든 client는 DMS SDK가 소유한다. client/component factory에 주입한 자원은 기본적으로 호출자 소유다. 이 원칙은 [[dms-configuration-and-assembly]]와 [[construction-paths-and-adapter-contracts]]의 composition 책임에 맞춰 bootstrap 종료 시 `close()` 또는 `aclose()`로 연결한다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+`DmsServiceConfigs`를 사용하더라도 그것은 host 설정 value object일 뿐이며 v0.7.0 DMS factory가 자동으로 client를 만드는 입력은 아니다. v0.6.0의 `create_sdk_from_service_configs()`·`create_sdk_from_environment()` 전제를 v0.7.0에 그대로 이식하지 말고 설치 package signature를 확인한다.^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
 
 ## Adapter 계약
 
-`DmsDocumentStorage`는 package-root 공개 API만 사용하며 다음 의미를 제공해야 한다.
+`DmsDocumentStorage`는 package-root API만 사용하며 다음 의미를 제공한다.
 
-- `save`: `UploadDocumentRequest` 또는 stream request를 만들고 `sdk.upload_document*()`를 호출한다.
-- `read`: 작은 본문은 `get_document_content()`, 큰 본문은 context manager 기반 `get_document_content_stream()`을 사용한다.
-- `delete`: 사용자 요청은 기본적으로 `soft_delete_document()`에 매핑한다. `hard_delete_document()`는 관리자·보존정책 경계로 제한한다.
-- `exists`/metadata 조회: `get_document_metadata()`를 사용하고 `DocumentNotFoundError`와 `DocumentDeletedError`를 port 수준 결과로 변환한다.
-- `health`: `sdk.check_health()`를 전체 service readiness에 합친다.
-- `close`: adapter 또는 bootstrap이 SDK 소유권에 따라 정확히 한 lifecycle을 제공한다. 반복 종료는 안전하지만 소유권은 모호하면 안 된다.
+- `save`: `UploadDocumentRequest` 또는 known-size stream request로 업로드하고 public `document_id`·checksum·size·content type을 반환한다.
+- `read`: 작은 본문은 `get_document_content()`, 큰 본문은 context manager stream·`iter_document_chunks()`·`copy_document_to()`를 사용한다.
+- `delete`: 일반 사용자 요청은 `soft_delete_document()`에 매핑하고 `hard_delete_document()`는 관리자/보존 정책 경계에 둔다.
+- metadata/exists: `get_document_metadata()`를 사용하고 not-found/deleted를 port 수준 결과로 변환한다.
+- `health`: `check_health()`를 전체 service readiness에 합친다.
+- `close`: adapter 또는 bootstrap이 SDK ownership에 맞는 단일 lifecycle을 제공한다.
 
-Adapter 반환값은 로컬 path가 아니라 최소 `document_id`, checksum, size, content type을 포함하는 공개-safe 참조여야 한다. 내부 `storage_key`를 기존 `storage_path` 필드에 복사하는 구현은 피한다.
+DMS v0.7.0의 generic `AccessContext`·`DocumentAccessPolicy`를 사용할 수 있지만 tenant/user 의미 자체는 host가 소유한다. RAG `MetadataStore`의 소유 관계를 policy와 함께 검사하고, DMS `extra_metadata`를 인가의 유일한 근거로 삼지 않는다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]
 
 ## Ingestion 흐름
 
-권장 순서는 다음과 같다.
+1. token에서 host/RAG `user_id`와 access context를 해석한다.
+2. 애플리케이션 `document_id` 또는 안정적인 요청 ID를 먼저 확정한다.
+3. DMS에 원문을 업로드하고 재시도 가능한 bytes 작업이면 persistent operation store와 `idempotency_scope`/`idempotency_key`를 사용한다.
+4. DMS public metadata와 동일 document ID를 RAG document record에 연결한다.
+5. 원문을 preprocess·chunk·embed하고 vector store와 chunk metadata에 적재한다.
+6. 성공 시 ingestion progress를 completed로 기록한다.
+7. 중간 실패는 failed progress와 보상 작업을 기록한다. DMS 업로드 후 즉시 hard delete로 숨기기보다 soft delete 또는 명시적 cleanup/recovery job으로 처리한다.
 
-1. token에서 `user_id`를 해석한다.
-2. 애플리케이션 `document_id`를 먼저 확정한다.
-3. DMS에 원문을 업로드한다. 재시도 가능한 요청이면 `idempotency_scope=user_id`, `idempotency_key=job_id` 또는 안정적인 요청 ID를 사용한다.
-4. DMS public metadata와 동일 `document_id`를 RAG document record에 연결한다.
-5. 원문을 preprocess, chunk, embed하고 vector store와 chunk metadata에 적재한다.
-6. 모든 단계가 끝나면 ingestion progress를 `completed`로 기록한다.
-7. 중간 실패는 `failed` progress와 보상 작업을 기록한다. DMS 업로드 후 실패했다면 즉시 hard delete로 숨기기보다 soft delete 또는 명시적 cleanup/recovery job으로 처리한다.
+DMS input stream은 닫지 않고 DMS output stream은 caller가 닫으므로, 이 흐름은 SQL/MinIO/vector store를 하나의 ACID transaction으로 가정하지 않는 saga다. 세부 lifecycle은 [[dms-document-lifecycle]]과 [[ingestion-pipeline]]을 함께 따른다.
 
-처리 과정이 업로드 원본 stream을 계속 필요로 하면 stream 소유권을 지켜야 한다. DMS는 입력 stream을 닫지 않으며, DMS가 반환한 다운로드 stream은 호출자가 닫아야 한다. 이 흐름은 [[ingestion-pipeline]]과 [[dms-document-lifecycle]]을 결합한 saga이며 SQL/MinIO/vector store를 하나의 ACID transaction으로 가정해서는 안 된다.
+## User scope, delete, and recovery
 
-## User scope
+DMS policy는 generic allow/deny seam을 제공하지만 RAG의 `document_id`와 현재 user/tenant 소유 관계는 RAG metadata에서 확인한다. 사용자 목록을 DMS 전체 목록에 직접 노출하지 말고 RAG scope query를 기준으로 필요한 public metadata만 결합한다. internal metadata와 recovery는 별도 administrative capability로 보호한다.
 
-`dms-core`의 공개 계약은 `user_id` 기반 접근제어를 자동 제공한다고 보장하지 않는다. 따라서 DMS 호출 전에 RAG metadata에서 `document_id`와 현재 `user_id`의 소유 관계를 검증해야 한다. 업로드 시 DMS `extra_metadata`에 `user_id`, `source`, schema version을 넣을 수 있지만, 이것만으로 인가를 대체하지 않는다.
+삭제는 다음과 같이 재시도 가능한 상태로 만든다.
 
-목록 API도 DMS 전체 목록을 사용자에게 직접 노출하지 않는다. 사용자별 문서 목록은 RAG `MetadataStore`에서 조회하고, 각 항목의 DMS public metadata가 필요할 때 결합한다. 이는 [[user-scope-isolation]]의 저장·조회·삭제 전 구간 격리 계약을 유지한다.
-
-## 삭제와 장애 복구
-
-기존 RAG 계약은 vector 삭제 실패 시 metadata와 원문을 보존한다. DMS 적용 후에도 다음 순서가 안전하다.
-
-1. RAG document를 논리적 `deleting` 상태로 전환한다.
+1. RAG document를 논리적 deleting 상태로 전환한다.
 2. vector entry를 먼저 삭제한다. 실패하면 DMS와 RAG metadata를 보존하고 재시도한다.
 3. DMS 원문을 soft delete한다.
-4. chunk와 progress metadata를 정책에 따라 정리하거나 감사용 tombstone을 남긴다.
-5. hard delete는 retention 만료 또는 관리자 작업으로 분리한다.
+4. chunk/progress metadata를 정책에 따라 정리하거나 tombstone을 남긴다.
+5. retention 만료 또는 관리자 작업에서만 hard delete한다.
 
-단계 2 이후 단계 3이 실패할 수 있으므로 삭제 작업은 멱등적인 재시도 상태를 가져야 한다. DMS의 `inspect_document()`, `list_recovery_candidates()`, dry-run reconciliation plan은 DMS metadata/object 불일치 복구에 사용하되, vector/RAG metadata 불일치는 별도 애플리케이션 reconciliation이 담당한다. 자세한 기존 요구는 [[persistence-and-restart-recovery]]를 따른다.
+DMS의 `inspect_document()`, `list_recovery_candidates()`, dry-run reconciliation plan은 DMS metadata/object 불일치에 사용하고, vector/RAG metadata 불일치는 애플리케이션 reconciliation이 담당한다. 기존 restart 요구는 [[persistence-and-restart-recovery]]를 따른다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]
 
-## 설정 기준
+## Configuration and rollout
 
-로컬 첫 적용은 `DMS_METADATA_BACKEND=sqlite`, writable `SQLITE_PATH`, MinIO 네 필수값으로 시작할 수 있다. SQLite는 DMS metadata만 대체하며 MinIO는 여전히 필수다. 운영에서는 PostgreSQL을 명시하고 `DMS_CONFIGURATION_STRICT=true`, startup healthcheck, `MINIO_SECURE=true`, `MINIO_CERT_CHECK=true`를 권장한다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+로컬 첫 적용은 host가 SQLite engine과 MinIO client를 직접 구성하는 client factory 또는 fake component factory로 시작한다. 운영에서는 host configuration layer에서 PostgreSQL/MinIO 보안 설정을 검증하고 DMS factory에 주입하며, DMS가 env를 읽는다고 가정하지 않는다. startup mandatory health는 `DmsAssemblyPlan(check_on_startup=True)`로, runtime observation은 `check_health()`로 구분한다.
 
-## 구현 순서
+구현 순서는 다음과 같다.
 
-1. 현재 `DocumentStorage` protocol과 `storage_path` 사용처를 조사해 DMS의 opaque `document_id`와 충돌하는 지점을 식별한다.
-2. DMS SDK를 소유하는 composition provider와 종료 경로를 추가한다.
-3. `DmsDocumentStorage` adapter의 save/read/delete/health/error mapping contract test를 먼저 작성한다.
-4. ingestion에서 동일 `document_id`, idempotency scope/key, 실패 보상을 연결한다.
-5. get/list/delete에서 user-scope 검사를 강제한다.
-6. vector → DMS → metadata 삭제 순서와 재시도 상태를 검증한다.
-7. fake component test 후 SQLite+MinIO smoke test, 재시작 복원, 전체 소비 프로젝트 회귀 test를 수행한다.
+1. 현재 `DocumentStorage` protocol과 `storage_path` 사용처를 조사해 opaque `document_id` 경계를 정한다.
+2. DMS client/component를 소유하는 composition provider와 종료 경로를 추가한다.
+3. fake component 기반 save/read/delete/health/error contract test를 작성한다.
+4. ingestion에 동일 document ID, idempotency scope/key, 실패 보상을 연결한다.
+5. access policy와 user-scope 검사를 get/list/download/delete/recovery 전 경로에 적용한다.
+6. vector → DMS → metadata 삭제 순서와 reconciliation retry를 검증한다.
+7. SQLite+MinIO smoke test, 재시작 복원, 전체 consumer regression을 실행한다.
 
-## 적용 판단
-
-DMS를 적용할 때 가장 먼저 바꿔야 하는 것은 storage 구현체보다 **저장 참조 계약**이다. `storage_path`를 외부 계약으로 유지한 채 DMS를 끼우면 internal `storage_key` 노출이나 중복 metadata가 생긴다. `document_id`를 자산 참조로 승격하고 DMS는 원문 lifecycle, RAG MetadataStore는 검색 lifecycle을 소유하도록 나누는 것이 장기적으로 가장 안정적이다.
-
-실제 repository 구현 전에는 설치된 `dms` 버전의 signature와 현재 `DocumentStorage` protocol을 함께 검증해야 한다. 현재 위키 기준 프로젝트 상태는 DMS 의존성만 설치되어 있고 소비 통합은 아직 구현되지 않았으며, 검증 절차는 [[verifying-dms-core-contract]]에 정리되어 있다.
+실제 repository 구현 전에는 설치된 `dms` version/tag/commit과 현재 `DocumentStorage` protocol을 함께 검증해야 한다. 이 페이지의 v0.7.0 내용은 수집된 문서 기반이며 live package 또는 consumer integration을 새로 실행했다는 뜻은 아니다.
 
 ## Related pages
 

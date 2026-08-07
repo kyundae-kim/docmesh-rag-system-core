@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine, select, text
+from sqlalchemy import JSON, ForeignKey, Integer, String, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -53,15 +51,16 @@ class MetadataStore:
     ChunkModel = ChunkModel
     IngestionProgressModel = IngestionProgressModel
 
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.engine: Engine = create_engine(f"sqlite+pysqlite:///{self.path}")
+    def __init__(self, engine: Engine) -> None:
+        self.engine: Engine = engine
         self.session = sessionmaker(bind=self.engine, expire_on_commit=False)
         self._initialize()
 
     def _initialize(self) -> None:
         Base.metadata.create_all(self.engine)
+
+    def close(self) -> None:
+        self.engine.dispose()
 
     def add_document(self, document: DocumentRecord) -> None:
         model = DocumentModel(
@@ -120,11 +119,6 @@ class MetadataStore:
             session.add_all(models)
             session.commit()
 
-    def get_document(self, doc_id: str) -> DocumentRecord | None:
-        with self.session() as session:
-            row = session.get(DocumentModel, doc_id)
-        return document_record_from_model(row)
-
     def get_document_for_user(self, *, doc_id: str, user_id: str) -> DocumentRecord | None:
         statement = select(DocumentModel).where(DocumentModel.doc_id == doc_id, DocumentModel.user_id == user_id)
         with self.session() as session:
@@ -141,14 +135,6 @@ class MetadataStore:
             if record is not None:
                 documents.append(record)
         return documents
-
-    def list_chunks(self, user_id: str | None = None) -> list[ChunkRecord]:
-        statement = select(ChunkModel).order_by(ChunkModel.user_id, ChunkModel.doc_id, ChunkModel.chunk_index)
-        if user_id is not None:
-            statement = statement.where(ChunkModel.user_id == user_id)
-        with self.session() as session:
-            rows = session.scalars(statement).all()
-        return [chunk_record_from_model(row) for row in rows]
 
     def list_document_chunks(self, *, doc_id: str, user_id: str) -> list[ChunkRecord]:
         statement = (

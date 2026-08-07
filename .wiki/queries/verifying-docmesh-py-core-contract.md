@@ -1,12 +1,14 @@
 ---
 title: Verifying the docmesh-py-core Contract
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-08-08
 type: query
 tags: [sdk, api, integration, testing, config]
-sources: [raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md]
-confidence: medium
+sources: []
+confidence: low
 ---
+
+> **Source status (2026-08-08):** The `docmesh-py-core` raw captures previously cited by this page were removed during wiki cleanup. Re-ingest an authoritative source before relying on these implementation-specific claims.
 
 # Verifying the docmesh-py-core Contract
 
@@ -16,17 +18,17 @@ confidence: medium
 
 ## Verification principle
 
-버전 태그가 지정된 API·설정 문서를 목표 계약으로 두되, 실제 설치된 배포물의 package-root export, callable signature, runtime type과 동작을 함께 검사한다. 문서만 맞거나 import만 성공하는 상태는 충분하지 않다. 검증 범위는 **공개 import → 설정 파싱 → 조립·lifecycle → health/error → 소비 프로젝트 회귀** 순으로 확장한다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+버전 태그가 지정된 API·설정 문서를 목표 계약으로 두되, 실제 설치된 배포물의 두 package-root export, callable signature, runtime type과 동작을 함께 검사한다. 문서만 맞거나 import만 성공하는 상태는 충분하지 않다. 검증 범위는 **공개 import → 설정 파싱 → 조립·lifecycle → health/error → 소비 프로젝트 회귀** 순으로 확장한다.
 
 ## 1. Version and package-root boundary
 
 1. 소비 프로젝트의 dependency source와 대상 tag를 확인한다.
 2. 격리된 환경에 해당 버전을 설치하고 `importlib.metadata.version("docmesh-py-core")`로 실제 설치 버전을 확인한다.
-3. `docmesh_py_core.__all__`을 versioned API inventory와 비교한다.
-4. 소비 코드는 `from docmesh_py_core import ...`만 사용하도록 검사하고 내부 모듈 import를 실패 대상으로 둔다.
+3. `docmesh_config.__all__`과 `docmesh_py_core.__all__`을 각각 versioned API inventory와 비교한다.
+4. 소비 코드는 두 package root에서만 import하도록 검사하고 내부 모듈 import를 실패 대상으로 둔다.
 5. 사용 중인 공개 callable은 `inspect.signature()`로 파라미터, keyword-only 여부와 제거된 인자를 비교한다.
 
-v0.5.0 문서의 기준은 package root `__all__` 86개 이름이다. 핵심 조립 이름은 `RuntimePlan`, `Service`, `assemble_service_runtime`, `assemble_services`, `ServiceRuntime`, `ServiceBundle`이며, 하위 모듈 이름은 호환성 계약이 아니다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+v0.6.0 문서의 기준은 설정·plan·선택 타입은 `docmesh_config`, 조립·client·health·lifecycle은 `docmesh_py_core`가 소유하는 두 root inventory다. 핵심 이름은 `RuntimePlan`, `Service`, `HealthcheckPolicy`, `assemble_service_runtime`, `assemble_services`, `service_lifespan`, `ServiceRuntime`, `ServiceBundle`이며, `docmesh_py_core`가 config 심볼을 재-export하지 않는 것도 계약이다.
 
 ## 2. Stale-symbol audit
 
@@ -52,9 +54,9 @@ v0.5.0 문서의 기준은 package root `__all__` 86개 이름이다. 핵심 조
 | partial | 일부 필수값만 있으면 `ConfigError` 발생 |
 | invalid/security | 잘못된 bool·숫자·범위 또는 production TLS 위반이 거부됨 |
 
-설정 객체는 인자 없이 프로세스 환경변수에서 직접 읽으며 mapping, 개별 연결값, 임의 SDK kwargs로 우회할 수 없다. `load_service_configs(services={...})`는 선택 서비스를 엄격히 로드하고, `load_available_service_configs(services={...})`는 환경변수가 존재하는 후보를 탐지하되 partial 설정을 허용하지 않는다.^[raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md]
+설정 객체는 인자 없이 프로세스 환경변수에서 직접 읽으며 mapping, 개별 연결값, 임의 SDK kwargs로 우회할 수 없다. `docmesh_config`에서 `ServiceConfigs`/`RuntimePlan`을 만들고, `load_service_configs()`·`load_available_service_configs()`와 diagnosis가 선택 서비스 및 partial 설정을 엄격히 처리하는지 확인한다.
 
-네트워크 연결 전에는 `diagnose_services(plan=...)`를 호출해 `absent`, `complete`, `partial`, `invalid`, required/one-of 위반과 production 보안 문제를 검사한다. 진단 결과와 오류 메시지에는 secret 원문이 없어야 한다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+네트워크 연결 전에는 `diagnose_services(plan=...)`를 호출해 `absent`, `complete`, `partial`, `invalid`, required/one-of 위반과 production 보안 문제를 검사한다. 진단 결과와 오류 메시지에는 secret 원문이 없어야 한다.
 
 ## 4. Assembly and lifecycle contract tests
 
@@ -62,13 +64,13 @@ v0.5.0 문서의 기준은 package root `__all__` 86개 이름이다. 핵심 조
 
 1. required, optional, one-of 선택이 정규화된다.
 2. 빈 plan, 중복 선택, 잘못된 대안 그룹은 `InvalidRuntimePlanError`다.
-3. `assemble_service_runtime(plan=...)`은 선택 client를 한 번만 만들고 `runtime.require(Service.…)`로 조회된다.
+3. `assemble_service_runtime(plan=...)` 또는 `service_lifespan(plan=...)`은 선택 client를 한 번만 만들고 `runtime.require(Service.…)`로 조회된다.
 4. 조립 또는 startup healthcheck가 실패하면 이미 만든 client를 rollback한다.
 5. `async with runtime` 종료 시 sync/async client가 모두 정리된다.
-6. 동기 전용 `assemble_services()`는 NATS 선택을 거부한다.
+6. 동기 전용 `assemble_services(plan=...)`는 NATS 선택을 거부하고, async NATS connection의 drain/close owner가 명확하다.
 7. `ServiceBundle`/`ServiceRuntime`을 소유한 host 객체가 close 또는 context-manager 경로를 외부에 제공한다.
 
-Lifecycle 검증에서는 “생성 성공”만 보지 말고 정상 종료, 중간 생성 실패, healthcheck 실패, close 일부 실패를 모두 테스트해야 한다. `ServiceCloseError`는 전체 종료 시도 후 실패를 집계하는 계약이다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+Lifecycle 검증에서는 “생성 성공”만 보지 말고 정상 종료, 중간 생성 실패, healthcheck 실패, close 일부 실패를 모두 테스트해야 한다. `ServiceCloseError`는 전체 종료 시도 후 실패를 집계하는 계약이다.
 
 ## 5. Health and error-shape tests
 
@@ -97,7 +99,7 @@ Lifecycle 검증에서는 “생성 성공”만 보지 말고 정상 종료, �
 ## Recommended gate order
 
 1. 대상 버전/tag 고정
-2. package-root `__all__`·signature 검사
+2. `docmesh_config`/`docmesh_py_core` package-root `__all__`·signature 검사
 3. stale symbol/import 검색
 4. 설정 및 diagnosis 계약 테스트
 5. assembly·lifecycle RED/GREEN 테스트
@@ -109,6 +111,17 @@ Lifecycle 검증에서는 “생성 성공”만 보지 말고 정상 종료, �
 ## Evidence rule
 
 검증 보고서에는 설치된 버전, package-root inventory 차이, 실행한 테스트 명령, pass/fail 수, 남은 stale symbol과 lifecycle 미검증 지점을 포함한다. GitHub Wiki 문서는 tag 이름을 포함해도 immutable commit에 고정되지 않을 수 있으므로, 최종 migration 판단은 대상 tag의 실제 패키지와 source tree로 재확인한다.
+
+## v0.6.0 additional gates
+
+- `docmesh_config`가 `RuntimePlan`, `HealthcheckPolicy`, `ServiceConfigs`, `diagnose_services`의 canonical root인지 확인한다.
+- `docmesh_py_core`가 config 심볼을 재-export하지 않고, config/settings/runtime_plan/factories 모듈이 호환 facade로만 남아 있는지 확인한다.
+- `SERVICE_CATALOG`, `generate_environment_template()`, `generate_configuration_reference()` 결과가 deterministic하고 실제 config metadata와 일치하는지 비교한다.
+- 모든 factory가 validated config model만 받으며 kwargs, mapping, test override를 우회 입력으로 허용하지 않는지 확인한다.
+- `service_lifespan()`의 startup policy, rollback, cleanup과 NATS persistent connection의 caller ownership을 테스트한다.
+- `DOCMESH_LOG_LEVEL`은 logging helper가 읽고 `DOCMESH_HEALTHCHECK_ENABLED` 같은 전역 toggle은 사용하지 않는지 stale-symbol 검색에 포함한다.
+
+이 추가 gate는 v0.6.0의 package split과 lifecycle ownership을 검증하며, 아래 v0.5.0 실행 결과를 소급해 바꾸지 않는다.
 
 ## Executed validation: 2026-07-27
 
@@ -152,6 +165,7 @@ Lifecycle 검증에서는 “생성 성공”만 보지 말고 정상 종료, �
 ## Related pages
 
 - [[docmesh-py-core]]
+- [[docmesh-config]]
 - [[public-api-surface]]
 - [[settings-loading-and-validation]]
 - [[service-health-orchestration]]

@@ -1,10 +1,10 @@
 ---
 title: Minimizing Consumer Implementation with docmesh-py-core Improvements
 created: 2026-07-30
-updated: 2026-07-30
+updated: 2026-08-08
 type: query
 tags: [sdk, integration, architecture, config, api, testing, roadmap]
-sources: [raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+sources: [raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
 confidence: medium
 ---
 
@@ -20,9 +20,9 @@ confidence: medium
 
 ## 현재 문서화된 상태
 
-v0.5.0은 이미 `RuntimePlan`, `assemble_services()`, `assemble_service_runtime()`, `ServiceBundle`/`ServiceRuntime`, startup healthcheck, rollback과 context-manager cleanup을 제공한다. 따라서 개별 client factory를 앱마다 연결하던 초기 구조보다 소비자 구현량이 크게 줄어든 상태다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+v0.5.0은 이미 `RuntimePlan`, `assemble_services()`, `assemble_service_runtime()`, `ServiceBundle`/`ServiceRuntime`, startup healthcheck, rollback과 context-manager cleanup을 제공한다. 따라서 개별 client factory를 앱마다 연결하던 초기 구조보다 소비자 구현량이 크게 줄어든 상태다.
 
-다만 설정 객체와 loader는 process environment의 고정 key만 직접 읽고 mapping·prefix·개별 값을 받지 않는다. 동기 bundle과 비동기 runtime의 조회/plan API도 완전히 대칭적이지 않으며, NATS의 지속 연결은 runtime이 아니라 호출자가 별도로 소유한다. 이 세 지점이 현재 소비 프로젝트에 남는 설정 변환, 분기, 자원 정리 코드의 주된 원인이다.^[raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md]^[raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md]
+다만 설정 객체와 loader는 process environment의 고정 key만 직접 읽고 mapping·prefix·개별 값을 받지 않는다. 동기 bundle과 비동기 runtime의 조회/plan API도 완전히 대칭적이지 않으며, NATS의 지속 연결은 runtime이 아니라 호출자가 별도로 소유한다. 이 세 지점이 현재 소비 프로젝트에 남는 설정 변환, 분기, 자원 정리 코드의 주된 원인이다.
 
 ## 반복 구현과 upstream 개선점
 
@@ -42,7 +42,7 @@ v0.5.0은 이미 `RuntimePlan`, `assemble_services()`, `assemble_service_runtime
 
 `load_service_configs()`와 `load_available_service_configs()`, `diagnose_services()`, assembly API가 동일한 `Mapping[str, str]` 입력을 선택적으로 받게 하는 것이 최우선이다. process environment는 기본 adapter로 유지하되, 소비자가 전달한 mapping이 있으면 그것만 읽어야 한다. 여기에 `prefix="DMS_"` 또는 동등한 namespace 변환을 제공하면 동일 process에서 RAG와 DMS가 서로 다른 PostgreSQL·SQLite·MinIO 연결을 가져도 `os.environ` 변경이나 수동 config model 조립이 필요 없다.
 
-현재 위키에 기록된 `load_dms_settings()`는 이 SDK 기능이 없어서 소비 repository가 구현한 보완 계층이다. upstream이 mapping/namespace를 지원하면 이 코드는 제거 후보가 된다. 단, prefix precedence와 중복 key 충돌은 명시적이어야 하며 secret-safe 진단에는 소비자가 사용한 원래 key 이름을 보존해야 한다.^[raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md]^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+현재 위키에 기록된 `load_dms_settings()`는 이 SDK 기능이 없어서 소비 repository가 구현한 보완 계층이다. upstream이 mapping/namespace를 지원하면 이 코드는 제거 후보가 된다. 단, prefix precedence와 중복 key 충돌은 명시적이어야 하며 secret-safe 진단에는 소비자가 사용한 원래 key 이름을 보존해야 한다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
 
 권장 최소 계약:
 
@@ -54,13 +54,13 @@ v0.5.0은 이미 `RuntimePlan`, `assemble_services()`, `assemble_service_runtime
 
 ### 2. 동기·비동기 container의 소비 API를 대칭으로 만든다
 
-`ServiceRuntime.require(Service.X)`에 대응하는 `ServiceBundle.require(Service.X)` 또는 `require_client(Service.X)`를 제공하고, string 기반 `get_client("...")`와 wrapper `unwrap()` 의존을 일반 경로에서 제거하는 편이 좋다. `assemble_services()`도 별도 `services`·`required`·`one_of` 인자 대신 `RuntimePlan`을 받을 수 있어야 동일 plan을 CLI, API, worker에서 재사용할 수 있다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+`ServiceRuntime.require(Service.X)`에 대응하는 `ServiceBundle.require(Service.X)` 또는 `require_client(Service.X)`를 제공하고, string 기반 `get_client("...")`와 wrapper `unwrap()` 의존을 일반 경로에서 제거하는 편이 좋다. `assemble_services()`도 별도 `services`·`required`·`one_of` 인자 대신 `RuntimePlan`을 받을 수 있어야 동일 plan을 CLI, API, worker에서 재사용할 수 있다.
 
 반환 타입은 overload 또는 typed service key로 구체화해 소비 adapter가 `Any`와 구현형 검사에 기대지 않게 한다. 이 개선은 기능을 추가하기보다 이미 존재하는 sync/async 계약의 표면을 맞추는 것이므로 위험 대비 효과가 크다.
 
 ### 3. 단일 bootstrap에서 diagnosis를 보존한다
 
-현재 예제는 `diagnose_services(plan=...)` 후 `assemble_service_runtime(plan=...)`을 다시 호출한다. assembly가 동일한 진단을 수행하고 결과를 `ServiceRuntime.diagnosis`, `ServiceBundle.diagnosis` 또는 구조화 assembly error에 보존하면 소비자는 preflight 분기와 오류 변환을 중복 구현하지 않아도 된다.^[raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md]
+현재 예제는 `diagnose_services(plan=...)` 후 `assemble_service_runtime(plan=...)`을 다시 호출한다. assembly가 동일한 진단을 수행하고 결과를 `ServiceRuntime.diagnosis`, `ServiceBundle.diagnosis` 또는 구조화 assembly error에 보존하면 소비자는 preflight 분기와 오류 변환을 중복 구현하지 않아도 된다.
 
 중요한 것은 진단을 숨기는 convenience 함수가 아니라, 다음을 한 계약으로 묶는 것이다.
 
@@ -82,13 +82,13 @@ v0.5.0은 이미 `RuntimePlan`, `assemble_services()`, `assemble_service_runtime
 
 ### 5. NATS 지속 연결도 runtime 소유 옵션으로 만든다
 
-현재 `NatsConnectionBuilder.check()`의 임시 연결은 자동 정리되지만 `connect()`가 만든 지속 연결은 호출자가 `drain()`해야 한다. worker/API의 일반 경로에서는 `RuntimePlan`에 연결 소유 정책을 선언하고 `ServiceRuntime`이 연결된 NATS handle을 반환·정리하도록 선택할 수 있어야 한다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]^[raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md]
+현재 `NatsConnectionBuilder.check()`의 임시 연결은 자동 정리되지만 `connect()`가 만든 지속 연결은 호출자가 `drain()`해야 한다. worker/API의 일반 경로에서는 `RuntimePlan`에 연결 소유 정책을 선언하고 `ServiceRuntime`이 연결된 NATS handle을 반환·정리하도록 선택할 수 있어야 한다.
 
 builder 직접 사용은 특수 reconnect/JetStream 조정용 escape hatch로 남긴다. 자동 연결을 기본으로 강제하면 startup side effect가 커질 수 있으므로 opt-in 계약이 적절하다.
 
 ### 6. 오류 직렬화 계약을 하나로 수렴한다
 
-설정·assembly·health·shutdown 오류는 `DocMeshError` 계층이지만 Keycloak token/JWT 오류는 별도 계층이다. 소비 API가 일관된 HTTP/CLI 오류 응답을 만들 수 있도록 모든 공개 오류가 최소한 `service`, `reason_code`, `remediation`, `to_dict()`를 공유해야 한다. 상속을 즉시 통합하기 어렵다면 `serialize_sdk_error(exc)` 같은 단일 공개 adapter부터 제공할 수 있다.^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+설정·assembly·health·shutdown 오류는 `DocMeshError` 계층이지만 Keycloak token/JWT 오류는 별도 계층이다. 소비 API가 일관된 HTTP/CLI 오류 응답을 만들 수 있도록 모든 공개 오류가 최소한 `service`, `reason_code`, `remediation`, `to_dict()`를 공유해야 한다. 상속을 즉시 통합하기 어렵다면 `serialize_sdk_error(exc)` 같은 단일 공개 adapter부터 제공할 수 있다.
 
 ### 7. 테스트용 조립 seam을 공식화한다
 

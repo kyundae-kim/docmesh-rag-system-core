@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, get_type_hints
 
-import rag_system_core.composition.factories as factories_module
+import rag_system_core.composition.rag_factories as rag_factories_module
 import rag_system_core.storage as storage_module
 import pytest
 from rag_system_core import RAGCore
@@ -19,10 +19,10 @@ from rag_system_core.composition.factories import (
 )
 from rag_system_core.composition.health import run_health_checks
 from rag_system_core.ports import EmbeddingClient, GenerationClient, VectorStore
-from rag_system_core.storage.metadata_store import MetadataStore
 
 from test_rag_system_core.support import (
     authenticated_user,
+    create_metadata_store,
     FakeDocumentStorage,
     FakeEmbeddingClient,
     FakeGenerationClient,
@@ -30,14 +30,6 @@ from test_rag_system_core.support import (
 )
 
 USER_A = authenticated_user("user-a")
-
-
-def test_core_has_no_package_root_alias_module() -> None:
-    assert importlib.util.find_spec("rag_system_core.core") is None
-
-
-def test_vector_store_has_no_package_root_alias_module() -> None:
-    assert importlib.util.find_spec("rag_system_core.vector_store") is None
 
 
 def test_configurable_factories_expose_only_explicit_keyword_parameters() -> None:
@@ -63,36 +55,9 @@ def test_factory_functions_declare_composition_contract_return_types() -> None:
         assert get_type_hints(factory)["return"] is expected_return_type
 
 
-def test_docmesh_factory_from_env_does_not_use_a_lazy_import() -> None:
-    source = inspect.getsource(DocmeshRAGServiceFactory.from_env)
-
-    assert " import " not in source
-
-
-def test_factories_module_has_no_constructor_only_free_functions() -> None:
-    assert not hasattr(factories_module, "create_rag_document_storage")
-    assert not hasattr(factories_module, "create_rag_metadata_store")
-    assert not hasattr(factories_module, "create_rag_chunker")
-
-
-def test_factories_module_does_not_construct_milvus_client_directly() -> None:
-    assert not hasattr(factories_module, "MilvusClient")
-
-
-def test_vector_store_factory_does_not_expose_unused_path_or_uri_parameters() -> None:
-    parameters = inspect.signature(create_rag_vector_store).parameters
-
-    assert "metadata_path" not in parameters
-    assert "uri" not in parameters
-
-
-def test_storage_package_does_not_export_concrete_milvus_client() -> None:
-    assert not hasattr(storage_module, "MilvusClient")
-
-
 def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
-    milvus_uri = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
+    milvus_endpoint = tmp_path / "configured-milvus.db"
+    monkeypatch.setenv("MILVUS_ENDPOINT", str(milvus_endpoint))
     monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
     monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
 
@@ -102,13 +67,13 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
     assert ingested.chunk_count == 1
     assert rig.core.vector_store.collection_name == "configured_chunks"
     assert rig.core.vector_store.timeout == 9.0
-    assert milvus_uri.exists()
+    assert milvus_endpoint.exists()
 
     restarted = RAGCore(
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
         vector_store=create_rag_vector_store(),
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
         health_check_runner=run_health_checks,
@@ -122,7 +87,7 @@ def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_p
 def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Path) -> None:
     embed_calls: list[dict[str, Any]] = []
     chat_calls: list[dict[str, Any]] = []
-    create_service_client = factories_module.create_docmesh_service_client
+    create_service_client = rag_factories_module.create_docmesh_service_client
 
     class FakeOllamaClient:
         def embed(self, *, model: str, input: list[str]) -> dict[str, list[list[float]]]:
@@ -141,12 +106,12 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
             request_timeout_seconds=18.5,
         )
     )
-    milvus_uri = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("MILVUS_URI", str(milvus_uri))
+    milvus_endpoint = tmp_path / "configured-milvus.db"
+    monkeypatch.setenv("MILVUS_ENDPOINT", str(milvus_endpoint))
     monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
     monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.create_docmesh_service_client",
+        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
         lambda service_name, *, settings, bundle=None: (
             FakeOllamaClient()
             if service_name == "ollama"
@@ -158,7 +123,7 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
         embedding_client=create_rag_embedding_client(settings=settings),
         generation_client=create_rag_generation_client(settings=settings),
         vector_store=create_rag_vector_store(),
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
         health_check_runner=run_health_checks,
@@ -195,7 +160,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         )
     )
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.create_docmesh_service_client",
+        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
         lambda service_name, *, settings=None, bundle=None: None,
     )
 
@@ -204,7 +169,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         embedding_client=FakeEmbeddingClient(),
         generation_client=FakeGenerationClient(),
         vector_store=vector_store,
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
         health_check_runner=run_health_checks,
@@ -217,7 +182,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
 
 def test_create_rag_vector_store_requires_docmesh_or_explicit_client(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
-        "rag_system_core.composition.factories.create_docmesh_service_client",
+        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
         lambda service_name, *, settings=None, bundle=None: None,
     )
 

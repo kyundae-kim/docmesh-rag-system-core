@@ -469,3 +469,149 @@
 - Repository status: documentation-derived proposal only; no live package or repository implementation was performed.
 - Verification: 34 pages indexed; the new query passed frontmatter, index presence, and wikilink checks.
 - Pre-existing findings: 13 historical raw captures have body hash mismatches; immutable raw files were not modified.
+
+## [2026-08-04] delete | docmesh-rag-core raw captures
+- Removed raw source captures matching `raw/articles/docmesh-rag-core-*.md`:
+  - raw/articles/docmesh-rag-core-api-reference-2026-06-11.md
+  - raw/articles/docmesh-rag-core-api-reference-2026-06-23.md
+  - raw/articles/docmesh-rag-core-config-guide-2026-06-23.md
+  - raw/articles/docmesh-rag-core-prd-2026-06-11.md
+  - raw/articles/docmesh-rag-core-prd-2026-06-23.md
+  - raw/articles/docmesh-rag-core-srs-2026-06-23.md
+  - raw/articles/docmesh-rag-core-test-spec-2026-06-11.md
+
+## [2026-08-04] delete | docmesh-py-core v0.2.0 raw captures
+- Removed raw source captures matching `raw/articles/docmesh-py-core-*-v0.2.0*.md`:
+  - raw/articles/docmesh-py-core-api-reference-v0.2.0-2026-07-16.md
+  - raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md
+  - raw/articles/docmesh-py-core-examples-v0.2.0-2026-07-16.md
+
+## [2026-08-04] ingest | docmesh-config v0.1.0 API, configuration, examples, and environment template
+- Sources ingested:
+  - https://github.com/kyundae-kim/docmesh-config/wiki/API-Reference-v0.1.0
+  - https://github.com/kyundae-kim/docmesh-config/wiki/Configuration-v0.1.0
+  - https://github.com/kyundae-kim/docmesh-config/wiki/Examples-v0.1.0
+  - https://github.com/kyundae-kim/docmesh-config/blob/v0.1.0/.env.example
+- Raw files created:
+  - raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-configuration-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-examples-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-env-example-v0.1.0-2026-08-04.md
+- Wiki page created:
+  - entities/docmesh-config.md
+- Wiki pages updated:
+  - entities/docmesh-py-core.md
+  - concepts/service-factory-registry.md
+  - concepts/settings-loading-and-validation.md
+  - concepts/service-configuration-topology.md
+  - concepts/service-health-orchestration.md
+  - index.md
+- GitHub Wiki note: the supplied v0.1.0 page names were preserved in `source_url` and filenames, but GitHub Wiki raw endpoints provide the current wiki revision; no immutable wiki commit was supplied.
+- Verification: `verify_ingest.py` reported `pages=35 indexed=35`; the new page passed frontmatter, index, and wikilink checks, and all four new raw body hashes matched.
+- Pre-existing findings: 3 historical raw captures have body hash mismatches (`docmesh-py-core-sdk-guide-2026-06-19.md`, `docmesh-py-core-api-guide-2026-06-19.md`, `docmesh-py-core-config-guide-2026-06-19.md`); immutable raw files were not modified.
+
+## [2026-08-04] ingest | docmesh-py-core v0.6.0 API, configuration, examples, and environment template
+- Sources ingested:
+  - https://github.com/kyundae-kim/docmesh-py-core/wiki/API-Reference-v0.6.0
+  - https://github.com/kyundae-kim/docmesh-py-core/wiki/Configuration-v0.6.0
+  - https://github.com/kyundae-kim/docmesh-py-core/wiki/Examples-v0.6.0
+  - https://raw.githubusercontent.com/kyundae-kim/docmesh-py-core/v0.6.0/.env.example
+- Raw files created:
+  - raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-env-example-v0.6.0-2026-08-04.md
+- Wiki pages updated:
+  - entities/docmesh-py-core.md
+  - concepts/public-api-surface.md
+  - concepts/service-factory-registry.md
+  - concepts/service-health-orchestration.md
+  - concepts/settings-loading-and-validation.md
+  - concepts/service-configuration-topology.md
+  - queries/developing-with-docmesh-py-core.md
+  - queries/verifying-docmesh-py-core-contract.md
+  - queries/optimizing-docmesh-py-core-adoption.md
+- Synthesis: v0.6.0 makes `docmesh_config` the canonical configuration/RuntimePlan package and `docmesh_py_core` the client, assembly, health, and lifecycle package; it also adds catalog/document-generation and explicit NATS connection ownership constraints.
+- GitHub Wiki note: the supplied v0.6.0 page names were preserved in `source_url` and filenames, but GitHub Wiki raw endpoints provide the current wiki revision; no immutable wiki commit was supplied. The `.env.example` source was fetched from the user-supplied v0.6.0 tag URL.
+- Verification: `verify_ingest.py` reported `pages=35 indexed=35 issues=3`; all affected pages passed frontmatter, index, and wikilink checks, and all four new raw body hashes matched.
+- Pre-existing findings: 3 historical raw captures have body hash mismatches (`docmesh-py-core-sdk-guide-2026-06-19.md`, `docmesh-py-core-api-guide-2026-06-19.md`, `docmesh-py-core-config-guide-2026-06-19.md`); immutable raw files were not modified.
+
+## [2026-08-04] ingest | dms-core v0.7.0 API, configuration, and examples
+- Sources ingested:
+  - https://github.com/kyundae-kim/dms-core/wiki/API-Reference-v0.7.0
+  - https://github.com/kyundae-kim/dms-core/wiki/Configuration-v0.7.0
+  - https://github.com/kyundae-kim/dms-core/wiki/Examples-v0.7.0
+- Raw files created:
+  - raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md
+  - raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md
+  - raw/articles/dms-core-examples-v0.7.0-2026-08-04.md
+- Wiki pages updated:
+  - entities/dms-core.md
+  - concepts/dms-document-lifecycle.md
+  - concepts/dms-metadata-and-recovery.md
+  - concepts/dms-configuration-and-assembly.md
+  - concepts/public-api-surface.md
+  - concepts/service-configuration-topology.md
+  - concepts/settings-loading-and-validation.md
+  - queries/applying-dms-core-as-document-storage.md
+  - queries/verifying-dms-core-contract.md
+- Navigation updated:
+  - index.md
+- Scope: direct DMS pages only; cross-linked DocMesh bootstrap, prefix-separation, and consumer-improvement pages were deferred per user selection.
+- Synthesis: v0.7.0 makes host-owned client/component injection the current assembly boundary, adds sync/async and scoped facades, typed ownership and `DmsAssemblyPlan`, generic access/observation hooks, public/internal metadata separation, persistent idempotency, reset, and reconciliation contracts. The v0.6.0 environment/service-config factory assumptions are not part of the current v0.7.0 documented public contract.
+- GitHub Wiki note: the supplied v0.7.0 page names were preserved in `source_url` and filenames, but GitHub Wiki raw endpoints provide the current wiki revision; no immutable wiki commit was supplied.
+- Verification: `verify_ingest.py` reported `pages=35 indexed=35 issues=3`; all nine affected pages passed frontmatter, index, and wikilink checks, and all three new raw body hashes matched.
+- Pre-existing findings: 3 historical raw captures have body hash mismatches (`docmesh-py-core-sdk-guide-2026-06-19.md`, `docmesh-py-core-api-guide-2026-06-19.md`, `docmesh-py-core-config-guide-2026-06-19.md`); immutable historical raw files were not modified.
+
+## [2026-08-04] update | docmesh-config, docmesh-py-core, dms-core entity 오류 수정
+- Updated pages:
+  - entities/docmesh-config.md
+  - entities/docmesh-py-core.md
+  - entities/dms-core.md
+  - index.md
+- Corrections:
+  - docmesh-config의 `load_service_configs()` 자동 감지 동작과 `auto`/`explicit`/`strict` 대안 선택 semantics를 명시.
+  - 삭제된 docmesh-py-core v0.2.0 raw capture 두 개를 entity `sources`에서 제거하고 v0.6.0 assembly/config ownership 및 NATS connection ownership을 명확히 함.
+  - dms-core v0.7.0의 bytes 전용 idempotency, host-owned assembly, `ManagedResource` keyword-only ownership, scoped facade lifecycle 경계를 정정.
+- Raw sources were not modified; all referenced raw sources of the three target entity pages exist.
+- Verification: 35 pages indexed; broken wikilinks 0, orphan pages 0, unknown tags 0; target entity raw-source references resolved.
+- Remaining historical issue: 10 deleted legacy raw captures are still referenced by 24 older non-target pages and require a separate traceability cleanup scope.
+
+## [2026-08-04] update | docmesh-config contract audit correction
+- Corrected the `docmesh-config` entity after raw-source audit.
+- Separated `EnvironmentDiagnosis` (`ok`, `issues`, `warnings`) from `ConfigError` raised by loading/requirement validation and Pydantic `ValidationError` raised by direct model construction.
+- Documented explicit versus automatic loading, partial-configuration failure, constructor `TypeError`, production-mode precedence, RuntimePlan invariants, Milvus endpoint migration boundary, conditional Keycloak/Langfuse/NATS rules, and the limited scope of secret masking.
+- Added `raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md` as provenance for the cross-package assembly boundary.
+
+## [2026-08-08] delete | docmesh-py-core raw captures
+- Removed 11 current raw captures matching `raw/articles/docmesh-py-core-*.md`:
+  - raw/articles/docmesh-py-core-api-guide-2026-06-19.md
+  - raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-api-reference-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-config-guide-2026-06-19.md
+  - raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-configuration-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-env-example-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-examples-v0.5.0-2026-07-27.md
+  - raw/articles/docmesh-py-core-examples-v0.6.0-2026-08-04.md
+  - raw/articles/docmesh-py-core-sdk-guide-2026-06-19.md
+- Also pruned page references to three already-removed v0.2.0 raw capture names.
+- Wiki pages updated: 13 affected pages; three pages now have `sources: []`, `confidence: low`, and a re-ingest warning.
+- Historical log entries were preserved because `log.md` is append-only.
+
+## [2026-08-08] delete | docmesh-config raw captures
+- Removed 4 raw captures matching `raw/articles/docmesh-config-*.md`:
+  - raw/articles/docmesh-config-api-reference-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-configuration-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-env-example-v0.1.0-2026-08-04.md
+  - raw/articles/docmesh-config-examples-v0.1.0-2026-08-04.md
+- Wiki pages updated:
+  - entities/docmesh-config.md
+  - entities/docmesh-py-core.md
+  - concepts/service-configuration-topology.md
+  - concepts/service-factory-registry.md
+  - concepts/service-health-orchestration.md
+  - concepts/settings-loading-and-validation.md
+- Two pages now have `sources: []`, `confidence: low`, and a re-ingest warning.
+- Historical log entries were preserved because `log.md` is append-only.

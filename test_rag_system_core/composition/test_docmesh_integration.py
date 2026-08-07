@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
 import dms
-import docmesh_py_core
 import pytest
 
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
+from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
 from rag_system_core.composition.dms_runtime import load_dms_settings
+import rag_system_core.composition.docmesh_runtime as docmesh_runtime
+import rag_system_core.composition.service_factory as service_factory_module
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
+    build_docmesh_runtime_plan,
     load_docmesh_settings,
 )
 from rag_system_core.composition.factories import (
@@ -22,12 +26,13 @@ from rag_system_core.composition.factories import (
     create_rag_vector_store,
 )
 from rag_system_core.composition.health import run_health_checks
-from rag_system_core.storage.metadata_store import MetadataStore
-from test_rag_system_core.support import FakeDocumentStorage, FakeEmbeddingClient, FakeGenerationClient
-
-
-def test_infrastructure_has_no_package_root_facade_module() -> None:
-    assert importlib.util.find_spec("rag_system_core.infrastructure") is None
+from rag_system_core.storage.vector_store import MilvusLiteVectorStore
+from test_rag_system_core.support import (
+    FakeDocumentStorage,
+    FakeEmbeddingClient,
+    FakeGenerationClient,
+    create_metadata_store,
+)
 
 
 class FakeDocmeshOllamaWrapper:
@@ -62,14 +67,14 @@ def make_settings() -> SimpleNamespace:
             request_timeout_seconds=12.5,
         ),
         milvus=SimpleNamespace(
-            uri="/tmp/docmesh-milvus.db",
+            endpoint="/tmp/docmesh-milvus.db",
             collection="docmesh_chunks",
             request_timeout_seconds=9.5,
         ),
     )
 
 
-def test_load_docmesh_settings_uses_v050_keyword_only_api(monkeypatch) -> None:
+def test_load_docmesh_settings_uses_docmesh_runtime_keyword_only_api(monkeypatch) -> None:
     records: dict[str, object] = {}
     expected_settings = object()
 
@@ -78,7 +83,7 @@ def test_load_docmesh_settings_uses_v050_keyword_only_api(monkeypatch) -> None:
         return expected_settings
 
     monkeypatch.setattr(
-        docmesh_py_core,
+        docmesh_runtime,
         "load_available_service_configs",
         fake_load_available_service_configs,
     )
@@ -131,19 +136,14 @@ def test_load_dms_settings_uses_dms_prefixed_service_environment(
 
     settings = load_dms_settings()
 
-    assert settings.common.env == "dms-development"
-    assert settings.minio is not None
-    assert settings.minio.endpoint == "dms-minio:9000"
-    assert settings.minio.bucket == "dms-documents"
-    selected_service = getattr(settings, service_name)
-    assert selected_service is not None
+    assert settings.minio_endpoint == "dms-minio:9000"
+    assert settings.minio_bucket == "dms-documents"
     if service_name == "sqlite":
-        assert selected_service.path == "/tmp/dms-prefixed.db"
-        assert selected_service.enable_wal is True
-        assert settings.postgres is None
+        assert settings.sqlite_path == "/tmp/dms-prefixed.db"
+        assert settings.postgres_host is None
     else:
-        assert selected_service.host == "dms-postgres"
-        assert settings.sqlite is None
+        assert settings.postgres_host == "dms-postgres"
+        assert settings.sqlite_path is None
 
 
 def test_load_dms_settings_reports_prefixed_missing_environment_keys(monkeypatch) -> None:
@@ -169,30 +169,46 @@ def test_load_dms_settings_reports_prefixed_missing_environment_keys(monkeypatch
     assert "DMS_MINIO_ENDPOINT" in exc_info.value.diagnosis.missing_required_keys
 
 
-def test_assemble_docmesh_services_uses_v050_keyword_only_api(monkeypatch) -> None:
+def test_assemble_docmesh_services_uses_runtime_plan_api(monkeypatch) -> None:
     records: dict[str, object] = {}
-    expected_bundle = object()
+    expected_settings = make_settings()
 
-    def fake_assemble_services(**kwargs):
-        records.update(kwargs)
-        return expected_bundle
+    class FakeServiceClient:
+        def check(self) -> None:
+            return None
 
-    monkeypatch.setattr(docmesh_py_core, "assemble_services", fake_assemble_services)
+    expected_clients = {"milvus": FakeServiceClient(), "ollama": FakeServiceClient()}
 
-    bundle = assemble_docmesh_services(
+    def fake_load_docmesh_settings(*, services):
+        records["services"] = services
+        return expected_settings
+
+    def fake_create_docmesh_service_client(service_name, *, settings, bundle=None):
+        records.setdefault("settings", settings)
+        del bundle
+        return expected_clients[service_name]
+
+    monkeypatch.setattr(docmesh_runtime, "load_docmesh_settings", fake_load_docmesh_settings)
+    monkeypatch.setattr(
+        docmesh_runtime,
+        "create_docmesh_service_client",
+        fake_create_docmesh_service_client,
+    )
+
+    plan = build_docmesh_runtime_plan(
+        services={"milvus", "ollama"},
         required={"ollama"},
         check_on_startup=True,
         parallel_healthchecks=True,
     )
+    bundle = assemble_docmesh_services(plan=plan)
 
-    assert bundle is expected_bundle
-    assert records == {
-        "services": {"milvus", "ollama"},
-        "required": {"ollama"},
-        "one_of": (),
-        "check_on_startup": True,
-        "parallel_healthchecks": True,
-    }
+    assert bundle.configs is expected_settings
+    assert bundle.clients == expected_clients
+    assert records == {"services": {"milvus", "ollama"}, "settings": expected_settings}
+    assert plan.required_services == {"ollama"}
+    assert plan.healthcheck.on_startup is True
+    assert plan.healthcheck.parallel is True
 
 
 def test_ollama_factories_use_clients_from_service_bundle() -> None:
@@ -251,11 +267,14 @@ def test_direct_ollama_factory_loads_v050_service_config_once(monkeypatch) -> No
         return settings
 
     monkeypatch.setattr(
-        docmesh_py_core,
+        docmesh_runtime,
         "load_available_service_configs",
         fake_load_available_service_configs,
     )
-    monkeypatch.setattr(docmesh_py_core, "create_ollama_client", lambda config: ollama)
+    monkeypatch.setattr(
+        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
+        lambda service_name, *, settings=None, bundle=None: ollama,
+    )
 
     client = create_rag_embedding_client()
 
@@ -263,119 +282,10 @@ def test_direct_ollama_factory_loads_v050_service_config_once(monkeypatch) -> No
     assert records["loads"] == 1
 
 
-def test_docmesh_factory_from_env_owns_bundle_lifecycle(monkeypatch) -> None:
-    settings = make_settings()
-    dms_settings = SimpleNamespace()
-    records: dict[str, object] = {"bundle_closed": False, "dms_closed": False}
-    bundle = SimpleNamespace(
-        configs=settings,
-        clients={"ollama": FakeDocmeshOllamaWrapper()},
-        close=lambda: records.update(bundle_closed=True),
-    )
-    dms_sdk = SimpleNamespace(close=lambda: records.update(dms_closed=True))
-
-    def fake_assemble_docmesh_services(
-        *,
-        services,
-        required,
-        one_of,
-        check_on_startup,
-        parallel_healthchecks,
-    ):
-        records["assembly"] = {
-            "services": services,
-            "required": required,
-            "one_of": one_of,
-            "check_on_startup": check_on_startup,
-            "parallel_healthchecks": parallel_healthchecks,
-        }
-        return bundle
-
-    monkeypatch.setattr(
-        "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
-        fake_assemble_docmesh_services,
-    )
-    monkeypatch.setattr(
-        "rag_system_core.composition.dms_runtime.load_dms_settings",
-        lambda: dms_settings,
-    )
-
-    def fake_create_dms_sdk(configs, *, check_on_startup):
-        records["dms_configs"] = configs
-        records["dms_check_on_startup"] = check_on_startup
-        return dms_sdk
-
-    monkeypatch.setattr(
-        "rag_system_core.composition.factories.dms.create_sdk_from_service_configs",
-        fake_create_dms_sdk,
-    )
-
-    factory = DocmeshRAGServiceFactory.from_env(
-        check_on_startup=True,
-        parallel_healthchecks=True,
-    )
-    storage = factory.create_document_storage()
-    factory.close()
-
-    assert factory.settings is settings
-    assert factory.bundle is bundle
-    assert storage.sdk is dms_sdk
-    assert records == {
-        "assembly": {
-            "services": {"milvus", "ollama"},
-            "required": {"milvus", "ollama"},
-            "one_of": (),
-            "check_on_startup": True,
-            "parallel_healthchecks": True,
-        },
-        "bundle_closed": True,
-        "dms_check_on_startup": True,
-        "dms_closed": True,
-        "dms_configs": dms_settings,
-    }
-
-
-def test_docmesh_factory_from_env_closes_bundle_when_dms_assembly_fails(monkeypatch) -> None:
-    settings = make_settings()
-    dms_settings = SimpleNamespace()
-    records = {"bundle_closed": False}
-    bundle = SimpleNamespace(
-        configs=settings,
-        clients={},
-        close=lambda: records.update(bundle_closed=True),
-    )
-
-    monkeypatch.setattr(
-        "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
-        lambda *, services, required, one_of, check_on_startup, parallel_healthchecks: bundle,
-    )
-    monkeypatch.setattr(
-        "rag_system_core.composition.dms_runtime.load_dms_settings",
-        lambda: dms_settings,
-    )
-
-    def fail_dms_assembly(configs, *, check_on_startup):
-        assert configs is dms_settings
-        del check_on_startup
-        raise RuntimeError("dms assembly failed")
-
-    monkeypatch.setattr(
-        "rag_system_core.composition.factories.dms.create_sdk_from_service_configs",
-        fail_dms_assembly,
-    )
-
-    with pytest.raises(RuntimeError, match="dms assembly failed"):
-        DocmeshRAGServiceFactory.from_env(check_on_startup=True)
-
-    assert records["bundle_closed"] is True
-
-
 def test_docmesh_factory_context_manager_closes_owned_resources() -> None:
     records: list[str] = []
     factory = DocmeshRAGServiceFactory(
-        settings=make_settings(),
         dms_sdk=SimpleNamespace(close=lambda: records.append("dms")),
-        bundle=SimpleNamespace(close=lambda: records.append("bundle")),
         owns_dms_sdk=True,
     )
 
@@ -383,7 +293,7 @@ def test_docmesh_factory_context_manager_closes_owned_resources() -> None:
         assert entered is factory
         assert records == []
 
-    assert records == ["dms", "bundle"]
+    assert records == ["dms"]
 
 
 def test_ollama_factories_require_models_from_settings() -> None:
@@ -397,18 +307,7 @@ def test_ollama_factories_require_models_from_settings() -> None:
         )
 
 
-def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Path) -> None:
-    records: dict[str, object] = {}
-
-    def fake_check_all_services(service_checks, *, required_services=None):
-        records["services"] = sorted(service_checks)
-        records["required"] = required_services
-        for check in service_checks.values():
-            check()
-        return SimpleNamespace(ok=True)
-
-    monkeypatch.setattr(docmesh_py_core, "check_all_services", fake_check_all_services)
-
+def test_rag_core_health_check_uses_docmesh_aggregate(tmp_path: Path) -> None:
     class CheckedEmbedding(FakeEmbeddingClient):
         def check(self) -> None:
             return None
@@ -425,14 +324,22 @@ def test_rag_core_health_check_uses_docmesh_aggregate(monkeypatch, tmp_path: Pat
         embedding_client=CheckedEmbedding(),
         generation_client=CheckedGeneration(),
         vector_store=create_rag_vector_store(),
-        metadata_store=MetadataStore(tmp_path / "metadata.db"),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=CheckedDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
         health_check_runner=run_health_checks,
     )
 
-    assert core.health_check().ok is True
-    assert records["services"] == ["dms", "embedding", "generation", "metadata", "milvus"]
+    result = core.health_check()
+
+    assert result.ok is True
+    assert sorted(status.service_name for status in result.services) == [
+        "dms",
+        "embedding",
+        "generation",
+        "metadata",
+        "milvus",
+    ]
 
 
 def test_vector_store_requires_client_when_milvus_is_not_configured(tmp_path: Path) -> None:
@@ -442,3 +349,309 @@ def test_vector_store_requires_client_when_milvus_is_not_configured(tmp_path: Pa
         create_rag_vector_store(
             settings=settings,
         )
+
+
+def test_vector_store_explicit_client_values_do_not_load_docmesh_settings(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_system_core.composition.rag_factories.load_docmesh_settings",
+        lambda **kwargs: pytest.fail("explicit vector-store clients must not load DocMesh settings"),
+    )
+    client = object()
+
+    vector_store = create_rag_vector_store(
+        client=client,
+        collection_name="direct_chunks",
+        timeout=4.0,
+    )
+
+    assert vector_store.collection_name == "direct_chunks"
+    assert vector_store.timeout == 4.0
+
+
+def test_create_dms_sdk_from_clients_forwards_host_owned_clients(monkeypatch) -> None:
+    from rag_system_core.composition.dms_runtime import create_dms_sdk_from_clients
+
+    engine = object()
+    minio_client = object()
+    plan = object()
+    expected_sdk = object()
+    records: dict[str, object] = {}
+
+    def fake_create_sdk_from_clients(*, engine, minio_client, bucket_name, plan):
+        records.update(
+            engine=engine,
+            minio_client=minio_client,
+            bucket_name=bucket_name,
+            plan=plan,
+        )
+        return expected_sdk
+
+    monkeypatch.setattr(dms, "create_sdk_from_clients", fake_create_sdk_from_clients)
+
+    sdk = create_dms_sdk_from_clients(
+        engine=engine,
+        minio_client=minio_client,
+        bucket_name="documents",
+        plan=plan,
+    )
+
+    assert sdk is expected_sdk
+    assert records == {
+        "engine": engine,
+        "minio_client": minio_client,
+        "bucket_name": "documents",
+        "plan": plan,
+    }
+
+
+def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_settings(monkeypatch) -> None:
+    engine = object()
+    minio_client = object()
+    embedding_client = object()
+    generation_client = object()
+    vector_store = object()
+    dms_sdk = SimpleNamespace(close=lambda: None)
+    records: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
+        lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
+    )
+    monkeypatch.setattr(
+        "rag_system_core.composition.docmesh_runtime.load_docmesh_settings",
+        lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
+    )
+    monkeypatch.setattr(
+        "rag_system_core.composition.rag_factories.load_docmesh_settings",
+        lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
+    )
+    monkeypatch.setattr(
+        "rag_system_core.composition.service_factory.dms_runtime.load_dms_settings",
+        lambda **kwargs: pytest.fail("client assembly must not load DMS settings"),
+    )
+
+    def fake_create_dms_sdk_from_clients(*, engine, minio_client, bucket_name, plan):
+        records.update(
+            engine=engine,
+            minio_client=minio_client,
+            bucket_name=bucket_name,
+            plan=plan,
+        )
+        return dms_sdk
+
+    monkeypatch.setattr(
+        "rag_system_core.composition.service_factory.dms_runtime.create_dms_sdk_from_clients",
+        fake_create_dms_sdk_from_clients,
+    )
+
+    factory = DocmeshRAGServiceFactory.from_clients(
+        engine=engine,
+        minio_client=minio_client,
+        bucket_name="documents",
+        embedding_client=embedding_client,
+        generation_client=generation_client,
+        vector_store=vector_store,
+        check_on_startup=True,
+    )
+
+    assert not hasattr(factory, "settings")
+    assert not hasattr(factory, "bundle")
+    assert factory.dms_sdk is dms_sdk
+    assert factory.create_embedding_client() is embedding_client
+    assert factory.create_generation_client() is generation_client
+    assert factory.create_vector_store() is vector_store
+    assert records["engine"] is engine
+    assert records["minio_client"] is minio_client
+    assert records["bucket_name"] == "documents"
+    assert records["plan"].check_on_startup is True
+
+
+def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_settings(monkeypatch) -> None:
+    engine = object()
+    metadata_engine = object()
+    minio_client = object()
+    ollama_client = object()
+    milvus_client = object()
+    dms_sdk = SimpleNamespace(close=lambda: None)
+    records: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
+        lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
+    )
+    monkeypatch.setattr(
+        "rag_system_core.composition.docmesh_runtime.load_docmesh_settings",
+        lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
+    )
+    monkeypatch.setattr(
+        "rag_system_core.composition.rag_factories.load_docmesh_settings",
+        lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
+    )
+    monkeypatch.setattr(
+        "rag_system_core.composition.service_factory.dms_runtime.load_dms_settings",
+        lambda **kwargs: pytest.fail("host-client assembly must not load DMS settings"),
+    )
+
+    def fake_create_dms_sdk_from_clients(*, engine, minio_client, bucket_name, plan):
+        records.update(
+            engine=engine,
+            minio_client=minio_client,
+            bucket_name=bucket_name,
+            plan=plan,
+        )
+        return dms_sdk
+
+    monkeypatch.setattr(
+        "rag_system_core.composition.service_factory.dms_runtime.create_dms_sdk_from_clients",
+        fake_create_dms_sdk_from_clients,
+    )
+
+    factory = DocmeshRAGServiceFactory.from_host_clients(
+        engine=engine,
+        metadata_engine=metadata_engine,
+        minio_client=minio_client,
+        bucket_name="documents",
+        ollama_client=ollama_client,
+        milvus_client=milvus_client,
+        embedding_model="bge-m3",
+        generation_model="gpt-oss:20b",
+        collection_name="host_chunks",
+        timeout=4.0,
+        check_on_startup=True,
+    )
+
+    assert factory.dms_sdk is dms_sdk
+    assert factory.owns_dms_sdk is True
+    assert factory.metadata_engine is metadata_engine
+    embedding_adapter = factory.create_embedding_client()
+    generation_adapter = factory.create_generation_client()
+    vector_adapter = factory.create_vector_store()
+    assert isinstance(embedding_adapter, OllamaEmbeddingClient)
+    assert embedding_adapter.model == "bge-m3"
+    assert embedding_adapter._client is ollama_client
+    assert isinstance(generation_adapter, OllamaGenerationClient)
+    assert generation_adapter.model == "gpt-oss:20b"
+    assert generation_adapter._client is ollama_client
+    assert isinstance(vector_adapter, MilvusLiteVectorStore)
+    assert vector_adapter.collection_name == "host_chunks"
+    assert vector_adapter.timeout == 4.0
+    assert vector_adapter._client is milvus_client
+    assert records["engine"] is engine
+    assert records["minio_client"] is minio_client
+    assert records["bucket_name"] == "documents"
+    assert records["plan"].check_on_startup is True
+
+
+def test_docmesh_factory_uses_host_owned_metadata_engine_for_metadata_store(monkeypatch, tmp_path: Path) -> None:
+    metadata_engine = object()
+    records: list[str] = []
+
+    class FakeMetadataStore:
+        def __init__(self, engine) -> None:
+            self.engine = engine
+
+        def close(self) -> None:
+            records.append("metadata")
+
+    monkeypatch.setattr(service_factory_module, "MetadataStore", FakeMetadataStore)
+    factory = DocmeshRAGServiceFactory(
+        dms_sdk=SimpleNamespace(close=lambda: records.append("dms")),
+        owns_dms_sdk=True,
+        embedding_client=object(),
+        generation_client=object(),
+        vector_store=object(),
+        metadata_engine=metadata_engine,
+    )
+
+    metadata_store = factory.create_metadata_store()
+
+    assert metadata_store.engine is metadata_engine
+    assert not (tmp_path / "metadata.db").exists()
+
+    factory.close()
+
+    assert records == ["dms"]
+
+
+def test_docmesh_factory_create_rag_core_uses_host_owned_metadata_engine(
+    monkeypatch,
+) -> None:
+    records: list[object] = []
+    metadata_engine = object()
+
+    class FakeMetadataStore:
+        def __init__(self, engine) -> None:
+            self.engine = engine
+
+        def close(self) -> None:
+            records.append("metadata")
+
+    dms_sdk = SimpleNamespace(close=lambda: records.append("dms"))
+    embedding_client = object()
+    generation_client = object()
+    vector_store = object()
+    monkeypatch.setattr(service_factory_module, "MetadataStore", FakeMetadataStore)
+
+    factory = DocmeshRAGServiceFactory(
+        dms_sdk=dms_sdk,
+        owns_dms_sdk=True,
+        embedding_client=embedding_client,
+        generation_client=generation_client,
+        vector_store=vector_store,
+        metadata_engine=metadata_engine,
+    )
+
+    core = factory.create_rag_core(
+        chunk_size=64,
+        chunk_overlap=8,
+    )
+
+    assert "metadata_path" not in inspect.signature(factory.create_rag_core).parameters
+    assert core.embedding_client is embedding_client
+    assert core.generation_client is generation_client
+    assert core.vector_store is vector_store
+    assert core.metadata_store.engine is metadata_engine
+    assert core.document_storage.sdk is dms_sdk
+    assert core.chunker.chunk_size == 64
+    assert core.chunker.chunk_overlap == 8
+    assert core.health_check_runner is run_health_checks
+
+    factory.close()
+
+    assert records == ["dms"]
+
+
+def test_docmesh_factory_create_metadata_store_keeps_path_compatibility(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    records: list[str] = []
+
+    class FakeMetadataStore:
+        def __init__(self, engine) -> None:
+            self.engine = engine
+
+        def close(self) -> None:
+            records.append("metadata")
+
+    dms_sdk = SimpleNamespace(close=lambda: records.append("dms"))
+    monkeypatch.setattr(service_factory_module, "MetadataStore", FakeMetadataStore)
+
+    factory = DocmeshRAGServiceFactory(dms_sdk=dms_sdk, owns_dms_sdk=True)
+    metadata_store = factory.create_metadata_store(metadata_path=tmp_path / "metadata.db")
+
+    assert metadata_store.engine.url.database == str(tmp_path / "metadata.db")
+
+    factory.close()
+
+    assert records == ["metadata", "dms"]
+
+
+def test_metadata_store_close_disposes_sqlalchemy_engine(monkeypatch, tmp_path: Path) -> None:
+    store = create_metadata_store(tmp_path)
+    records: list[str] = []
+    monkeypatch.setattr(store.engine, "dispose", lambda: records.append("disposed"))
+
+    store.close()
+
+    assert records == ["disposed"]

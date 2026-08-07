@@ -4,9 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from docmesh_py_core import AuthenticatedUser
+from sqlalchemy import create_engine
 
 from rag_system_core import RAGCore
+from rag_system_core import AuthenticatedUser
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
 from rag_system_core.composition.health import run_health_checks
@@ -163,15 +164,19 @@ class TestRig:
     generation_client: FakeGenerationClient
 
 
+def create_metadata_store(tmp_path: Path) -> MetadataStore:
+    metadata_path = tmp_path / "metadata.db"
+    return MetadataStore(create_engine(f"sqlite+pysqlite:///{metadata_path}"))
+
+
 def create_test_rig(tmp_path: Path, *, storage_mode: str = "memory") -> TestRig:
     embedding_client = FakeEmbeddingClient()
     generation_client = FakeGenerationClient()
-    metadata_path = tmp_path / "metadata.db"
     core = RAGCore(
         embedding_client=embedding_client,
         generation_client=generation_client,
         vector_store=create_rag_vector_store(),
-        metadata_store=MetadataStore(metadata_path),
+        metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage(storage_mode, tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
         health_check_runner=run_health_checks,

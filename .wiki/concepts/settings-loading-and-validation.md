@@ -1,37 +1,48 @@
 ---
 title: Settings Loading and Validation
 created: 2026-06-19
-updated: 2026-07-27
+updated: 2026-08-08
 type: concept
 tags: [config, sdk, python, security, decision]
-sources: [raw/articles/docmesh-py-core-config-guide-2026-06-19.md, raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/docmesh-py-core-config-reference-v0.2.0-2026-07-16.md, raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md, raw/articles/docmesh-py-core-env-example-v0.5.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+sources: [raw/articles/docmesh-rag-core-config-guide-2026-06-23.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md, raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md, raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
 confidence: medium
 ---
 
 # Settings Loading and Validation
 
-`docmesh-py-core` v0.5.0은 모든 설정을 환경변수에서 읽는다. 공백 문자열은 미설정으로 처리하고 boolean·숫자·CSV 목록은 typed parsing과 범위 검증을 통과해야 한다. 선택한 서비스만 검증하려면 `load_service_configs(services={...})`, 후보 중 인식 가능한 환경변수가 있는 서비스만 탐색하려면 `load_available_service_configs(services={...})`를 사용한다. 후자는 부분 설정을 유효한 것으로 보지 않고 오류로 처리하며, 이 로딩 경로의 검증 실패는 remediation을 포함하는 `ConfigError.issues`로 제공된다.^[raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md]
+`docmesh-config` v0.1.0은 canonical 설정 package로서 process environment에서 typed config를 읽고 `ServiceConfigs`와 `RuntimePlan`으로 선택·검증한다. `docmesh-py-core`는 이 결과를 client/assembly/lifecycle로 변환하며, partial 설정·잘못된 bool/int/range·production transport 보안 위반을 구조화된 오류로 다룬다.
 
 ## Validation scope
 
-검증 대상은 단순 필수 여부를 넘어 조건부 필수 규칙과 보안 규칙까지 포함한다. `LANGFUSE_ENABLED=false`이면 Langfuse 연결 값 없이 로딩할 수 있고, PostgreSQL은 지원하지 않는 legacy DSN 없이 host/db/user/password 조합을 요구한다. `KEYCLOAK_TOKEN_GRANT_TYPE=password`는 설정 로딩 단계에서는 username/password를 강제하지 않으며, 실제 `fetch_access_token()` 호출 시 함수 인자와 config 양쪽에 완전한 자격증명이 없을 때 오류가 난다.^[raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md]
+검증 대상은 단순 필수 여부를 넘어 조건부 필수 규칙과 보안 규칙까지 포함한다. 예를 들어 Langfuse 비활성화, PostgreSQL field 조합, Keycloak credential grant, production TLS 설정은 서비스별 선택 경로에서 다르게 적용된다. `RuntimePlan.healthcheck`는 network 실행 결과가 아니라 runtime이 사용할 startup/readiness policy다.
 
-## RAG-core reading model
+## DMS v0.7.0 configuration boundary
 
-RAG Core의 config guide는 모든 설정이 항상 필요한 것이 아니라, first-success 경로와 DocMesh-integrated 경로가 서로 다른 설정 집합을 요구한다고 정리한다. 즉 `load_docmesh_settings()`와 registry를 쓰는 bootstrap 경로에서는 공통 DocMesh config contract를 따르지만, helper + `RAGCore(...)` 직접 조립 경로에서는 사실상 `OLLAMA_HOST`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_GENERATION_MODEL`과 writable 경로가 우선이다. 이 차이는 설정 로딩 계층이 "단일 필수 집합"이 아니라 사용 경로에 따른 다층 계약임을 보여 준다.^[raw/articles/docmesh-rag-core-config-guide-2026-06-23.md]
+DMS v0.7.0은 environment를 읽거나 `diagnose_environment()`를 제공하는 설정 SDK가 아니다. host가 environment·config file·secret manager를 읽고 다음을 자체 검증한 뒤 client/component를 주입해야 한다.
 
-## DMS diagnosis before assembly
+- SQLAlchemy dialect는 `postgresql` 또는 `sqlite`
+- MinIO bucket은 비어 있지 않음
+- `DmsServiceConfigs`를 사용할 경우 MinIO 필수값과 SQLite/PostgreSQL 중 정확히 하나
+- `DmsAssemblyPlan`의 backend policy, size/depth, max file size, startup timeout은 양수·허용 enum
+- credential과 endpoint는 log/error에 secret-safe하게 남김
 
-`dms-core`는 `diagnose_environment(env)`로 입력 mapping을 바꾸거나 연결을 만들지 않고 metadata backend 선택, object backend, startup healthcheck, 누락 key, warning, unsupported key를 판정한다. 환경 factory는 이 규칙을 따라 PostgreSQL/SQLite와 MinIO를 조립하며, legacy `POSTGRES_DSN`은 항상 unsupported로 진단한다. 따라서 host application은 [[dms-configuration-and-assembly]]에 따라 배포 전 secret-safe 진단을 수행하고, 실패한 `ConfigurationError.diagnosis`를 운영자용 오류 처리에 활용할 수 있다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+`DmsServiceConfigs`는 immutable value object로 validation에 사용할 수 있지만 public DMS factory가 이 값을 자동 소비하거나 client를 생성하지 않는다. v0.6.0 raw의 environment factory/diagnosis 설명은 versioned historical context이며 v0.7.0 current factory contract와 섞으면 안 된다.^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]
+
+## Assembly and runtime checks
+
+DMS의 `service_checks`는 component factory에 주입되고, `DmsAssemblyPlan(check_on_startup=True)`일 때 조립 직후 실행된다. startup failure/timeout은 `HealthCheckFailedError`와 service/reason으로 표현되며 SDK-owned resource만 rollback한다. 이후 `check_health()`는 모든 check를 시도하고 service별 `HealthStatus`를 반환하므로 startup mandatory failure와 runtime observation을 구분한다.^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
 
 ## Operational policy
 
-운영 판정은 `DOCMESH_SECURITY_MODE`가 있으면 이를 우선하고, 없으면 자유 문자열인 `DOCMESH_ENV`를 `DOCMESH_PRODUCTION_ALIASES`(기본 `prod,production`)와 비교한다. production에서는 `KEYCLOAK_VERIFY_SSL=false`, `MINIO_SECURE=false`, `MINIO_CERT_CHECK=false`, `MILVUS_SECURE=false`, `OLLAMA_VERIFY_SSL=false`가 금지된다. startup healthcheck는 환경변수가 아니라 `RuntimePlan.healthcheck`로 명시하며, `diagnose_services(plan=...)`는 네트워크 연결 전에 설정/보안 위반을 반환한다.^[raw/articles/docmesh-py-core-configuration-v0.5.0-2026-07-27.md]^[raw/articles/docmesh-py-core-api-reference-v0.5.0-2026-07-27.md]
+DMS access control도 host-defined `AccessContext`·`DocumentAccessPolicy`로 조립하며, observer/audit hook failure가 원래 작업을 덮지 않도록 한다. HTTP adapter는 DMS exception text를 직접 노출하지 않고 stable `code`, `category`, `retryable`을 `error_descriptor()`/`recommended_http_error()`로 변환한다. 즉 settings validation, resource assembly, document policy, transport error는 서로 다른 ownership boundary에 남겨야 한다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]
 
 ## Related pages
 
 - [[first-success-configuration]]
+- [[docmesh-config]]
 - [[keycloak-auth-service]]
 - [[docmesh-py-core]]
 - [[service-factory-registry]]
 - [[service-configuration-topology]]
+- [[dms-configuration-and-assembly]]
+- [[dms-core]]

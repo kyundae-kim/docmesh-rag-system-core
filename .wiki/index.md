@@ -2,11 +2,12 @@
 
 > Content catalog. Every wiki page listed under its type with a one-line summary.
 > Read this first to find relevant pages for any query.
-> Last updated: 2026-07-30 | Total pages: 34
+> Last updated: 2026-08-08 | Total pages: 35
 
 ## Entities
-- [[dms-core]] — PostgreSQL/SQLite metadata와 MinIO object storage를 조합해 문서 lifecycle을 제공하는 DMS Python SDK.
-- [[docmesh-py-core]] — 설정 로드, 서비스 client 생성, health check, Keycloak 인증을 공통화하는 DocMesh Python SDK 엔티티 페이지.
+- [[dms-core]] — host가 만든 client/component를 주입받아 문서 lifecycle·정합성 복구·public-safe metadata를 제공하는 DMS Python SDK.
+- [[docmesh-config]] — 환경 설정, 서비스 진단, runtime plan metadata, secret-safe 오류를 제공하는 DocMesh 설정 SDK.
+- [[docmesh-py-core]] — `docmesh_config`의 runtime plan을 기반으로 서비스 client 생성, health check, lifecycle, Keycloak 및 관측성 helper를 제공하는 DocMesh Python SDK.
 - [[ragcore]] — DocMesh RAG Core의 단일 public SDK 진입점과 역할, 제약, 관련 인터페이스를 정리한 엔티티 페이지.
 <!-- Alphabetical within section -->
 

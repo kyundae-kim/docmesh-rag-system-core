@@ -1,12 +1,12 @@
 [project]
 name = "rag-system-core"
-version = "0.2.0"
+version = "0.3.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "dms",
-    "docmesh-py-core",
+    "ollama>=0.6.2",
     "pydantic-settings>=2.14.1",
     "pymilvus[milvus-lite]>=3.0.0",
 ]
@@ -20,11 +20,10 @@ dev = [
 include = ["rag_system_core*"]
 exclude = ["test_rag_system_core*"]
 
-[tool.uv.sources]
-docmesh-py-core = { git = "https://github.com/kyundae-kim/docmesh-py-core.git", rev = "v0.5.0" }
-dms = { git = "https://github.com/kyundae-kim/dms-core.git", rev = "v0.6.0" }
-
 [tool.pytest.ini_options]
 markers = [
     "integration: requires the devcontainer Ollama and MinIO services",
 ]
+
+[tool.uv.sources]
+dms = { git = "https://github.com/kyundae-kim/dms-core.git", rev = "v0.7.0" }
