@@ -301,14 +301,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "docmesh-config"
-version = "0.1.0"
-source = { git = "https://github.com/kyundae-kim/docmesh-config.git?rev=v0.1.0#55b58cdcd3fcb74251e675c8db71fa24b71f968a" }
-dependencies = [
-    { name = "pydantic-settings" },
-]
-
-[[package]]
 name = "faiss-cpu"
 version = "1.14.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1134,7 +1126,6 @@ version = "0.2.0"
 source = { virtual = "." }
 dependencies = [
     { name = "dms" },
-    { name = "docmesh-config" },
     { name = "ollama" },
     { name = "pydantic-settings" },
     { name = "pymilvus", extra = ["milvus-lite"] },
@@ -1148,7 +1139,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dms", git = "https://github.com/kyundae-kim/dms-core.git?rev=v0.7.0" },
-    { name = "docmesh-config", git = "https://github.com/kyundae-kim/docmesh-config.git?rev=v0.1.0" },
     { name = "ollama", specifier = ">=0.6.2" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "pymilvus", extras = ["milvus-lite"], specifier = ">=3.0.0" },
