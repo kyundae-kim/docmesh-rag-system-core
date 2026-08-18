@@ -282,7 +282,7 @@ def test_direct_ollama_factory_loads_v050_service_config_once(monkeypatch) -> No
     assert records["loads"] == 1
 
 
-def test_docmesh_factory_context_manager_closes_owned_resources() -> None:
+def test_docmesh_factory_context_manager_does_not_close_dms_sdk() -> None:
     records: list[str] = []
     factory = DocmeshRAGServiceFactory(
         dms_sdk=SimpleNamespace(close=lambda: records.append("dms")),
@@ -293,7 +293,7 @@ def test_docmesh_factory_context_manager_closes_owned_resources() -> None:
         assert entered is factory
         assert records == []
 
-    assert records == ["dms"]
+    assert records == []
 
 
 def test_ollama_factories_require_models_from_settings() -> None:
@@ -373,26 +373,30 @@ def test_create_dms_sdk_from_clients_forwards_host_owned_clients(monkeypatch) ->
 
     engine = object()
     minio_client = object()
-    plan = object()
     expected_sdk = object()
     records: dict[str, object] = {}
 
-    def fake_create_sdk_from_clients(*, engine, minio_client, bucket_name, plan):
-        records.update(
-            engine=engine,
-            minio_client=minio_client,
-            bucket_name=bucket_name,
-            plan=plan,
-        )
-        return expected_sdk
+    class FakeDocumentManagementSDKFactory:
+        def __init__(self, *, engine, minio_client, bucket_name):
+            records.update(
+                engine=engine,
+                minio_client=minio_client,
+                bucket_name=bucket_name,
+            )
 
-    monkeypatch.setattr(dms, "create_sdk_from_clients", fake_create_sdk_from_clients)
+        def create(self):
+            return expected_sdk
+
+    monkeypatch.setattr(
+        dms,
+        "DocumentManagementSDKFactory",
+        FakeDocumentManagementSDKFactory,
+    )
 
     sdk = create_dms_sdk_from_clients(
         engine=engine,
         minio_client=minio_client,
         bucket_name="documents",
-        plan=plan,
     )
 
     assert sdk is expected_sdk
@@ -400,7 +404,6 @@ def test_create_dms_sdk_from_clients_forwards_host_owned_clients(monkeypatch) ->
         "engine": engine,
         "minio_client": minio_client,
         "bucket_name": "documents",
-        "plan": plan,
     }
 
 
@@ -430,12 +433,11 @@ def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_sett
         lambda **kwargs: pytest.fail("client assembly must not load DMS settings"),
     )
 
-    def fake_create_dms_sdk_from_clients(*, engine, minio_client, bucket_name, plan):
+    def fake_create_dms_sdk_from_clients(*, engine, minio_client, bucket_name):
         records.update(
             engine=engine,
             minio_client=minio_client,
             bucket_name=bucket_name,
-            plan=plan,
         )
         return dms_sdk
 
@@ -463,7 +465,6 @@ def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_sett
     assert records["engine"] is engine
     assert records["minio_client"] is minio_client
     assert records["bucket_name"] == "documents"
-    assert records["plan"].check_on_startup is True
 
 
 def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_settings(monkeypatch) -> None:
@@ -492,12 +493,11 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
         lambda **kwargs: pytest.fail("host-client assembly must not load DMS settings"),
     )
 
-    def fake_create_dms_sdk_from_clients(*, engine, minio_client, bucket_name, plan):
+    def fake_create_dms_sdk_from_clients(*, engine, minio_client, bucket_name):
         records.update(
             engine=engine,
             minio_client=minio_client,
             bucket_name=bucket_name,
-            plan=plan,
         )
         return dms_sdk
 
@@ -521,7 +521,7 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
     )
 
     assert factory.dms_sdk is dms_sdk
-    assert factory.owns_dms_sdk is True
+    assert factory.owns_dms_sdk is False
     assert factory.metadata_engine is metadata_engine
     embedding_adapter = factory.create_embedding_client()
     generation_adapter = factory.create_generation_client()
@@ -539,7 +539,6 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
     assert records["engine"] is engine
     assert records["minio_client"] is minio_client
     assert records["bucket_name"] == "documents"
-    assert records["plan"].check_on_startup is True
 
 
 def test_docmesh_factory_uses_host_owned_metadata_engine_for_metadata_store(monkeypatch, tmp_path: Path) -> None:
@@ -570,7 +569,7 @@ def test_docmesh_factory_uses_host_owned_metadata_engine_for_metadata_store(monk
 
     factory.close()
 
-    assert records == ["dms"]
+    assert records == []
 
 
 def test_docmesh_factory_create_rag_core_uses_host_owned_metadata_engine(
@@ -618,7 +617,7 @@ def test_docmesh_factory_create_rag_core_uses_host_owned_metadata_engine(
 
     factory.close()
 
-    assert records == ["dms"]
+    assert records == []
 
 
 def test_docmesh_factory_create_metadata_store_keeps_path_compatibility(
@@ -644,7 +643,7 @@ def test_docmesh_factory_create_metadata_store_keeps_path_compatibility(
 
     factory.close()
 
-    assert records == ["metadata", "dms"]
+    assert records == ["metadata"]
 
 
 def test_metadata_store_close_disposes_sqlalchemy_engine(monkeypatch, tmp_path: Path) -> None:

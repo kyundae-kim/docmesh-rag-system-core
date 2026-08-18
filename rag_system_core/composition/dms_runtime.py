@@ -22,6 +22,28 @@ class DmsEnvironmentDiagnosis:
         return not self.missing_required_keys and not self.unsupported_keys
 
 
+@dataclass(frozen=True, slots=True)
+class DmsServiceSettings:
+    """Host-owned DMS settings parsed from the ``DMS_`` namespace.
+
+    dms-core v0.9 provides the document SDK, not an environment-settings
+    model.  Keeping this value object in the host package preserves the
+    namespace diagnosis without coupling it to a removed DMS export.
+    """
+
+    minio_endpoint: str | None = None
+    minio_access_key: str | None = None
+    minio_secret_key: str | None = None
+    minio_bucket: str | None = None
+    minio_secure: bool = False
+    sqlite_path: str | None = None
+    postgres_host: str | None = None
+    postgres_port: int | None = None
+    postgres_database: str | None = None
+    postgres_user: str | None = None
+    postgres_password: str | None = None
+
+
 def _env_value(env: Mapping[str, str], key: str) -> str | None:
     value = env.get(key)
     if value is None:
@@ -105,7 +127,7 @@ def _format_diagnosis(diagnosis: DmsEnvironmentDiagnosis) -> str:
     return "; ".join(parts) or "Invalid DMS configuration"
 
 
-def load_dms_settings(env: Mapping[str, str] | None = None) -> dms.DmsServiceConfigs:
+def load_dms_settings(env: Mapping[str, str] | None = None) -> DmsServiceSettings:
     """Load the host-owned, ``DMS_``-prefixed configuration value object."""
     environment = os.environ if env is None else env
     diagnosis = _diagnose_environment(environment)
@@ -120,11 +142,11 @@ def load_dms_settings(env: Mapping[str, str] | None = None) -> dms.DmsServiceCon
         "minio_secure": _env_bool(environment, "DMS_MINIO_SECURE", default=False),
     }
     if diagnosis.selected_backend == "sqlite":
-        return dms.DmsServiceConfigs(
+        return DmsServiceSettings(
             **common,
             sqlite_path=_env_value(environment, "DMS_SQLITE_PATH"),
         )
-    return dms.DmsServiceConfigs(
+    return DmsServiceSettings(
         **common,
         postgres_host=_env_value(environment, "DMS_POSTGRES_HOST"),
         postgres_port=int(_env_value(environment, "DMS_POSTGRES_PORT") or "5432"),
@@ -139,23 +161,22 @@ def create_dms_sdk_from_clients(
     engine: Engine,
     minio_client: object,
     bucket_name: str,
-    plan: dms.DmsAssemblyPlan | None = None,
 ) -> dms.DefaultDocumentManagementSDK:
     """Create DMS from host-owned SQLAlchemy and MinIO clients.
 
     The injected clients remain caller-owned; this helper does not register
     them as SDK-owned resources.
     """
-    return dms.create_sdk_from_clients(
+    return dms.DocumentManagementSDKFactory(
         engine=engine,
         minio_client=minio_client,
         bucket_name=bucket_name,
-        plan=plan,
-    )
+    ).create()
 
 
 __all__ = [
     "DmsEnvironmentDiagnosis",
+    "DmsServiceSettings",
     "create_dms_sdk_from_clients",
     "load_dms_settings",
 ]
