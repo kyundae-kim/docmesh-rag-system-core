@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import dms
+from pymilvus import MilvusClient
 import pytest
 
 from rag_system_core import RAGCore
@@ -17,7 +18,6 @@ import rag_system_core.composition.service_factory as service_factory_module
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
     build_docmesh_runtime_plan,
-    load_docmesh_settings,
 )
 from rag_system_core.composition.factories import (
     DocmeshRAGServiceFactory,
@@ -72,26 +72,6 @@ def make_settings() -> SimpleNamespace:
             request_timeout_seconds=9.5,
         ),
     )
-
-
-def test_load_docmesh_settings_uses_docmesh_runtime_keyword_only_api(monkeypatch) -> None:
-    records: dict[str, object] = {}
-    expected_settings = object()
-
-    def fake_load_available_service_configs(*, services):
-        records["services"] = services
-        return expected_settings
-
-    monkeypatch.setattr(
-        docmesh_runtime,
-        "load_available_service_configs",
-        fake_load_available_service_configs,
-    )
-
-    settings = load_docmesh_settings(services={"milvus"})
-
-    assert settings is expected_settings
-    assert records == {"services": {"milvus"}}
 
 
 @pytest.mark.parametrize(
@@ -179,16 +159,11 @@ def test_assemble_docmesh_services_uses_runtime_plan_api(monkeypatch) -> None:
 
     expected_clients = {"milvus": FakeServiceClient(), "ollama": FakeServiceClient()}
 
-    def fake_load_docmesh_settings(*, services):
-        records["services"] = services
-        return expected_settings
-
     def fake_create_docmesh_service_client(service_name, *, settings, bundle=None):
         records.setdefault("settings", settings)
         del bundle
         return expected_clients[service_name]
 
-    monkeypatch.setattr(docmesh_runtime, "load_docmesh_settings", fake_load_docmesh_settings)
     monkeypatch.setattr(
         docmesh_runtime,
         "create_docmesh_service_client",
@@ -201,11 +176,11 @@ def test_assemble_docmesh_services_uses_runtime_plan_api(monkeypatch) -> None:
         check_on_startup=True,
         parallel_healthchecks=True,
     )
-    bundle = assemble_docmesh_services(plan=plan)
+    bundle = assemble_docmesh_services(plan=plan, settings=expected_settings)
 
     assert bundle.configs is expected_settings
     assert bundle.clients == expected_clients
-    assert records == {"services": {"milvus", "ollama"}, "settings": expected_settings}
+    assert records == {"settings": expected_settings}
     assert plan.required_services == {"ollama"}
     assert plan.healthcheck.on_startup is True
     assert plan.healthcheck.parallel is True
@@ -256,30 +231,9 @@ def test_ollama_factories_prefer_an_explicit_model(factory, expected_model: str)
     assert client.model == expected_model
 
 
-def test_direct_ollama_factory_loads_v050_service_config_once(monkeypatch) -> None:
-    settings = make_settings()
-    ollama = FakeDocmeshOllamaWrapper()
-    records = {"loads": 0}
-
-    def fake_load_available_service_configs(*, services):
-        assert services == {"ollama"}
-        records["loads"] += 1
-        return settings
-
-    monkeypatch.setattr(
-        docmesh_runtime,
-        "load_available_service_configs",
-        fake_load_available_service_configs,
-    )
-    monkeypatch.setattr(
-        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
-        lambda service_name, *, settings=None, bundle=None: ollama,
-    )
-
-    client = create_rag_embedding_client()
-
-    assert client.model == "bge-m3"
-    assert records["loads"] == 1
+def test_direct_ollama_factory_requires_explicit_client() -> None:
+    with pytest.raises(RuntimeError, match="Failed to create Ollama service client"):
+        create_rag_embedding_client(model="bge-m3")
 
 
 def test_docmesh_factory_context_manager_does_not_close_dms_sdk() -> None:
@@ -323,7 +277,9 @@ def test_rag_core_health_check_uses_docmesh_aggregate(tmp_path: Path) -> None:
     core = RAGCore(
         embedding_client=CheckedEmbedding(),
         generation_client=CheckedGeneration(),
-        vector_store=create_rag_vector_store(),
+        vector_store=create_rag_vector_store(
+            client=MilvusClient(uri=str(tmp_path / "health.milvus.db")),
+        ),
         metadata_store=create_metadata_store(tmp_path),
         document_storage=CheckedDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
@@ -342,7 +298,7 @@ def test_rag_core_health_check_uses_docmesh_aggregate(tmp_path: Path) -> None:
     ]
 
 
-def test_vector_store_requires_client_when_milvus_is_not_configured(tmp_path: Path) -> None:
+def test_vector_store_requires_client_when_milvus_is_not_configured() -> None:
     settings = SimpleNamespace(milvus=None)
 
     with pytest.raises(RuntimeError, match="Failed to create Milvus service client"):
@@ -351,11 +307,7 @@ def test_vector_store_requires_client_when_milvus_is_not_configured(tmp_path: Pa
         )
 
 
-def test_vector_store_explicit_client_values_do_not_load_docmesh_settings(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "rag_system_core.composition.rag_factories.load_docmesh_settings",
-        lambda **kwargs: pytest.fail("explicit vector-store clients must not load DocMesh settings"),
-    )
+def test_vector_store_uses_explicit_client_values() -> None:
     client = object()
 
     vector_store = create_rag_vector_store(
@@ -420,14 +372,7 @@ def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_sett
         "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
         lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
     )
-    monkeypatch.setattr(
-        "rag_system_core.composition.docmesh_runtime.load_docmesh_settings",
-        lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
-    )
-    monkeypatch.setattr(
-        "rag_system_core.composition.rag_factories.load_docmesh_settings",
-        lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
-    )
+
     monkeypatch.setattr(
         "rag_system_core.composition.service_factory.dms_runtime.load_dms_settings",
         lambda **kwargs: pytest.fail("client assembly must not load DMS settings"),
@@ -480,14 +425,7 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
         "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
         lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
     )
-    monkeypatch.setattr(
-        "rag_system_core.composition.docmesh_runtime.load_docmesh_settings",
-        lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
-    )
-    monkeypatch.setattr(
-        "rag_system_core.composition.rag_factories.load_docmesh_settings",
-        lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
-    )
+
     monkeypatch.setattr(
         "rag_system_core.composition.service_factory.dms_runtime.load_dms_settings",
         lambda **kwargs: pytest.fail("host-client assembly must not load DMS settings"),

@@ -18,7 +18,7 @@ At the software level, the system shall:
 - persist metadata in SQLite and vector data in Milvus Lite
 - support restart-time recovery by reopening the same metadata and vector storage
 - support composition through helper factories and service-factory-based assembly paths
-- provide environment-aware RAG/DMS configuration helpers and a host-client service-factory path; environment values are not automatically converted into a `RAGCore`
+- require explicit RAG client/configuration injection and provide a separate DMS environment-configuration path; environment values are not automatically converted into a `RAGCore`
 - integrate with composition-layer settings, assembled service bundles, dms-core document lifecycle, and aggregate health checks
 
 This SRS covers the current library behavior. It does not define an external HTTP service contract or frontend behavior.
@@ -229,9 +229,9 @@ The system shall distinguish composition interfaces by canonical import path:
 | Surface | Canonical interfaces |
 |---|---|
 | Package root `rag_system_core` | `RAGCore`, `RAGServiceFactory`, `DocmeshRAGServiceFactory`, `OllamaEmbeddingClient`, `OllamaGenerationClient`, public records, client protocols, and `AuthenticatedUser` |
-| `rag_system_core.composition` | `assemble_docmesh_services`, `load_docmesh_settings`, `create_docmesh_service_client`, `create_dms_sdk_from_clients`, `run_health_checks`, and the two service-factory types |
+| `rag_system_core.composition` | `assemble_docmesh_services`, `create_docmesh_service_client`, `create_dms_sdk_from_clients`, `run_health_checks`, and the two service-factory types |
 | `rag_system_core.composition.docmesh_runtime` | `build_docmesh_runtime_plan`, `ServiceBundle`, and runtime assembly helpers |
-| `rag_system_core.composition.configuration` / `rag_system_core.composition.dms_runtime` | `ServiceConfigs`, `RuntimePlan`, `load_available_service_configs`, and `load_dms_settings` |
+| `rag_system_core.composition.configuration` / `rag_system_core.composition.dms_runtime` | explicit `ServiceConfigs`, `RuntimePlan`, and `load_dms_settings` |
 | Advanced factory module `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
 
 Module-qualified advanced helpers shall not be described as package-root exports.
@@ -361,7 +361,7 @@ This feature stores embeddings, retrieves relevant chunks, and applies user-scop
 - **SRS-FR-039** If the target collection does not exist, the system shall create it at first insert using the embedding dimension.
 - **SRS-FR-040** Retrieval operations shall enforce a `user_id` filter.
 - **SRS-FR-041** The system shall read configured Milvus collection and timeout values from composition-layer `ServiceConfigs` when available.
-- **SRS-FR-042** The composition layer shall use an explicitly injected Milvus client or assemble one through composition-layer settings / `ServiceBundle`; if no client can be created, it shall raise `RuntimeError`. An explicit client replaces client construction only: when `settings` and `bundle` are both absent, the factory shall still load the selected Milvus environment settings to resolve collection and timeout.
+- **SRS-FR-042** The composition layer shall use an explicitly injected Milvus client or an explicitly supplied `ServiceConfigs` / `ServiceBundle`; if no client can be created, it shall raise `RuntimeError`. The composition layer shall not load Milvus settings from process environment variables.
 - **SRS-FR-043** If neither an explicit collection override nor a configured collection is available, the system shall use `rag_chunks`.
 - **SRS-FR-044** If neither an explicit timeout override nor a configured timeout is available, the system shall use `30.0`.
 
@@ -419,8 +419,8 @@ This feature reports operational status and supports composition with helper fac
 - **SRS-FR-067** When the generation client provides `check()`, the system shall include generation-client health information.
 - **SRS-FR-068** The system shall aggregate health checks through `rag_system_core.composition.health.run_health_checks()`.
 - **SRS-FR-069** The default health runner shall return `HealthCheckResult` and per-service `ServiceHealthStatus` records. A check exception shall become an `ok=False` service status, and missing required checks shall also make the aggregate result unhealthy; the injected `HealthCheckRunner` may define another policy.
-- **SRS-FR-070** The system shall support selected-service settings loading through the composition-layer `load_docmesh_settings()` and `load_available_service_configs()` functions.
-- **SRS-FR-071** The system shall support service assembly through the composition-layer `build_docmesh_runtime_plan()` and `assemble_docmesh_services()` functions with `RuntimePlan` and `ServiceBundle`; `DocmeshRAGServiceFactory` shall consume only explicitly supplied DMS and RAG collaborators.
+- **SRS-FR-070** The system shall support explicit selected-service settings through `ServiceConfigs` without reading RAG settings from process environment variables.
+- **SRS-FR-071** The system shall support service assembly through the composition-layer `build_docmesh_runtime_plan()` and `assemble_docmesh_services()` functions with an explicit `ServiceConfigs`, `RuntimePlan`, and `ServiceBundle`; `DocmeshRAGServiceFactory` shall consume only explicitly supplied DMS and RAG collaborators.
 - **SRS-FR-073** When document asset storage provides `check()`, the system shall include DMS health information.
 - **SRS-FR-075** DMS configuration shall be read from the current process environment using `DMS_METADATA_BACKEND`, `DMS_SQLITE_PATH`, `DMS_POSTGRES_*`, `DMS_MINIO_*`, and optional `DMS_CONFIGURATION_STRICT` names without reusing unprefixed shared-service values. When both SQLite and PostgreSQL hints are present, non-strict mode selects PostgreSQL and strict mode reports the configuration as invalid.
 - **SRS-FR-079** `DocmeshRAGServiceFactory.from_host_clients(...)` shall accept caller-created DMS/metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, embedding/generation model names, and vector collection/timeout, pass the DMS inputs to dms-core's client assembly path, and assemble the RAG adapters without loading DMS or RAG environment configuration. The context-managed Factory shall close only its created DMS SDK while leaving every injected Engine and transport client caller-owned.
@@ -464,7 +464,7 @@ This feature reports operational status and supports composition with helper fac
 ### 5.7 Operational Requirements
 
 - **SRS-NFR-015** Resource lifecycle ownership shall remain explicit: caller-supplied collaborators, Engines, transport clients, and `ServiceBundle` instances are caller-owned, while a `DocmeshRAGServiceFactory` classmethod's created DMS SDK is Factory-context-owned.
-- **SRS-NFR-016** RAG and DMS environment namespaces shall remain independently configurable within one process.
+- **SRS-NFR-016** RAG configuration shall remain explicit and independent from the DMS process-environment configuration path.
 
 ---
 

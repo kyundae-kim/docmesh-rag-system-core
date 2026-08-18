@@ -14,7 +14,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 from rag_system_core import (
-    AuthenticatedUser,
     DocmeshRAGServiceFactory,
     OllamaEmbeddingClient,
     OllamaGenerationClient,
@@ -24,6 +23,7 @@ from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.storage.dms_document_storage import DmsDocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
+from test_rag_system_core.support import authenticated_user
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,17 +106,7 @@ def test_host_clients_create_rag_core_object_graph(tmp_path: Path) -> None:
 @pytest.mark.integration
 def test_host_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None:
     """Exercise DMS, Ollama, Milvus Lite, and RAGCore through public APIs."""
-    user = AuthenticatedUser(
-        sub="integration-user",
-        preferred_username=None,
-        email=None,
-        given_name=None,
-        family_name=None,
-        name=None,
-        realm_roles=[],
-        client_roles={},
-        claims={},
-    )
+    user = authenticated_user("integration-user")
     doc_id: str | None = None
 
     with _create_host_client_factory(tmp_path) as resources:

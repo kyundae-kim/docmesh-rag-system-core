@@ -1,63 +1,19 @@
 from __future__ import annotations
 
-import os
-from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, TypeVar
 
-from pydantic import Field, ValidationError, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-@dataclass(frozen=True, slots=True)
-class ConfigIssue:
-    """Secret-safe description of one invalid environment setting."""
-
-    service: str
-    env_key: str | None
-    reason: str
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConfigError(ValueError):
-    """Raised when the selected RAG service configuration is invalid."""
-
-    def __init__(self, message: str, *, issues: tuple[ConfigIssue, ...] = ()) -> None:
-        super().__init__(message)
-        self.issues = issues
-        self.errors = issues
-        self.env_keys = tuple(
-            dict.fromkeys(issue.env_key for issue in issues if issue.env_key is not None)
-        )
+    """Raised when explicit RAG configuration or a runtime plan is invalid."""
 
 
-class _EnvironmentSettings(BaseSettings):
-    model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
+class MilvusConfig(BaseModel):
+    """Explicit Milvus client configuration supplied by the host."""
 
-    @field_validator("*", mode="before")
-    @classmethod
-    def strip_strings(cls, value: object) -> object:
-        if isinstance(value, str):
-            stripped = value.strip()
-            return stripped or None
-        return value
-
-
-class CommonConfig(_EnvironmentSettings):
-    model_config = SettingsConfigDict(env_prefix="DOCMESH_", extra="ignore", case_sensitive=False)
-
-    env: str = "development"
-    security_mode: Literal["development", "production"] | None = None
-
-    @property
-    def is_production(self) -> bool:
-        if self.security_mode is not None:
-            return self.security_mode == "production"
-        return self.env.lower() in {"prod", "production"}
-
-
-class MilvusConfig(_EnvironmentSettings):
-    model_config = SettingsConfigDict(env_prefix="MILVUS_", extra="ignore", case_sensitive=False)
+    model_config = ConfigDict(extra="ignore")
 
     endpoint: str = Field(repr=False)
     token: str | None = Field(default=None, repr=False)
@@ -69,8 +25,10 @@ class MilvusConfig(_EnvironmentSettings):
     max_retries: int = Field(default=3, ge=0)
 
 
-class OllamaConfig(_EnvironmentSettings):
-    model_config = SettingsConfigDict(env_prefix="OLLAMA_", extra="ignore", case_sensitive=False)
+class OllamaConfig(BaseModel):
+    """Explicit Ollama client configuration supplied by the host."""
+
+    model_config = ConfigDict(extra="ignore")
 
     host: str = Field(repr=False)
     verify_ssl: bool = True
@@ -83,18 +41,10 @@ class OllamaConfig(_EnvironmentSettings):
 
 @dataclass
 class ServiceConfigs:
-    """Common settings plus the selected optional RAG service settings."""
+    """Explicit settings for the selected optional RAG services."""
 
-    common: CommonConfig
     milvus: MilvusConfig | None = None
     ollama: OllamaConfig | None = None
-
-    @property
-    def docmesh_env(self) -> str:
-        return self.common.env
-
-
-SettingsT = TypeVar("SettingsT", bound=_EnvironmentSettings)
 
 
 class Service(StrEnum):
@@ -175,75 +125,8 @@ class RuntimePlan:
         return frozenset(selection.service for selection in self.services if selection.required)
 
 
-def _normalize_requested_services(services: set[str | Service] | None) -> set[str]:
-    if services is None:
-        return {service.value for service in Service}
-    return {Service.parse(service).value for service in services}
-
-
-def _has_environment_values(settings_cls: type[_EnvironmentSettings], env: Mapping[str, str]) -> bool:
-    prefix = str(settings_cls.model_config.get("env_prefix", "")).upper()
-    return any(key.upper().startswith(prefix) for key in env)
-
-
-def _format_validation_error(
-    settings_cls: type[_EnvironmentSettings],
-    exc: ValidationError,
-) -> ConfigError:
-    prefix = str(settings_cls.model_config.get("env_prefix", ""))
-    service = prefix.rstrip("_").lower() or "common"
-    issues: list[ConfigIssue] = []
-    messages: list[str] = []
-    for error in exc.errors(include_input=False, include_url=False):
-        location = error.get("loc", ())
-        field_name = location[0] if location else None
-        env_key = f"{prefix}{str(field_name).upper()}" if field_name else None
-        reason = str(error.get("msg", "Invalid configuration"))
-        issue = ConfigIssue(service=service, env_key=env_key, reason=reason)
-        issues.append(issue)
-        messages.append(f"{env_key}: {reason}" if env_key else reason)
-    return ConfigError("\n".join(messages) or "Invalid configuration", issues=tuple(issues))
-
-
-def _load_settings(settings_cls: type[SettingsT]) -> SettingsT:
-    try:
-        return settings_cls()
-    except ValidationError as exc:
-        raise _format_validation_error(settings_cls, exc) from None
-
-
-def load_service_configs(*, services: set[str | Service] | None = None) -> ServiceConfigs:
-    """Load selected RAG settings directly from the process environment."""
-    common = _load_settings(CommonConfig)
-    selected = _normalize_requested_services(services)
-    configs = ServiceConfigs(common=common)
-    if Service.MILVUS.value in selected:
-        configs.milvus = _load_settings(MilvusConfig)
-    if Service.OLLAMA.value in selected:
-        configs.ollama = _load_settings(OllamaConfig)
-    return configs
-
-
-def load_available_service_configs(
-    *, services: set[str | Service] | None = None
-) -> ServiceConfigs:
-    """Load only selected services that have at least one environment value."""
-    selected = _normalize_requested_services(services)
-    available = {
-        service
-        for service in selected
-        if _has_environment_values(
-            MilvusConfig if service == Service.MILVUS.value else OllamaConfig,
-            os.environ,
-        )
-    }
-    return load_service_configs(services=available)
-
-
 __all__ = [
-    "CommonConfig",
     "ConfigError",
-    "ConfigIssue",
     "HealthcheckPolicy",
     "MilvusConfig",
     "OllamaConfig",
@@ -251,6 +134,4 @@ __all__ = [
     "Service",
     "ServiceConfigs",
     "ServiceSelection",
-    "load_available_service_configs",
-    "load_service_configs",
 ]

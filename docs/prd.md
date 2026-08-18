@@ -289,9 +289,9 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 
 #### PRD-FR-19. 구성 helper 및 DocMesh integration
 - 시스템은 구성 helper를 통해 `RAGCore` 조립을 단순화해야 한다.
-- 시스템은 composition layer의 `load_docmesh_settings()`,
-  `build_docmesh_runtime_plan()`, `assemble_docmesh_services()`를 활용할 수 있어야 한다. 이 helper들은
-  `ServiceConfigs`, `RuntimePlan`, `ServiceBundle`을 사용한다.
+- 시스템은 composition layer의 `build_docmesh_runtime_plan()`과
+  `assemble_docmesh_services()`를 활용할 수 있어야 한다. `assemble_docmesh_services()`는
+  명시적으로 전달된 `ServiceConfigs`를 `RuntimePlan`, `ServiceBundle`과 함께 사용한다.
 - `create_rag_embedding_client`, `create_rag_generation_client`,
   `create_rag_vector_store`는 명시적 settings, `ServiceBundle`, 또는 client를
   받아 RAG adapter/store를 구성할 수 있어야 한다.
@@ -415,7 +415,7 @@ QueryResult
 | 계층 | 지원 인터페이스 |
 |---|---|
 | package root `rag_system_core` | `RAGCore`, `RAGServiceFactory`, `DocmeshRAGServiceFactory`, 두 Ollama adapter, public records, `EmbeddingClient`/`GenerationClient`, `AuthenticatedUser` |
-| `rag_system_core.composition` | `assemble_docmesh_services`, `create_dms_sdk_from_clients`, `create_docmesh_service_client`, `load_docmesh_settings`, `run_health_checks`, 두 service-factory type |
+| `rag_system_core.composition` | `assemble_docmesh_services`, `create_dms_sdk_from_clients`, `create_docmesh_service_client`, `run_health_checks`, 두 service-factory type |
 | `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
 
 `build_docmesh_runtime_plan()`, `ServiceBundle`, `load_dms_settings()` 같은 advanced composition/runtime helper는 package-root 또는 `rag_system_core.composition` re-export가 아니며 module-qualified import를 사용해야 한다.

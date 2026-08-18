@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import importlib.util
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, get_type_hints
 
 import rag_system_core.composition.rag_factories as rag_factories_module
-import rag_system_core.storage as storage_module
+from pymilvus import MilvusClient
 import pytest
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
@@ -26,7 +25,6 @@ from test_rag_system_core.support import (
     FakeDocumentStorage,
     FakeEmbeddingClient,
     FakeGenerationClient,
-    create_test_rig,
 )
 
 USER_A = authenticated_user("user-a")
@@ -55,36 +53,40 @@ def test_factory_functions_declare_composition_contract_return_types() -> None:
         assert get_type_hints(factory)["return"] is expected_return_type
 
 
-def test_rag_core_reads_milvus_configuration_from_environment(monkeypatch, tmp_path: Path) -> None:
+def test_rag_core_uses_explicit_milvus_configuration(tmp_path: Path) -> None:
     milvus_endpoint = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("MILVUS_ENDPOINT", str(milvus_endpoint))
-    monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
-    monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
 
-    rig = create_test_rig(tmp_path)
-    ingested = rig.core.ingest_text(user=USER_A, text="alpha beta gamma", source="configured.txt")
+    def create_core() -> RAGCore:
+        return RAGCore(
+            embedding_client=FakeEmbeddingClient(),
+            generation_client=FakeGenerationClient(),
+            vector_store=create_rag_vector_store(
+                client=MilvusClient(uri=str(milvus_endpoint)),
+                collection_name="configured_chunks",
+                timeout=9.0,
+            ),
+            metadata_store=create_metadata_store(tmp_path),
+            document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
+            chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
+            health_check_runner=run_health_checks,
+        )
+
+    core = create_core()
+    ingested = core.ingest_text(user=USER_A, text="alpha beta gamma", source="configured.txt")
 
     assert ingested.chunk_count == 1
-    assert rig.core.vector_store.collection_name == "configured_chunks"
-    assert rig.core.vector_store.timeout == 9.0
+    assert core.vector_store.collection_name == "configured_chunks"
+    assert core.vector_store.timeout == 9.0
     assert milvus_endpoint.exists()
 
-    restarted = RAGCore(
-        embedding_client=FakeEmbeddingClient(),
-        generation_client=FakeGenerationClient(),
-        vector_store=create_rag_vector_store(),
-        metadata_store=create_metadata_store(tmp_path),
-        document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
-        chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
-        health_check_runner=run_health_checks,
-    )
+    restarted = create_core()
     response = restarted.query(user=USER_A, question="Where is alpha?", top_k=3)
 
     assert response.context_chunks
     assert any(chunk.doc_id == ingested.doc_id for chunk in response.context_chunks)
 
 
-def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Path) -> None:
+def test_rag_core_integration_uses_explicit_service_settings(monkeypatch, tmp_path: Path) -> None:
     embed_calls: list[dict[str, Any]] = []
     chat_calls: list[dict[str, Any]] = []
     create_service_client = rag_factories_module.create_docmesh_service_client
@@ -107,9 +109,7 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
         )
     )
     milvus_endpoint = tmp_path / "configured-milvus.db"
-    monkeypatch.setenv("MILVUS_ENDPOINT", str(milvus_endpoint))
-    monkeypatch.setenv("MILVUS_COLLECTION", "configured_chunks")
-    monkeypatch.setenv("MILVUS_REQUEST_TIMEOUT_SECONDS", "9")
+    milvus_client = MilvusClient(uri=str(milvus_endpoint))
     monkeypatch.setattr(
         "rag_system_core.composition.rag_factories.create_docmesh_service_client",
         lambda service_name, *, settings, bundle=None: (
@@ -122,7 +122,11 @@ def test_rag_core_integration_uses_docmesh_environment(monkeypatch, tmp_path: Pa
     core = RAGCore(
         embedding_client=create_rag_embedding_client(settings=settings),
         generation_client=create_rag_generation_client(settings=settings),
-        vector_store=create_rag_vector_store(),
+        vector_store=create_rag_vector_store(
+            client=milvus_client,
+            collection_name="configured_chunks",
+            timeout=9.0,
+        ),
         metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
@@ -180,12 +184,7 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
     assert core.vector_store._client is client
 
 
-def test_create_rag_vector_store_requires_docmesh_or_explicit_client(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(
-        "rag_system_core.composition.rag_factories.create_docmesh_service_client",
-        lambda service_name, *, settings=None, bundle=None: None,
-    )
-
+def test_create_rag_vector_store_requires_explicit_client() -> None:
     with pytest.raises(RuntimeError, match="Failed to create Milvus service client"):
         create_rag_vector_store(
             collection_name="factory_chunks",

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
+from pymilvus import MilvusClient
 from sqlalchemy import create_engine
 
 from rag_system_core import RAGCore
@@ -144,17 +145,7 @@ class FakeDocumentStorage:
 
 
 def authenticated_user(user_id: str) -> AuthenticatedUser:
-    return AuthenticatedUser(
-        sub=user_id,
-        preferred_username=None,
-        email=None,
-        given_name=None,
-        family_name=None,
-        name=None,
-        realm_roles=[],
-        client_roles={},
-        claims={},
-    )
+    return AuthenticatedUser(sub=user_id)
 
 
 @dataclass
@@ -175,7 +166,9 @@ def create_test_rig(tmp_path: Path, *, storage_mode: str = "memory") -> TestRig:
     core = RAGCore(
         embedding_client=embedding_client,
         generation_client=generation_client,
-        vector_store=create_rag_vector_store(),
+        vector_store=create_rag_vector_store(
+            client=MilvusClient(uri=str(tmp_path / "test.milvus.db")),
+        ),
         metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage(storage_mode, tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
