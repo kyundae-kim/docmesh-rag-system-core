@@ -231,7 +231,7 @@ The system shall distinguish composition interfaces by canonical import path:
 | Package root `rag_system_core` | `RAGCore`, `RAGServiceFactory`, `DocmeshRAGServiceFactory`, `OllamaEmbeddingClient`, `OllamaGenerationClient`, public records, client protocols, and `AuthenticatedUser` |
 | `rag_system_core.composition` | `assemble_docmesh_services`, `create_docmesh_service_client`, `create_dms_sdk_from_clients`, `run_health_checks`, and the two service-factory types |
 | `rag_system_core.composition.docmesh_runtime` | `build_docmesh_runtime_plan`, `ServiceBundle`, and runtime assembly helpers |
-| `rag_system_core.composition.configuration` / `rag_system_core.composition.dms_runtime` | explicit `ServiceConfigs`, `RuntimePlan`, and `load_dms_settings` |
+| `rag_system_core.composition.configuration` / `rag_system_core.composition.dms_runtime` | explicit `ServiceConfigs` and host-client DMS SDK assembly |
 | Advanced factory module `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
 
 Module-qualified advanced helpers shall not be described as package-root exports.
@@ -422,7 +422,7 @@ This feature reports operational status and supports composition with helper fac
 - **SRS-FR-070** The system shall support explicit selected-service settings through `ServiceConfigs` without reading RAG settings from process environment variables.
 - **SRS-FR-071** The system shall support service assembly through the composition-layer `build_docmesh_runtime_plan()` and `assemble_docmesh_services()` functions with an explicit `ServiceConfigs`, `RuntimePlan`, and `ServiceBundle`; `DocmeshRAGServiceFactory` shall consume only explicitly supplied DMS and RAG collaborators.
 - **SRS-FR-073** When document asset storage provides `check()`, the system shall include DMS health information.
-- **SRS-FR-075** DMS configuration shall be read from the current process environment using `DMS_METADATA_BACKEND`, `DMS_SQLITE_PATH`, `DMS_POSTGRES_*`, `DMS_MINIO_*`, and optional `DMS_CONFIGURATION_STRICT` names without reusing unprefixed shared-service values. When both SQLite and PostgreSQL hints are present, non-strict mode selects PostgreSQL and strict mode reports the configuration as invalid.
+- **SRS-FR-075** DMS configuration shall be supplied explicitly through caller-created SQLAlchemy `Engine` instances, a MinIO client, and a bucket name; DMS composition shall not read process environment variables.
 - **SRS-FR-079** `DocmeshRAGServiceFactory.from_host_clients(...)` shall accept caller-created DMS/metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, embedding/generation model names, and vector collection/timeout, pass the DMS inputs to dms-core's client assembly path, and assemble the RAG adapters without loading DMS or RAG environment configuration. The context-managed Factory shall close only its created DMS SDK while leaving every injected Engine and transport client caller-owned.
 
 ---
@@ -455,7 +455,7 @@ This feature reports operational status and supports composition with helper fac
 
 - **SRS-NFR-011** The public API shall remain centered on `RAGCore`.
 - **SRS-NFR-012** Public records shall be owned by `rag_system_core.types`, and dependency protocols shall have `rag_system_core.ports` as their canonical owner.
-- **SRS-NFR-013** Composition/integration code and domain logic shall remain separable; DMS environment adaptation and RAG DocMesh runtime assembly shall have separate module owners.
+- **SRS-NFR-013** Composition/integration code and domain logic shall remain separable; DMS client assembly and RAG DocMesh runtime assembly shall have separate module owners.
 
 ### 5.6 Portability Requirements
 
@@ -464,7 +464,7 @@ This feature reports operational status and supports composition with helper fac
 ### 5.7 Operational Requirements
 
 - **SRS-NFR-015** Resource lifecycle ownership shall remain explicit: caller-supplied collaborators, Engines, transport clients, and `ServiceBundle` instances are caller-owned, while a `DocmeshRAGServiceFactory` classmethod's created DMS SDK is Factory-context-owned.
-- **SRS-NFR-016** RAG configuration shall remain explicit and independent from the DMS process-environment configuration path.
+- **SRS-NFR-016** RAG and DMS configuration shall remain explicit and independent from process environment variables.
 
 ---
 

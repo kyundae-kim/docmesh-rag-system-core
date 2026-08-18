@@ -296,7 +296,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
   `create_rag_vector_store`는 명시적 settings, `ServiceBundle`, 또는 client를
   받아 RAG adapter/store를 구성할 수 있어야 한다.
 - `DocmeshRAGServiceFactory`는 생성하거나 직접 주입받은 DMS SDK와 명시적으로 주입된 embedding/generation/vector collaborator를 사용해야 하며, settings나 `ServiceBundle`을 내부에 보관하거나 이를 통해 지연 생성해서는 안 된다.
-- DMS 설정 helper는 현재 프로세스 환경에서 `DMS_METADATA_BACKEND`, `DMS_SQLITE_PATH`, `DMS_POSTGRES_*`, `DMS_MINIO_*`, 선택적 `DMS_CONFIGURATION_STRICT` 이름을 사용해야 하며, unprefixed shared-service 값을 재사용하지 않아야 한다.
+- DMS 조립은 현재 프로세스 환경을 읽지 않고, caller가 제공한 SQLAlchemy `Engine`, MinIO client, bucket 이름을 통해 명시적으로 수행해야 한다.
 - `assemble_docmesh_services()`가 반환하는 `ServiceBundle`과 직접 조립한 DMS SDK는 caller가 정상/예외 종료 모두에서 정리해야 한다.
 - `DocmeshRAGServiceFactory.from_clients(...)`와 `from_host_clients(...)`는 생성한 DMS SDK를 Factory context 종료 시 정리하고, 주입된 Engine과 raw transport client는 caller-owned로 유지해야 한다.
 
@@ -418,7 +418,7 @@ QueryResult
 | `rag_system_core.composition` | `assemble_docmesh_services`, `create_dms_sdk_from_clients`, `create_docmesh_service_client`, `run_health_checks`, 두 service-factory type |
 | `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
 
-`build_docmesh_runtime_plan()`, `ServiceBundle`, `load_dms_settings()` 같은 advanced composition/runtime helper는 package-root 또는 `rag_system_core.composition` re-export가 아니며 module-qualified import를 사용해야 한다.
+`build_docmesh_runtime_plan()`, `ServiceBundle` 같은 advanced composition/runtime helper는 package-root 또는 `rag_system_core.composition` re-export가 아니며 module-qualified import를 사용해야 한다.
 
 ---
 
@@ -465,7 +465,7 @@ QueryResult
 - health check
 - composition-layer settings / `ServiceBundle` integration
 - dms-core SDK / MinIO 기반 document asset lifecycle
-- `DMS_` 접두사 기반 RAG/DMS 환경 설정 분리
+- 명시적 host-owned client 기반 DMS/RAG 조립
 - SQLite metadata persistence
 - configured Milvus retrieval persistence
 

@@ -91,21 +91,10 @@ uv sync
 
 ## 설정 및 조립
 
-RAG composition layer는 process 환경변수에서 Ollama/Milvus 설정을 읽지 않습니다. 상위 애플리케이션이 Ollama·Milvus client와 model, collection, timeout 값을 직접 생성·결정한 뒤 `DocmeshRAGServiceFactory.from_host_clients(...)` 또는 `create_rag_*` helper에 전달해야 합니다. DMS runtime의 `DMS_*` 환경변수 처리는 RAG 설정과 별도의 경계에서 유지됩니다.
-
-```env
-DMS_METADATA_BACKEND=sqlite
-DMS_SQLITE_PATH=./data/dms.db
-DMS_MINIO_ENDPOINT=minio:9000
-DMS_MINIO_ACCESS_KEY=replace-me
-DMS_MINIO_SECRET_KEY=replace-me
-DMS_MINIO_BUCKET=documents
-DMS_MINIO_SECURE=false
-```
+RAG와 DMS composition layer는 process 환경변수를 읽지 않습니다. 상위 애플리케이션이 Ollama·Milvus client와 model, collection, timeout 값을 직접 생성·결정하고, DMS용 SQLAlchemy `Engine`, MinIO client, bucket 이름을 명시적으로 조립한 뒤 `DocmeshRAGServiceFactory.from_host_clients(...)` 또는 `create_rag_*` helper에 전달해야 합니다.
 
 추가로 보통 아래 경로에 쓰기 가능해야 합니다.
 - `metadata_path`가 가리키는 SQLite 파일 경로
-- `DMS_SQLITE_PATH`가 가리키는 DMS metadata 파일 경로
 - 상위 애플리케이션이 생성한 Milvus client가 사용하는 파일 경로
 
 ---
@@ -267,18 +256,9 @@ context 종료 시 host-client 경로에서 Factory가 닫는 것은 Factory가 
 
 ---
 
-## DMS 환경변수 요약
+## DMS 조립 경계
 
-- `DMS_METADATA_BACKEND` (`sqlite` 또는 `postgresql`)
-- `DMS_SQLITE_PATH` 또는 `DMS_POSTGRES_*`
-- `DMS_MINIO_ENDPOINT`
-- `DMS_MINIO_ACCESS_KEY`
-- `DMS_MINIO_SECRET_KEY`
-- `DMS_MINIO_BUCKET`
-- `DMS_MINIO_SECURE`
-- `DMS_CONFIGURATION_STRICT`
-
-RAG helper와 `DocmeshRAGServiceFactory.from_host_clients(...)`는 `OLLAMA_*`나 `MILVUS_*` 환경변수를 읽지 않습니다. 상위 애플리케이션이 만든 DMS용 및 metadata용 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 전달합니다. `DMS_*` 값은 DMS 환경 기반 조립 경로에서만 사용됩니다.
+`DocmeshRAGServiceFactory.from_host_clients(...)`는 DMS 환경변수나 RAG 환경변수를 읽지 않습니다. 상위 애플리케이션이 만든 DMS용 및 metadata용 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 전달해야 합니다.
 
 ---
 

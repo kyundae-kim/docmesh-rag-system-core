@@ -12,7 +12,7 @@ import pytest
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
-from rag_system_core.composition.dms_runtime import load_dms_settings
+import rag_system_core.composition.dms_runtime as dms_runtime
 import rag_system_core.composition.docmesh_runtime as docmesh_runtime
 import rag_system_core.composition.service_factory as service_factory_module
 from rag_system_core.composition.docmesh_runtime import (
@@ -74,79 +74,10 @@ def make_settings() -> SimpleNamespace:
     )
 
 
-@pytest.mark.parametrize(
-    ("backend", "service_environment", "service_name"),
-    [
-        (
-            "sqlite",
-            {
-                "DMS_SQLITE_PATH": "/tmp/dms-prefixed.db",
-                "DMS_SQLITE_ENABLE_WAL": "true",
-            },
-            "sqlite",
-        ),
-        (
-            "postgresql",
-            {
-                "DMS_POSTGRES_HOST": "dms-postgres",
-                "DMS_POSTGRES_DB": "dms",
-                "DMS_POSTGRES_USER": "dms-user",
-                "DMS_POSTGRES_PASSWORD": "dms-password",
-            },
-            "postgres",
-        ),
-    ],
-)
-def test_load_dms_settings_uses_dms_prefixed_service_environment(
-    monkeypatch,
-    backend: str,
-    service_environment: dict[str, str],
-    service_name: str,
-) -> None:
-    monkeypatch.setenv("DMS_METADATA_BACKEND", backend)
-    monkeypatch.setenv("DMS_DOCMESH_ENV", "dms-development")
-    monkeypatch.setenv("DMS_MINIO_ENDPOINT", "dms-minio:9000")
-    monkeypatch.setenv("DMS_MINIO_ACCESS_KEY", "dms-access-key")
-    monkeypatch.setenv("DMS_MINIO_SECRET_KEY", "dms-secret-key")
-    monkeypatch.setenv("DMS_MINIO_BUCKET", "dms-documents")
-    monkeypatch.setenv("MINIO_ENDPOINT", "shared-minio:9000")
-    monkeypatch.setenv("SQLITE_PATH", "/tmp/shared.db")
-    for key, value in service_environment.items():
-        monkeypatch.setenv(key, value)
-
-    settings = load_dms_settings()
-
-    assert settings.minio_endpoint == "dms-minio:9000"
-    assert settings.minio_bucket == "dms-documents"
-    if service_name == "sqlite":
-        assert settings.sqlite_path == "/tmp/dms-prefixed.db"
-        assert settings.postgres_host is None
-    else:
-        assert settings.postgres_host == "dms-postgres"
-        assert settings.sqlite_path is None
-
-
-def test_load_dms_settings_reports_prefixed_missing_environment_keys(monkeypatch) -> None:
-    monkeypatch.setenv("DMS_METADATA_BACKEND", "sqlite")
-    monkeypatch.setenv("DMS_SQLITE_PATH", "/tmp/dms-prefixed.db")
-    monkeypatch.setenv("MINIO_ENDPOINT", "shared-minio:9000")
-    monkeypatch.setenv("MINIO_ACCESS_KEY", "shared-access-key")
-    monkeypatch.setenv("MINIO_SECRET_KEY", "shared-secret-key")
-    monkeypatch.setenv("MINIO_BUCKET", "shared-documents")
-    for key in (
-        "DMS_MINIO_ENDPOINT",
-        "DMS_MINIO_ACCESS_KEY",
-        "DMS_MINIO_SECRET_KEY",
-        "DMS_MINIO_BUCKET",
-    ):
-        monkeypatch.delenv(key, raising=False)
-
-    with pytest.raises(dms.ConfigurationError) as exc_info:
-        load_dms_settings()
-
-    assert "DMS_MINIO_ENDPOINT" in str(exc_info.value)
-    assert "MINIO_ENDPOINT" not in exc_info.value.diagnosis.missing_required_keys
-    assert "DMS_MINIO_ENDPOINT" in exc_info.value.diagnosis.missing_required_keys
+def test_dms_runtime_does_not_expose_environment_settings_api() -> None:
+    assert not hasattr(dms_runtime, "DmsEnvironmentDiagnosis")
+    assert not hasattr(dms_runtime, "DmsServiceSettings")
+    assert not hasattr(dms_runtime, "load_dms_settings")
 
 
 def test_assemble_docmesh_services_uses_runtime_plan_api(monkeypatch) -> None:
@@ -373,11 +304,6 @@ def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_sett
         lambda **kwargs: pytest.fail("client assembly must not load DocMesh settings"),
     )
 
-    monkeypatch.setattr(
-        "rag_system_core.composition.service_factory.dms_runtime.load_dms_settings",
-        lambda **kwargs: pytest.fail("client assembly must not load DMS settings"),
-    )
-
     def fake_create_dms_sdk_from_clients(*, engine, minio_client, bucket_name):
         records.update(
             engine=engine,
@@ -424,11 +350,6 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
     monkeypatch.setattr(
         "rag_system_core.composition.docmesh_runtime.assemble_docmesh_services",
         lambda **kwargs: pytest.fail("host-client assembly must not load DocMesh settings"),
-    )
-
-    monkeypatch.setattr(
-        "rag_system_core.composition.service_factory.dms_runtime.load_dms_settings",
-        lambda **kwargs: pytest.fail("host-client assembly must not load DMS settings"),
     )
 
     def fake_create_dms_sdk_from_clients(*, engine, minio_client, bucket_name):
