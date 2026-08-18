@@ -1,10 +1,10 @@
 ---
 title: Service Factory Registry
 created: 2026-06-19
-updated: 2026-08-08
+updated: 2026-08-18
 type: concept
 tags: [sdk, python, integration, config, decision]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+sources: []
 confidence: medium
 ---
 
@@ -34,7 +34,7 @@ v0.6.0은 `SERVICE_CATALOG`과 `ServiceDescriptor`로 서비스별 config type·
 
 ## RAG bootstrap implications
 
-RAG Core API reference는 `bootstrap_rag_core(...)`가 settings를 직접 로드하지 않고 `service_factory`를 통해 embedding/generation/vector/metadata/storage/chunker를 조립한다고 명시한다. 또한 DocMesh 경로 예시에서 `load_docmesh_settings()`와 `create_service_registry(settings)`를 먼저 호출한 뒤 `DocmeshRAGServiceFactory(settings=settings, registry=registry)`를 구성한다. 따라서 registry는 RAG bootstrap 경로에서 선택적 주변도구가 아니라 [[construction-paths-and-adapter-contracts]]와 [[public-api-surface]]를 잇는 실제 조립 전제조건이다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+RAG Core API reference는 `bootstrap_rag_core(...)`가 settings를 직접 로드하지 않고 `service_factory`를 통해 embedding/generation/vector/metadata/storage/chunker를 조립한다고 명시한다. 또한 DocMesh 경로 예시에서 `load_docmesh_settings()`와 `create_service_registry(settings)`를 먼저 호출한 뒤 `DocmeshRAGServiceFactory(settings=settings, registry=registry)`를 구성한다. 따라서 registry는 RAG bootstrap 경로에서 선택적 주변도구가 아니라 [[construction-paths-and-adapter-contracts]]와 [[public-api-surface]]를 잇는 실제 조립 전제조건이다.
 
 ## Return contract
 

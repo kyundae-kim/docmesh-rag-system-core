@@ -1,10 +1,10 @@
 ---
 title: Service Health Orchestration
 created: 2026-06-19
-updated: 2026-08-08
+updated: 2026-08-18
 type: concept
 tags: [sdk, integration, testing, deployment, observability]
-sources: [raw/articles/docmesh-rag-core-srs-2026-06-23.md, raw/articles/docmesh-rag-core-prd-2026-06-23.md]
+sources: []
 confidence: medium
 ---
 
@@ -26,7 +26,7 @@ API reference와 예제는 `check_all_services()`의 반환/예외 모델도 명
 
 ## How the RAG SRS uses this pattern
 
-RAG Core의 SRS는 모든 health-check 결과에 metadata health를 포함해야 하고, vector store / embedding client / generation client가 `check()`를 제공하면 그 정보도 포함해야 한다고 규정한다. 또한 DocMesh aggregate health path를 우선 시도하고 실패 시 local aggregation으로 fallback 해야 하므로, 이 페이지는 generic SDK 패턴이 아니라 현재 RAG 라이브러리의 명시적 요구사항 해석에도 직접 연결된다.^[raw/articles/docmesh-rag-core-srs-2026-06-23.md]^[raw/articles/docmesh-rag-core-prd-2026-06-23.md]
+RAG Core의 SRS는 모든 health-check 결과에 metadata health를 포함해야 하고, vector store / embedding client / generation client가 `check()`를 제공하면 그 정보도 포함해야 한다고 규정한다. 또한 DocMesh aggregate health path를 우선 시도하고 실패 시 local aggregation으로 fallback 해야 하므로, 이 페이지는 generic SDK 패턴이 아니라 현재 RAG 라이브러리의 명시적 요구사항 해석에도 직접 연결된다.
 
 ## Parallelism and lifecycle
 

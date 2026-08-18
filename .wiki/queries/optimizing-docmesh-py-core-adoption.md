@@ -1,10 +1,10 @@
 ---
 title: Optimizing docmesh-py-core adoption
 created: 2026-07-28
-updated: 2026-08-08
+updated: 2026-08-18
 type: query
 tags: [sdk, integration, architecture, config, performance, testing]
-sources: [raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+sources: []
 confidence: medium
 ---
 
@@ -70,7 +70,7 @@ healthcheck를 매 요청마다 반복하지 않는다. startup readiness, 주�
 
 ### 6. DMS 설정과 lifecycle은 RAG 서비스 묶음과 분리한다
 
-동일 process에서 RAG와 DMS가 서로 다른 PostgreSQL·SQLite·MinIO 설정을 사용할 때 process-global canonical key를 임시 변경하지 않는다. application composition 계층이 `DMS_` prefixed 설정을 별도로 파싱해 `ServiceConfigs`를 만들고 DMS factory에 전달한다. RAG bundle은 Ollama·Milvus 등 RAG 서비스만 소유하게 한다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+동일 process에서 RAG와 DMS가 서로 다른 PostgreSQL·SQLite·MinIO 설정을 사용할 때 process-global canonical key를 임시 변경하지 않는다. application composition 계층이 `DMS_` prefixed 설정을 별도로 파싱해 `ServiceConfigs`를 만들고 DMS factory에 전달한다. RAG bundle은 Ollama·Milvus 등 RAG 서비스만 소유하게 한다.
 
 현재 위키에 기록된 repository 경로는 이 분리를 이미 적용했으며, DMS SDK를 먼저 닫고 RAG bundle을 닫는 lifecycle을 테스트한다. 이 계약은 [[separating-dms-service-environment-variables-with-prefixes]]와 [[dms-configuration-and-assembly]]를 기준으로 유지한다.
 

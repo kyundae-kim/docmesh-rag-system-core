@@ -1,10 +1,10 @@
 ---
 title: Minimizing Consumer Implementation with docmesh-py-core Improvements
 created: 2026-07-30
-updated: 2026-08-08
+updated: 2026-08-18
 type: query
 tags: [sdk, integration, architecture, config, api, testing, roadmap]
-sources: [raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+sources: []
 confidence: medium
 ---
 
@@ -42,7 +42,7 @@ v0.5.0은 이미 `RuntimePlan`, `assemble_services()`, `assemble_service_runtime
 
 `load_service_configs()`와 `load_available_service_configs()`, `diagnose_services()`, assembly API가 동일한 `Mapping[str, str]` 입력을 선택적으로 받게 하는 것이 최우선이다. process environment는 기본 adapter로 유지하되, 소비자가 전달한 mapping이 있으면 그것만 읽어야 한다. 여기에 `prefix="DMS_"` 또는 동등한 namespace 변환을 제공하면 동일 process에서 RAG와 DMS가 서로 다른 PostgreSQL·SQLite·MinIO 연결을 가져도 `os.environ` 변경이나 수동 config model 조립이 필요 없다.
 
-현재 위키에 기록된 `load_dms_settings()`는 이 SDK 기능이 없어서 소비 repository가 구현한 보완 계층이다. upstream이 mapping/namespace를 지원하면 이 코드는 제거 후보가 된다. 단, prefix precedence와 중복 key 충돌은 명시적이어야 하며 secret-safe 진단에는 소비자가 사용한 원래 key 이름을 보존해야 한다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+현재 위키에 기록된 `load_dms_settings()`는 이 SDK 기능이 없어서 소비 repository가 구현한 보완 계층이다. upstream이 mapping/namespace를 지원하면 이 코드는 제거 후보가 된다. 단, prefix precedence와 중복 key 충돌은 명시적이어야 하며 secret-safe 진단에는 소비자가 사용한 원래 key 이름을 보존해야 한다.
 
 권장 최소 계약:
 

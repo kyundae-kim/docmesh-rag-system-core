@@ -1,10 +1,10 @@
 ---
 title: Minimizing Consumer Implementation with dms-core Improvements
 created: 2026-07-30
-updated: 2026-07-30
+updated: 2026-08-18
 type: query
 tags: [sdk, integration, architecture, config, api, testing, persistence, roadmap]
-sources: [raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md, raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-examples-v0.6.0-2026-07-27.md, raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md, raw/articles/docmesh-rag-core-srs-2026-06-23.md]
+sources: []
 confidence: medium
 ---
 
@@ -20,9 +20,9 @@ confidence: medium
 
 ## 현재 문서화된 상태
 
-v0.6.0은 환경, `ServiceConfigs`, caller-owned clients, 직접 components의 네 조립 경로를 제공한다. bytes·동기/비동기 stream 업로드, 공개/internal metadata 분리, cursor pagination, soft/hard delete, idempotency, recovery, health, HTTP 오류 변환과 sync/async context manager까지 갖추고 있어 document lifecycle 자체는 이미 넓게 추상화되어 있다.^[raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md]
+v0.6.0은 환경, `ServiceConfigs`, caller-owned clients, 직접 components의 네 조립 경로를 제공한다. bytes·동기/비동기 stream 업로드, 공개/internal metadata 분리, cursor pagination, soft/hard delete, idempotency, recovery, health, HTTP 오류 변환과 sync/async context manager까지 갖추고 있어 document lifecycle 자체는 이미 넓게 추상화되어 있다.
 
-소비자 구현이 남는 핵심 원인은 기능 부족보다 **진입점 간 계약 비대칭**이다. `diagnose_environment(env)`는 mapping을 받지만 `create_sdk_from_environment()`는 process environment만 읽는다. 네 factory는 공통 옵션을 각각 나열하고, 주입 자원 소유권은 `close_callbacks`로 표현한다. 다섯 upload 메서드와 수동 cursor loop도 사용처마다 반복된다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]^[raw/articles/dms-core-examples-v0.6.0-2026-07-27.md]
+소비자 구현이 남는 핵심 원인은 기능 부족보다 **진입점 간 계약 비대칭**이다. `diagnose_environment(env)`는 mapping을 받지만 `create_sdk_from_environment()`는 process environment만 읽는다. 네 factory는 공통 옵션을 각각 나열하고, 주입 자원 소유권은 `close_callbacks`로 표현한다. 다섯 upload 메서드와 수동 cursor loop도 사용처마다 반복된다.
 
 ## 반복 구현과 upstream 개선점
 
@@ -42,7 +42,7 @@ v0.6.0은 환경, `ServiceConfigs`, caller-owned clients, 직접 components의 �
 
 ### 1. 환경 factory에 mapping과 namespace를 지원한다
 
-`create_sdk_from_environment()`가 `diagnose_environment()`와 같은 `Mapping[str, str]`을 받을 수 있어야 한다. process environment는 기본 adapter로 유지하되 `env`가 전달되면 해당 mapping만 사용하고, 진단과 조립이 정확히 같은 snapshot을 소비해야 한다. `prefix="DMS_"` 또는 key-mapper를 함께 지원하면 동일 process의 RAG와 DMS가 서로 다른 PostgreSQL·SQLite·MinIO 구성을 사용해도 consumer가 config model을 수동 조립할 필요가 없다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]^[raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md]
+`create_sdk_from_environment()`가 `diagnose_environment()`와 같은 `Mapping[str, str]`을 받을 수 있어야 한다. process environment는 기본 adapter로 유지하되 `env`가 전달되면 해당 mapping만 사용하고, 진단과 조립이 정확히 같은 snapshot을 소비해야 한다. `prefix="DMS_"` 또는 key-mapper를 함께 지원하면 동일 process의 RAG와 DMS가 서로 다른 PostgreSQL·SQLite·MinIO 구성을 사용해도 consumer가 config model을 수동 조립할 필요가 없다.
 
 권장 최소 계약:
 
@@ -71,7 +71,7 @@ database endpoint나 MinIO credential을 plan에 직접 넣지 않는다. 연결
 
 ### 3. `close_callbacks`를 typed ownership 계약으로 보강한다
 
-`create_sdk_from_clients()`와 `create_sdk_from_components()`는 주입 자원을 기본적으로 caller-owned로 두는 현재 원칙이 안전하다. 그러나 소비자가 종료 책임을 SDK에 넘길 때 callback 순서와 sync/async 차이를 직접 구성해야 한다. `ManagedResource(resource, ownership=SDK, close=..., aclose=...)` 또는 factory별 명시적 ownership descriptor를 제공하면 lifecycle 코드와 테스트를 줄일 수 있다.^[raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md]
+`create_sdk_from_clients()`와 `create_sdk_from_components()`는 주입 자원을 기본적으로 caller-owned로 두는 현재 원칙이 안전하다. 그러나 소비자가 종료 책임을 SDK에 넘길 때 callback 순서와 sync/async 차이를 직접 구성해야 한다. `ManagedResource(resource, ownership=SDK, close=..., aclose=...)` 또는 factory별 명시적 ownership descriptor를 제공하면 lifecycle 코드와 테스트를 줄일 수 있다.
 
 필수 검증은 다음과 같다.
 
@@ -104,7 +104,7 @@ database endpoint나 MinIO credential을 plan에 직접 넣지 않는다. 연결
 - `upload_bytes(content, *, filename, content_type, ...)`
 - `upload_source(source, *, size=None, max_size=None, ...)`
 
-`upload_file()`은 SDK가 파일 open/close, size, 선택적 checksum과 content type 추론을 소유한다. caller가 넘긴 stream은 기존과 같이 caller-owned로 유지한다. 자동 추론값은 결과/진단에서 확인할 수 있어야 하며 low-level request API는 완전한 제어가 필요한 경로로 남긴다.^[raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md]^[raw/articles/dms-core-examples-v0.6.0-2026-07-27.md]
+`upload_file()`은 SDK가 파일 open/close, size, 선택적 checksum과 content type 추론을 소유한다. caller가 넘긴 stream은 기존과 같이 caller-owned로 유지한다. 자동 추론값은 결과/진단에서 확인할 수 있어야 하며 low-level request API는 완전한 제어가 필요한 경로로 남긴다.
 
 ### 6. pagination과 download lifecycle helper를 제공한다
 
@@ -122,7 +122,7 @@ database endpoint나 MinIO credential을 plan에 직접 넣지 않는다. 연결
 - internal metadata와 recovery는 별도 administrative capability 요구
 - 목록 filtering을 metadata 후처리로 구현해 page 의미를 깨뜨리지 않음
 
-이 기능은 security-sensitive하므로 단순 callback보다 명시적 protocol과 deny/allow 결과 모델이 필요하다. 실제 tenant 모델은 host application이 소유하며 [[user-scope-isolation]] 계약을 대체하지 않는다.^[raw/articles/docmesh-rag-core-srs-2026-06-23.md]
+이 기능은 security-sensitive하므로 단순 callback보다 명시적 protocol과 deny/allow 결과 모델이 필요하다. 실제 tenant 모델은 host application이 소유하며 [[user-scope-isolation]] 계약을 대체하지 않는다.
 
 ### 8. 공통 operation context를 선택적으로 제공한다
 

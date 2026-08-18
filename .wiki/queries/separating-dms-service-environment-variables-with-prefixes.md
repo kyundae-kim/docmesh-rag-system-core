@@ -1,10 +1,10 @@
 ---
 title: Separating DMS Service Environment Variables with Prefixes
 created: 2026-07-28
-updated: 2026-08-08
+updated: 2026-08-18
 type: query
 tags: [config, integration, architecture, decision]
-sources: [raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md]
+sources: []
 confidence: medium
 ---
 
@@ -16,9 +16,9 @@ confidence: medium
 
 ## 현재 계약
 
-현재 `dms-core` v0.6.0의 환경 factory는 `DMS_*`, `DOCMESH_*`, `POSTGRES_*`, `SQLITE_*`, `MINIO_*`라는 고정된 canonical key를 process environment에서 읽는다. `create_sdk_from_environment()`에는 접두사나 namespace를 지정하는 공개 옵션이 문서화되어 있지 않다. `docmesh-py-core` v0.5.0의 config 모델과 `load_service_configs()`도 process environment에서 고정 key를 직접 읽으며 mapping을 받지 않는다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+현재 `dms-core` v0.6.0의 환경 factory는 `DMS_*`, `DOCMESH_*`, `POSTGRES_*`, `SQLITE_*`, `MINIO_*`라는 고정된 canonical key를 process environment에서 읽는다. `create_sdk_from_environment()`에는 접두사나 namespace를 지정하는 공개 옵션이 문서화되어 있지 않다. `docmesh-py-core` v0.5.0의 config 모델과 `load_service_configs()`도 process environment에서 고정 key를 직접 읽으며 mapping을 받지 않는다.
 
-따라서 prefixed key를 그대로 둔 채 `create_sdk_from_environment()`를 호출하면 DMS가 이를 인식하지 못한다. 호출 직전에 `os.environ`을 임시 변환하는 방식도 환경 기반 조립 중 관련 key를 변경하지 말라는 동시성 제약과 충돌하므로 애플리케이션 기본 경로로 사용하지 않는다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]^[raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md]
+따라서 prefixed key를 그대로 둔 채 `create_sdk_from_environment()`를 호출하면 DMS가 이를 인식하지 못한다. 호출 직전에 `os.environ`을 임시 변환하는 방식도 환경 기반 조립 중 관련 key를 변경하지 말라는 동시성 제약과 충돌하므로 애플리케이션 기본 경로로 사용하지 않는다.
 
 ## 권장 경계
 

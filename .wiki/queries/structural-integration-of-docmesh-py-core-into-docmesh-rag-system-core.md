@@ -1,10 +1,10 @@
 ---
 title: Structural integration of docmesh-py-core into docmesh-rag-system-core
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-08-18
 type: query
 tags: [sdk, architecture, integration, python, roadmap, config]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-11.md, raw/articles/docmesh-rag-core-prd-2026-06-11.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md]
+sources: []
 confidence: medium
 ---
 
