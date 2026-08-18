@@ -681,3 +681,34 @@
 - Removed: 113 frontmatter source references and 83 body provenance markers.
 - Pages with no remaining source files now use `sources: []`; page content and existing valid source references were preserved.
 - Verification: `verify_ingest.py` reported `pages=35 indexed=35 issues=0`; custom source audit reported missing source refs `0`, remaining missing body refs `0`, and raw SHA-256 mismatches `0`.
+
+## [2026-08-18] query | 프로젝트 엔트리 포인트
+- Question:
+  - 이 프로젝트의 엔트리 포인트는?
+- Wiki pages consulted:
+  - entities/ragcore.md
+  - concepts/public-api-surface.md
+  - concepts/construction-paths-and-adapter-contracts.md
+  - concepts/rag-service-architecture.md
+- Answer: The external SDK entry point is `from rag_system_core import RAGCore`; the recommended composition path is `bootstrap_rag_core(...)` after settings and service-registry preparation.
+- Query was a simple lookup and was not filed as a separate query page.
+
+## [2026-08-18] update | environment-based RAG entrypoint removal
+- User correction: an entrypoint that creates `RAGCore` from environment variables should not be part of the current public contract.
+- Repository verification:
+  - package root does not export `bootstrap_rag_core_from_env`.
+  - `DocmeshRAGServiceFactory` does not expose `from_env`.
+  - Current assembly uses explicit `from_clients(...)` / `from_host_clients(...)` followed by `create_rag_core()`.
+- Wiki pages updated:
+  - entities/ragcore.md
+  - concepts/construction-paths-and-adapter-contracts.md
+  - concepts/product-scope-and-requirements.md
+  - concepts/software-requirements-and-traceability.md
+  - concepts/rag-service-architecture.md
+  - concepts/service-factory-registry.md
+  - concepts/first-success-configuration.md
+  - queries/optimizing-docmesh-py-core-adoption.md
+  - queries/separating-dms-service-environment-variables-with-prefixes.md
+  - queries/verifying-docmesh-py-core-contract.md
+  - index.md
+- Historical log and proposal references were retained and explicitly marked as historical where applicable.

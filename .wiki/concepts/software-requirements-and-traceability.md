@@ -18,7 +18,7 @@ PRD가 제품 범위와 acceptance contract를 정의한다면, SRS는 그것을
 
 ## Interface contract captured by the SRS
 
-SRS는 construction path로 `RAGCore(...)`와 `bootstrap_rag_core(...)`, operational interface로 ingestion/query/document management/`health_check()`, public data type으로 `DocumentRecord`, `ChunkRecord`, `IngestResult`, `IngestionProgressRecord`, `QueryResult`, protocol contract로 `EmbeddingClient.embed(...)`와 `GenerationClient.generate(...)`를 명시한다. 또한 composition helper 목록에 `create_service_registry(...)`까지 포함해, 외부 호출 경계와 composition 경계를 한 문서 안에서 연결한다.
+SRS는 construction path로 `RAGCore(...)`와 명시적 `DocmeshRAGServiceFactory.from_clients(...)`/`from_host_clients(...)` 조립 경로를, operational interface로 ingestion/query/document management/`health_check()`, public data type으로 `DocumentRecord`, `ChunkRecord`, `IngestResult`, `IngestionProgressRecord`, `QueryResult`, protocol contract로 `EmbeddingClient.embed(...)`와 `GenerationClient.generate(...)`를 명시한다. 환경변수에서 `RAGCore`를 직접 생성하는 public bootstrap entrypoint는 현재 계약에 포함하지 않는다. 또한 composition helper 목록은 `load_docmesh_settings()`와 service assembly 함수까지 포함해 외부 호출 경계와 composition 경계를 한 문서 안에서 연결한다.
 
 ## Functional structure
 

@@ -14,7 +14,7 @@ confidence: medium
 
 ## What is in scope now
 
-현재 PRD가 보장하는 범위는 `RAGCore` 단일 진입점, `bootstrap_rag_core` helper, 텍스트/파일 스트림/파일 경로 ingestion, 고정 길이 chunking + overlap, embedding batch 호출, Milvus Lite 검색, generation client 기반 답변 생성, token 및 선택적 Keycloak 기반 user scope, SQLite metadata persistence, `memory | local` document asset storage, 문서 조회/삭제, health check 집계까지다. 이 목록은 실제 public contract를 해석할 때 [[public-api-surface]], [[ingestion-pipeline]], [[user-scope-isolation]], [[persistence-and-restart-recovery]]를 함께 읽어야 함을 뜻한다.
+현재 PRD가 보장하는 범위는 `RAGCore` 단일 public facade, 명시적 factory/direct assembly, 텍스트/파일 스트림/파일 경로 ingestion, 고정 길이 chunking + overlap, embedding batch 호출, Milvus Lite 검색, generation client 기반 답변 생성, token 및 선택적 Keycloak 기반 user scope, SQLite metadata persistence, `memory | local` document asset storage, 문서 조회/삭제, health check 집계까지다. 환경변수에서 `RAGCore`를 한 번에 생성하는 public bootstrap entrypoint는 현재 범위에 포함되지 않는다. 이 목록은 실제 public contract를 해석할 때 [[public-api-surface]], [[ingestion-pipeline]], [[user-scope-isolation]], [[persistence-and-restart-recovery]]를 함께 읽어야 함을 뜻한다.
 
 ## What is explicitly out of scope
 
@@ -34,7 +34,7 @@ PRD는 외부 공개 HTTP API 서버, UI/Frontend, 비동기 job queue, 고급 r
 
 ## Acceptance-oriented reading
 
-이 문서를 위키에서 특히 중요하게 봐야 하는 이유는 acceptance criteria가 구조적 기대를 매우 구체적으로 고정하기 때문이다. 예를 들어 ingestion 단계 순서, file stream ingestion의 `source` 필수성, prompt의 `[System Prompt] / [Retrieved Context] / [User Query]` 섹션, `bootstrap_rag_core(...)`의 service factory 조립 가능성은 모두 구현 세부가 아니라 제품 계약에 해당한다. 이 점은 [[public-api-surface]]와 [[ingestion-pipeline]]의 내용을 해석할 때 우선순위를 정해 준다.
+이 문서를 위키에서 특히 중요하게 봐야 하는 이유는 acceptance criteria가 구조적 기대를 매우 구체적으로 고정하기 때문이다. 예를 들어 ingestion 단계 순서, file stream ingestion의 `source` 필수성, prompt의 `[System Prompt] / [Retrieved Context] / [User Query]` 섹션, 명시적 service-factory 조립 가능성은 모두 구현 세부가 아니라 제품 계약에 해당한다. 이 점은 [[public-api-surface]]와 [[ingestion-pipeline]]의 내용을 해석할 때 우선순위를 정해 준다.
 
 ## Related pages
 

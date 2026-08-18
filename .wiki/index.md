@@ -12,7 +12,7 @@
 <!-- Alphabetical within section -->
 
 ## Concepts
-- [[construction-paths-and-adapter-contracts]] — RAGCore 직접 조립 경로, bootstrap 경로, helper fallback, adapter 계약을 정리한 개념 페이지.
+- [[construction-paths-and-adapter-contracts]] — RAGCore 직접 조립 경로, 명시적 service-factory assembly, helper fallback, adapter 계약을 정리한 개념 페이지.
 - [[dms-configuration-and-assembly]] — DMS v0.9.0 host-owned component 조립, factory/direct 경로, resource ownership와 policy hook을 정리한 개념 페이지.
 - [[dms-document-lifecycle]] — DMS v0.9.0 upload·stream·idempotency·cursor 조회·삭제·reset lifecycle 계약.
 - [[dms-metadata-and-recovery]] — DMS v0.9.0 public/internal metadata projection, application-owned metadata, reconciliation을 정리한 개념 페이지.
@@ -41,7 +41,7 @@
 - [[future-considerations-for-sdk-api-mcp-rag-project]] — SDK 중심 RAG 코어를 API/MCP로 확장할 때의 구조, 운영, 버전, 보안, 비동기 고려사항.
 - [[minimizing-consumer-implementation-with-dms-core-improvements]] — 소비 프로젝트의 반복 document-management 코드를 줄이기 위한 dms-core upstream 개선 우선순위와 검증 기준.
 - [[minimizing-consumer-implementation-with-docmesh-py-core-improvements]] — 소비 프로젝트의 반복 composition 코드를 줄이기 위한 docmesh-py-core upstream 개선 우선순위와 검증 기준.
-- [[optimizing-docmesh-py-core-adoption]] — lifecycle 소유 environment bootstrap, 병렬 startup health, deterministic cleanup을 포함한 docmesh-py-core 적용 최적화와 구현 결과.
+- [[optimizing-docmesh-py-core-adoption]] — environment bootstrap을 public entrypoint로 노출하지 않고 명시적 factory assembly와 lifecycle ownership을 유지하는 적용 최적화.
 - [[sdk-first-with-api-and-mcp-evaluation]] — SDK를 canonical core로 두고 API/MCP를 별도 adapter product로 확장하는 전략 평가.
 - [[separating-dms-service-environment-variables-with-prefixes]] — DMS용 PostgreSQL·SQLite·MinIO 환경변수를 `DMS_` 접두사로 격리하는 SDK 제약, composition 구현 및 검증 결과.
 - [[structural-integration-of-docmesh-py-core-into-docmesh-rag-system-core]] — docmesh-py-core를 config/auth/bootstrap 계층으로 두고 rag-system-core와 분리 결합하는 구조 제안.

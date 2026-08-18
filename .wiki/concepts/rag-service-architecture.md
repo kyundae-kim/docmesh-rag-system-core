@@ -26,7 +26,7 @@ DocMesh RAG Core의 현재 구조는 외부에 `RAGCore` 단일 진입점을 유
 
 ## Composition layer
 
-현재 아키텍처 설명에는 `bootstrap_rag_core`, `DocmeshRAGServiceFactory`, `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store`, `create_rag_metadata_store`, `create_rag_document_storage`, `create_rag_chunker`, `load_docmesh_settings`, `resolve_user_id`가 함께 포함된다. SRS는 여기에 `create_service_registry(...)`까지 외부 composition interface로 명시하므로, 이 프로젝트에서 composition은 단순 편의 함수 모음이 아니라 [[public-api-surface]]와 [[service-factory-registry]]를 잇는 조립 경계다.
+현재 아키텍처의 composition 경계에는 `DocmeshRAGServiceFactory`, `DocmeshRAGServiceFactory.from_clients(...)`, `DocmeshRAGServiceFactory.from_host_clients(...)`, `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store`, `load_docmesh_settings`, `assemble_docmesh_services`, `create_docmesh_service_client`, `create_dms_sdk_from_clients`가 포함된다. 이 계층은 환경 설정을 읽는 하위 helper와 명시적으로 주입된 collaborator를 조합하지만, 환경변수에서 `RAGCore`를 직접 생성하는 단일 bootstrap entrypoint를 제공하지 않는다. 따라서 composition은 단순 편의 함수 모음이 아니라 [[public-api-surface]]와 [[service-factory-registry]]를 잇는 조립 경계다.
 
 ## Evolution path
 

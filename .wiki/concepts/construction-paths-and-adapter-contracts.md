@@ -16,9 +16,11 @@ confidence: medium
 
 가장 직접적인 생성 경로는 `RAGCore(...)`에 `embedding_client`, `generation_client`, `vector_store`, `metadata_store`, `document_storage`, `chunker`를 모두 주입하는 방식이다. 즉 `metadata_path`나 `chunk_size` 같은 설정값을 `RAGCore` 생성자에 바로 넘기는 예전 서술은 현재 구현과 맞지 않으며, 올바른 첫 성공 경로는 factory helper로 의존성을 만든 뒤 `RAGCore(...)`를 조립하는 것이다.
 
-## Bootstrap path
+## Factory assembly path
 
-대안 경로는 `bootstrap_rag_core(...)`다. 이 helper는 settings를 직접 로드하지 않고, `service_factory`가 embedding/generation/vector store/metadata store/storage/chunker를 생성하는 구조를 취한다. config guide는 이 경로를 `load_docmesh_settings()` → `create_service_registry(settings)` → `DocmeshRAGServiceFactory(settings=settings, registry=registry)` → `bootstrap_rag_core(...)` 순서의 **이미 설정/registry 계약이 준비된 환경**으로 해석해야 한다고 정리한다. 따라서 [[public-api-surface]]에서 보이는 bootstrap 경로는 실제로는 [[service-factory-registry]]와 DocMesh runtime helper를 경유하는 composition contract로 이해하는 편이 맞다.
+현재 구현은 `bootstrap_rag_core(...)` 또는 `bootstrap_rag_core_from_env(...)`처럼 환경변수에서 `RAGCore`까지 한 번에 생성하는 public entrypoint를 제공하지 않는다. 권장 경로는 host가 Engine·transport client·RAG collaborator를 명시적으로 준비한 뒤 `DocmeshRAGServiceFactory.from_host_clients(...)` 또는 `DocmeshRAGServiceFactory.from_clients(...)`를 호출하고, 반환된 factory의 `create_rag_core()`로 최종 Core를 조립하는 방식이다.
+
+`load_docmesh_settings()`와 `create_rag_*` helper는 선택된 환경 설정을 읽을 수 있는 하위 composition helper지만, 그 자체로 `RAGCore`를 생성하는 entrypoint는 아니다. 이 경계는 [[public-api-surface]]와 [[service-factory-registry]]를 잇는 현재 composition contract로 이해해야 한다.
 
 ## Composition helper behavior
 

@@ -18,7 +18,7 @@ confidence: high
 
 ## Role in the system
 
-`RAGCore`는 외부에 SDK형 인터페이스를 제공하지만 내부적으로는 [[ingestion-pipeline]], retrieval orchestration, generation, metadata persistence를 조합하는 façade 역할을 맡는다. 현재 제품 범위에서는 `bootstrap_rag_core(...)`와 service-factory 기반 조립 경로도 함께 제공되므로, `RAGCore`는 순수 domain facade이면서 동시에 조립 결과물의 최종 소비 경계다.
+`RAGCore`는 외부에 SDK형 인터페이스를 제공하지만 내부적으로는 [[ingestion-pipeline]], retrieval orchestration, generation, metadata persistence를 조합하는 façade 역할을 맡는다. 현재 repository에는 environment 기반으로 `RAGCore`를 생성하는 public bootstrap entrypoint가 없으며, 조립 결과물의 최종 소비 경계는 `RAGCore` 자체와 `DocmeshRAGServiceFactory.create_rag_core()`다.
 
 ## Constructor boundary
 

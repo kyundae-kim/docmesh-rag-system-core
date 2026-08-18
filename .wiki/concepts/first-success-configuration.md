@@ -18,7 +18,7 @@ confidence: medium
 
 ## Why this matters
 
-이 가이드는 "설정이 많아 보여도 실제 첫 호출엔 대부분 필요 없다"는 해석 기준을 제공한다. 예를 들어 Keycloak, custom collection, custom timeout, bootstrap helper, registry 주입은 첫 성공 호출의 필수 전제가 아니며, 오히려 너무 일찍 도입하면 디버깅 표면만 넓힌다. 따라서 초기 온보딩 설명은 [[construction-paths-and-adapter-contracts]]와 [[user-scope-isolation]]을 함께 참조하되, 최소 경로를 먼저 제시하는 편이 맞다.
+이 가이드는 "설정이 많아 보여도 실제 첫 호출엔 대부분 필요 없다"는 해석 기준을 제공한다. 예를 들어 Keycloak, custom collection, custom timeout, 별도 bootstrap helper, registry 주입은 첫 성공 호출의 필수 전제가 아니며, 오히려 너무 일찍 도입하면 디버깅 표면만 넓힌다. 따라서 초기 온보딩 설명은 [[construction-paths-and-adapter-contracts]]와 [[user-scope-isolation]]을 함께 참조하되, 명시적 factory/direct assembly의 최소 경로를 먼저 제시하는 편이 맞다.
 
 ## Milvus fallback implications
 

@@ -28,7 +28,7 @@ confidence: medium
 
 ### 1. Production 조립 경로를 하나로 고정한다
 
-일반 애플리케이션 경로에서는 registry나 개별 `create_*_client()` 호출을 여러 곳에서 조합하지 않는다. 하나의 bootstrap/factory가 다음을 순서대로 수행해야 한다.
+일반 애플리케이션 경로에서는 registry나 개별 `create_*_client()` 호출을 여러 곳에서 조합하지 않는다. 하나의 명시적 composition factory가 다음을 순서대로 수행해야 한다.
 
 1. 필요한 서비스 집합 결정
 2. 해당 서비스 설정만 로드·검증
@@ -82,7 +82,7 @@ healthcheck를 매 요청마다 반복하지 않는다. startup readiness, 주�
 
 ### P0 — 경로 수렴과 자원 소유권
 
-- production bootstrap을 `DocmeshRAGServiceFactory.from_env()` 같은 단일 entrypoint로 고정
+- production 조립을 `DocmeshRAGServiceFactory.from_clients(...)` 또는 `from_host_clients(...)`와 `create_rag_core()`의 명시적 경로로 고정
 - 설정 로드와 bundle 생성은 process lifecycle에서 한 번만 수행
 - `RAGCore`에는 완성된 adapter/storage/chunker만 주입
 - bundle, DMS SDK, RAGCore가 각각 무엇을 닫는지 명시하고 역순 cleanup 검증
@@ -130,15 +130,14 @@ healthcheck를 매 요청마다 반복하지 않는다. startup readiness, 주�
 
 ## Repository 적용 상태
 
-2026-07-28에 production bootstrap과 lifecycle 최적화를 실제 repository에 적용했다.
+현재 source 기준으로 environment에서 `RAGCore`를 한 번에 생성하는 public bootstrap entrypoint는 삭제되어 있지 않은 것이 아니라 **제공되지 않는다**. 공개 조립 경계는 다음과 같다.
 
-- `bootstrap_rag_core_from_env(...)` context manager를 package root와 composition package의 공개 진입점으로 추가했다. 이 helper는 환경 기반 service factory를 한 번 생성하고 `RAGCore`를 조립하며, context 종료 시 factory가 소유한 DMS SDK와 RAG service bundle을 정리한다.
-- `DocmeshRAGServiceFactory` 자체에 context manager 계약을 추가해 고급 사용자 정의 조립에서도 deterministic cleanup을 사용할 수 있게 했다.
-- `DocmeshRAGServiceFactory.from_env(...)`에 `parallel_healthchecks`를 추가했다. 새 production helper는 `check_on_startup=True`, `parallel_healthchecks=True`를 기본값으로 사용해 Ollama와 Milvus startup readiness를 병렬 실행한다.
-- 기존 DMS 설정 분리, DMS 우선 종료, DMS assembly 실패 시 RAG bundle rollback 계약은 그대로 유지했다.
-- `README.md`의 production 사용 경로를 새 context manager 중심으로 변경하고 public root export를 동기화했다.
+- package root는 `RAGCore`, `DocmeshRAGServiceFactory`, public records와 client protocol을 노출한다.
+- `DocmeshRAGServiceFactory`는 `from_clients(...)`와 `from_host_clients(...)`만 제공하고, `create_rag_core()`가 명시적으로 최종 Core를 조립한다.
+- `load_docmesh_settings()`와 `create_rag_*`는 하위 composition helper로서 명시적 settings/client가 없을 때 환경을 읽을 수 있지만, `RAGCore` 생성 entrypoint가 아니다.
+- 과거 `bootstrap_rag_core_from_env(...)`와 `DocmeshRAGServiceFactory.from_env(...)`를 추가했다는 2026-07-28 기록은 당시 구현에 대한 historical log이며 현재 source contract로 사용하지 않는다.
 
-설치된 `docmesh-py-core` v0.5.0의 `assemble_services(..., parallel_healthchecks=...)`, `ServiceBundle` context manager, health API signature를 실행 환경에서 확인했다. 신규 테스트는 public export, 환경 bootstrap, 병렬 health 전달, DMS→bundle 종료 순서를 검증하며 전체 repository 테스트 83개, `compileall`, `git diff --check`가 통과했다. mypy는 변경 전후 모두 기존 15개 오류로 동일해 신규 type regression은 없었다. 이후 SDK 버전 변경 시에는 [[verifying-docmesh-py-core-contract]] 절차로 이 경계를 다시 확인해야 한다.
+따라서 현재 권장 경로는 host-owned client 또는 이미 조립된 collaborator를 명시적으로 주입하고, Factory context에서 `create_rag_core()`를 호출하는 것이다. 이 lifecycle 경계는 [[construction-paths-and-adapter-contracts]]와 [[public-api-surface]]를 따른다.
 
 ## Related pages
 
