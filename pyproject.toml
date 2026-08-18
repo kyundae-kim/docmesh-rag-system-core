@@ -8,7 +8,7 @@ dependencies = [
     "dms-core>=0.9.0",
     "ollama>=0.6.2",
     "pydantic-settings>=2.14.1",
-    "pymilvus[milvus-lite]>=3.0.0",
+    "pymilvus[milvus-lite]>=3.0.1",
 ]
 
 [dependency-groups]
