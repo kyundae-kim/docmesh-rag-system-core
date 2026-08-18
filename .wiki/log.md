@@ -615,3 +615,26 @@
   - concepts/settings-loading-and-validation.md
 - Two pages now have `sources: []`, `confidence: low`, and a re-ingest warning.
 - Historical log entries were preserved because `log.md` is append-only.
+
+## [2026-08-18] ingest | dms-core v0.9.0 API and examples
+- Sources ingested:
+  - https://github.com/kyundae-kim/dms-core/wiki/API-Reference-v0.9.0
+  - https://github.com/kyundae-kim/dms-core/wiki/Examples-v0.9.0
+- Raw files created:
+  - raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md
+  - raw/articles/dms-core-examples-v0.9.0-2026-08-18.md
+- Wiki pages updated:
+  - entities/dms-core.md
+  - concepts/dms-configuration-and-assembly.md
+  - concepts/dms-document-lifecycle.md
+  - concepts/dms-metadata-and-recovery.md
+  - concepts/public-api-surface.md
+  - concepts/service-configuration-topology.md
+  - concepts/settings-loading-and-validation.md
+  - queries/applying-dms-core-as-document-storage.md
+  - queries/verifying-dms-core-contract.md
+- Navigation updated:
+  - index.md
+- Synthesis: v0.9.0 documents `DocumentManagementSDKFactory` and direct component assembly, host-owned resource lifecycle, 54 package-root exports, 26 sync/async/scoped facade operations, public/internal metadata separation, opaque cursor pagination, stream ownership, reset/recovery plans, host-defined policy/observer seams, and stable error fields. Older v0.7.0 assembly-plan, health facade, and environment-factory assumptions were marked historical rather than carried forward.
+- GitHub Wiki note: the supplied versioned page URLs were preserved in `source_url`; because no immutable wiki commit URL was supplied, the raw bodies represent the current Wiki revision fetched on 2026-08-18. The pages themselves identify commit `f7a40f1` and package version `0.9.0` as their documented baseline.
+- Verification: `verify_ingest.py` reported `pages=35 indexed=35 issues=0`; all two new raw body hashes matched and all nine affected pages passed frontmatter, index, and wikilink checks.

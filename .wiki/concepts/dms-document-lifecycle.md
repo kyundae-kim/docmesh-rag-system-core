@@ -1,34 +1,40 @@
 ---
 title: DMS Document Lifecycle
 created: 2026-07-27
-updated: 2026-08-04
+updated: 2026-08-18
 type: concept
 tags: [sdk, api, persistence, testing, integration]
-sources: [raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md, raw/articles/dms-core-examples-v0.6.0-2026-07-27.md, raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md, raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
+sources: [raw/articles/dms-core-api-reference-v0.6.0-2026-07-27.md, raw/articles/dms-core-examples-v0.6.0-2026-07-27.md, raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md, raw/articles/dms-core-examples-v0.7.0-2026-08-04.md, raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md, raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 confidence: medium
 ---
 
 # DMS Document Lifecycle
 
-v0.7.0의 lifecycle은 bytes, 파일 경로, 정확한 크기를 선언한 동기 binary stream을 같은 metadata·size·filename 정책으로 처리하며, 기본 SDK와 scoped/async facade가 같은 작업 의미를 공유한다. 입력 stream은 caller-owned이고, 파일 경로 API가 SDK 내부에서 연 파일은 SDK가 닫는다. SDK가 반환한 download stream은 caller가 context manager·`close()`·`aclose()`로 닫아야 한다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
+v0.9.0 lifecycle은 bytes, 파일 경로, 정확한 크기를 선언한 동기 binary stream을 같은 metadata·size·filename 정책으로 처리하며, 기본·scoped·async facade가 같은 작업 의미를 공유한다. 입력 stream은 caller-owned이고, SDK가 내부에서 연 file과 반환한 content stream은 SDK가 정리한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 
 ## Upload and idempotency
 
-`UploadDocumentRequest`는 비어 있지 않은 bytes, 정규화 가능한 filename/content type, optional document id·metadata·checksum·idempotency scope/key를 받는다. `UploadDocumentStreamRequest`는 양수 `size`와 caller stream을 요구하며 실제 읽은 byte 수가 선언값과 다르면 검증 오류다. bytes/file/known-size stream에는 plan의 `max_file_size`가 공통 적용된다. unknown-size input, async input stream, known-size stream별 checksum·idempotency는 현재 v0.7.0 upload request 계약에 포함되지 않는다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]
+`UploadDocumentRequest`는 비어 있지 않은 bytes, filename, content type, optional document id·metadata·created_by·checksum·idempotency scope/key를 받는다. `UploadDocumentStreamRequest`는 양수 `size`와 caller stream을 요구하며 실제 읽은 byte 수가 선언값과 다르면 object cleanup 뒤 `ValidationError`다. `max_file_size`는 bytes/file/known-size stream에 공통 적용되고, unknown-size stream과 async input stream upload는 현재 공개 API가 아니다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
 
-bytes idempotency는 영속 `operation_store`와 비어 있지 않은 scope/key가 함께 있어야 한다. 동일 scope/key와 같은 요청은 같은 document ID 및 `created=False`로 replay되고, 다른 fingerprint는 conflict, 기존 pending 작업은 retryable in-progress 오류다. `get_upload_operation()`은 정확한 scope/key로 외부 상태를 조회한다.^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
+metadata의 타입은 `object`이며 DMS가 업무 schema·보안 규칙·정규화·JSON 직렬화를 정의하거나 검증하지 않는다. metadata는 upload idempotency fingerprint에서 제외되므로 외부 응답이나 메시지로 내보낼 때의 serialization과 secret 검사는 host 책임이다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 
-업로드는 object를 먼저 저장하고 metadata를 기록한다. metadata 저장 실패 시 object rollback을 시도하며 rollback까지 실패하면 `ConsistencyError`가 된다. 동일 `document_id`는 duplicate 오류다. 결과는 public-safe metadata와 `created` 플래그를 포함한다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]
+persistent `operation_store`가 있고 scope/key가 있으면 같은 fingerprint의 upload는 같은 document ID와 `created=False`로 replay된다. 다른 fingerprint는 `IdempotencyConflictError`, pending operation은 `IdempotencyInProgressError`, 없는 기록은 `UploadOperationNotFoundError`다. direct component assembly에서 operation store를 생략하면 idempotency upload와 operation 조회는 `ValidationError`다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
 
 ## Read and stream ownership
 
-작은 본문은 `get_document_content()`로 받고, 큰 본문은 `get_document_content_stream()`, `iter_document_chunks()`, `copy_document_to()`로 소비한다. SDK-owned source stream은 전체 소진·읽기 오류·조기 종료에서 닫히지만 caller-owned sink는 닫지 않는다. 크기 또는 checksum 불일치는 `ConsistencyError`다. async facade는 같은 작업을 awaitable로 제공하고 worker thread에서 sync storage 작업을 실행한다. 이미 시작한 변경 작업이 취소되어도 정합성 경계까지 끝난 뒤 취소를 전파할 수 있으므로, 취소를 곧 성공·rollback 완료로 간주하지 않고 operation/metadata 상태를 확인해야 한다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
+작은 본문은 `get_document_content()`로 받고, 큰 본문은 `get_document_content_stream()`, `iter_document_chunks()`, `copy_document_to()`로 소비한다. `iter_chunks()`는 자동 close 계약이 아니며, `iter_chunks_closing()`은 정상 소진·read error·명시적 iterator close에서 SDK-owned source를 정리한다. `copy_document_to()`는 checksum과 저장 크기를 검증하고 caller-owned sink는 닫지 않는다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 
-## Read, paginate, and delete
+async facade는 작업을 awaitable로 제공하고 `iter_documents`·`iter_recovery_candidates`·`iter_document_chunks`는 async iterator다. async content stream은 정상 소진·read error·cancellation·context 종료에서 source를 정리한다. 상태 변경 작업이 취소되어도 이미 시작한 worker가 안전한 완료 경계에 도달한 뒤 `CancelledError`를 전달할 수 있으므로, 취소를 rollback 완료로 간주하지 않고 metadata/operation 상태를 확인한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
 
-일반 metadata와 목록은 `DELETING`·`DELETED` 문서를 숨긴다. 목록은 `created_at`, `document_id` 내림차순이며 `limit`은 1~1000이다. cursor는 opaque token이고 다음 호출에 동일한 `status`와 `limit`을 전달해야 한다. `iter_documents()`와 recovery iterator는 이 cursor/offset 유지 코드를 facade 내부로 숨긴다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]
+## Read, paginate, and scope
 
-기본 삭제는 soft delete이며 `soft_delete_document()`와 `hard_delete_document()`로 의도를 명시할 수 있다. 삭제 중 metadata를 `DELETING`으로 만들고 object를 정리한 뒤 `DELETED` 또는 hard-delete 상태로 마무리한다. object 삭제 실패는 `FAILED`와 `StorageError`, 후속 metadata 실패는 `ConsistencyError`를 남길 수 있다. 전역 `clear_all_data()`와 `initialize_for_data_load()`는 metadata·document object·upload operation records를 포함하는 별도 관리 작업이며, 부분 실패 count와 `ready_for_data_load=False`를 결과에 보존한다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
+일반 metadata와 목록은 `DELETING`·`DELETED` 문서를 숨긴다. 목록은 `created_at`과 immutable `document_id`의 안정적인 내림차순 cursor 순서이며 `limit`은 1~1000이다. cursor는 opaque이고 status filter와 page size에 결합되므로 다음 호출에 같은 조건을 전달해야 한다. 일반 문서 목록에는 offset API가 없다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
+
+`DmsOperationContext`는 access context, created_by, idempotency scope, audit actor, default metadata를 scoped facade의 기본값으로 제공한다. 작업에 명시한 값이 context 기본값보다 우선하고, scoped facade는 shared SDK lifecycle을 소유하지 않는다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
+
+## Delete and reset
+
+기본 `delete_document()`는 soft delete이며 `soft_delete_document()`·`hard_delete_document()`로 의도를 명시할 수 있다. object 삭제 실패는 metadata를 best-effort로 `FAILED`로 전환한 뒤 `StorageError`가 될 수 있고, object 삭제 뒤 metadata 처리 실패는 `ConsistencyError`로 남을 수 있다. `clear_all_data()`와 `initialize_for_data_load()`는 metadata, `documents/` prefix object, upload operation record를 대상으로 하며 한 store 실패 뒤에도 가능한 cleanup을 계속한다. 부분 실패는 `DataResetError.result`, `errors`, `failed_stores`, `ready_for_data_load=False`로 확인한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 
 ## Related pages
 
@@ -36,5 +42,5 @@ bytes idempotency는 영속 `operation_store`와 비어 있지 않은 scope/key�
 - [[dms-metadata-and-recovery]]
 - [[dms-configuration-and-assembly]]
 - [[public-api-surface]]
-- [[service-health-orchestration]]
+- [[user-scope-isolation]]
 - [[applying-dms-core-as-document-storage]]
