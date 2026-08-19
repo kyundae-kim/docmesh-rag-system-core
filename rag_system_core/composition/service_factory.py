@@ -59,6 +59,8 @@ class RAGServiceFactory(Protocol):
 @dataclass(slots=True)
 class DocmeshRAGServiceFactory:
     dms_sdk: dms.DefaultDocumentManagementSDK
+    # Retained for source compatibility; dms-core v0.9 facades do not expose
+    # a close lifecycle and the injected Engine/MinIO clients remain caller-owned.
     owns_dms_sdk: bool = False
     embedding_client: EmbeddingClient | None = None
     generation_client: GenerationClient | None = None
@@ -81,15 +83,14 @@ class DocmeshRAGServiceFactory:
         check_on_startup: bool = False,
     ) -> "DocmeshRAGServiceFactory":
         """Assemble RAG services exclusively from host-owned clients."""
+        del check_on_startup  # dms-core v0.9 has no SDK startup-health hook.
         dms_sdk = dms_runtime.create_dms_sdk_from_clients(
             engine=engine,
             minio_client=minio_client,
             bucket_name=bucket_name,
-            plan=dms.DmsAssemblyPlan(check_on_startup=check_on_startup),
         )
         return cls(
             dms_sdk=dms_sdk,
-            owns_dms_sdk=True,
             embedding_client=embedding_client,
             generation_client=generation_client,
             vector_store=vector_store,
@@ -191,11 +192,6 @@ class DocmeshRAGServiceFactory:
         for metadata_store in metadata_stores:
             try:
                 metadata_store.close()
-            except Exception as exc:
-                cleanup_errors.append(exc)
-        if self.owns_dms_sdk:
-            try:
-                self.dms_sdk.close()
             except Exception as exc:
                 cleanup_errors.append(exc)
         if len(cleanup_errors) == 1:

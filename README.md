@@ -6,7 +6,7 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 - 문서 적재(ingestion)
 - 사용자 스코프 기반 검색(retrieval)
 - 생성 모델 호출을 통한 답변 생성(generation)
-- SQLite + Milvus Lite 기반 검색 persistence
+- SQLite + configured Milvus adapter 기반 검색 persistence
 - dms-core + MinIO 기반 원문 lifecycle
 - DocMesh settings / `ServiceBundle` / health-check 연동을 위한 composition 경로 제공
 
@@ -36,7 +36,7 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 
 ### persistence
 - metadata store: SQLite + SQLAlchemy ORM
-- vector store: Milvus Lite
+- vector store: standard `MilvusLiteVectorStore` adapter (local Milvus Lite or remote Milvus according to the supplied client/configuration)
 - 동일한 metadata / vector store 구성을 다시 열면 restart recovery가 가능합니다.
 
 ---
@@ -74,10 +74,10 @@ from rag_system_core import (
 
 `pyproject.toml` 기준 요구사항:
 - Python `>= 3.11`
-- `dms-core v0.7.0` (Python package name `dms`)
+- `dms-core>=0.9.0` (Python package name `dms`)
 - `ollama>=0.6.2`
 - `pydantic-settings>=2.14.1`
-- `pymilvus[milvus-lite]>=3.0.0`
+- `pymilvus[milvus-lite]>=3.0.1`
 
 권장 설치:
 
@@ -89,30 +89,13 @@ uv sync
 
 ---
 
-## 환경 설정을 직접 사용하는 경우
+## 설정 및 조립
 
-환경 기반 runtime 조립은 convenience factory가 자동으로 수행하지 않습니다. 환경 설정을 사용할 경우 상위 애플리케이션이 composition layer의 settings와 service bundle을 읽고 `create_rag_*` helper로 RAG adapter를 만든 뒤, DMS용 Engine/MinIO client와 RAG collaborator를 `DocmeshRAGServiceFactory` 또는 `RAGCore(...)`에 전달해야 합니다. `DocmeshRAGServiceFactory`는 settings나 bundle을 보관하거나 이를 이용해 collaborator를 지연 생성하지 않습니다.
-
-```env
-OLLAMA_HOST=http://ollama:11434
-OLLAMA_EMBEDDING_MODEL=bge-m3
-OLLAMA_GENERATION_MODEL=gpt-oss:20b
-MILVUS_ENDPOINT=./data/metadata.milvus.db
-DMS_METADATA_BACKEND=sqlite
-DMS_SQLITE_PATH=./data/dms.db
-DMS_MINIO_ENDPOINT=minio:9000
-DMS_MINIO_ACCESS_KEY=replace-me
-DMS_MINIO_SECRET_KEY=replace-me
-DMS_MINIO_BUCKET=documents
-DMS_MINIO_SECURE=false
-```
+RAG와 DMS composition layer는 process 환경변수를 읽지 않습니다. 상위 애플리케이션이 Ollama·Milvus client와 model, collection, timeout 값을 직접 생성·결정하고, DMS용 SQLAlchemy `Engine`, MinIO client, bucket 이름을 명시적으로 조립한 뒤 `DocmeshRAGServiceFactory.from_host_clients(...)` 또는 `create_rag_*` helper에 전달해야 합니다.
 
 추가로 보통 아래 경로에 쓰기 가능해야 합니다.
 - `metadata_path`가 가리키는 SQLite 파일 경로
-- `DMS_SQLITE_PATH`가 가리키는 DMS metadata 파일 경로
-- DocMesh Milvus 설정이 local URI를 사용하는 경우 해당 파일 경로
-
-위 환경변수 예시는 직접 조립하는 environment runtime에서 사용할 canonical 설정 이름을 보여 줍니다. client-injection 경로는 아래와 같이 필요한 transport/client와 모델·저장소 값을 직접 전달하므로 이 환경변수 세트를 읽지 않습니다.
+- 상위 애플리케이션이 생성한 Milvus client가 사용하는 파일 경로
 
 ---
 
@@ -131,14 +114,6 @@ from rag_system_core import AuthenticatedUser
 
 user = AuthenticatedUser(
     sub="user-a",
-    preferred_username="user-a",
-    email=None,
-    given_name=None,
-    family_name=None,
-    name=None,
-    realm_roles=[],
-    client_roles={},
-    claims={},
 )
 ```
 
@@ -212,7 +187,7 @@ print(deleted)
 
 ## 조립 경로
 
-`RAGCore(...)`는 fully assembled dependency graph를 받는 의존성 주입형 생성자입니다. environment runtime이 필요한 경우 상위 애플리케이션이 설정과 service bundle을 직접 조립하고 `create_rag_*` helper와 DMS runtime으로 명시적 collaborator를 만든 뒤 `RAGCore(...)`에 전달하며 lifecycle을 관리해야 합니다. 이미 조립된 RAG collaborator와 DMS용 Engine/MinIO client를 주입하는 경로에서는 `DocmeshRAGServiceFactory.from_clients(...)`를 사용할 수 있고, 원시 host-owned transport client에서 시작하면서 Factory를 직접 사용할 경우에는 `DocmeshRAGServiceFactory.from_host_clients(...)`를 사용할 수 있습니다. Factory의 `create_rag_core(...)`는 보유한 collaborator를 최종 `RAGCore`로 조립하며, 정상적인 Factory 조립에는 `metadata_engine`이 필요합니다. 두 classmethod 경로 모두 context manager이며, classmethod가 생성한 DMS SDK를 소유합니다. `metadata_path`로 생성한 MetadataStore와 host-owned `metadata_engine`을 주입한 MetadataStore/Engine의 lifecycle은 각각 호출 경로의 소유자 규칙을 따릅니다.
+`RAGCore(...)`는 fully assembled dependency graph를 받는 의존성 주입형 생성자입니다. 상위 애플리케이션은 service factory를 직접 구성하거나 아래의 host-owned client service-factory 경로를 사용해야 합니다. 이미 조립된 RAG collaborator를 주입하는 경로에서는 `DocmeshRAGServiceFactory.from_clients(...)`를 사용할 수 있고, 원시 host-owned transport client에서 시작할 경우에는 `DocmeshRAGServiceFactory.from_host_clients(...)`를 사용할 수 있습니다. Factory의 `create_rag_core(...)`는 보유한 collaborator를 최종 `RAGCore`로 조립하며, 정상적인 Factory 조립에는 `metadata_engine`이 필요합니다. 두 classmethod 경로 모두 context manager이지만 dms-core v0.9 SDK에는 `close()` lifecycle이 없으므로 DMS SDK와 host-owned Engine/raw client를 닫지 않습니다. `metadata_path`로 Factory가 생성해 추적한 MetadataStore만 Factory `close()`에서 정리하며, host-owned `metadata_engine` 기반 MetadataStore의 lifecycle은 호출자가 관리합니다.
 
 ### host-owned clients
 
@@ -254,7 +229,9 @@ with DocmeshRAGServiceFactory.from_host_clients(
     print(core.health_check().ok)
 ```
 
-context 종료 시 host-client 경로에서 Factory가 닫는 것은 Factory가 생성한 DMS SDK입니다. `Engine`, `metadata_engine`, MinIO, Ollama, Milvus raw client는 caller-owned이며 상위 애플리케이션 lifecycle에서 정리합니다. Factory가 생성한 RAG adapter와 MetadataStore는 이 transport client를 소유하지 않습니다. `DocmeshRAGServiceFactory.from_clients(...)`는 이미 만들어진 RAG collaborator를 주입받는 경로입니다. Factory를 직접 사용할 때는 context 안에서 `create_rag_core(...)`를 호출하고, 반환된 Core도 같은 context 안에서 사용해야 합니다.
+context 종료 시 host-client 경로에서 Factory는 dms-core SDK, `Engine`, `metadata_engine`, MinIO, Ollama, Milvus raw client를 닫지 않습니다. 이 자원은 caller-owned이며 상위 애플리케이션 lifecycle에서 정리합니다. Factory가 `metadata_path`로 생성한 compatibility MetadataStore만 Factory가 추적·정리합니다. Factory가 생성한 RAG adapter와 MetadataStore는 주입된 transport client를 소유하지 않습니다. `DocmeshRAGServiceFactory.from_clients(...)`는 이미 만들어진 RAG collaborator를 주입받는 경로입니다. Factory를 직접 사용할 때는 context 안에서 `create_rag_core(...)`를 호출하고, 반환된 Core도 같은 context 안에서 사용해야 합니다.
+
+참고로 `from_clients(...)`와 `from_host_clients(...)`의 `check_on_startup` 인자는 현재 dms-core v0.9 조립 경로에서 호환성을 위해 유지되지만 startup health check를 실행하지 않습니다. startup 점검이 필요하면 `build_docmesh_runtime_plan(..., check_on_startup=True)`와 `assemble_docmesh_services(...)` 경로를 사용합니다.
 
 ---
 
@@ -277,40 +254,13 @@ context 종료 시 host-client 경로에서 Factory가 닫는 것은 Factory가 
 - prompt 구조에 `[System Prompt]`, `[Retrieved Context]`, `[User Query]` 포함
 - user scope 기반 retrieval / 조회 / 삭제 제한
 - 삭제는 vector → DMS soft delete → RAG metadata 순서로 실행해 실패 시 metadata 기반 재시도를 보존
-- health check에서 metadata, Milvus, DMS 및 사용 가능한 dependency status 집계
+- health check에서 metadata, Milvus 및 `check()`를 제공하는 embedding/generation/document-storage dependency status 집계
 
 ---
 
-## 환경변수 요약
+## DMS 조립 경계
 
-### Ollama
-- `OLLAMA_HOST`
-- `OLLAMA_EMBEDDING_MODEL`
-- `OLLAMA_GENERATION_MODEL`
-- `OLLAMA_REQUEST_TIMEOUT_SECONDS`
-
-### Milvus
-- `MILVUS_ENDPOINT`
-- `MILVUS_COLLECTION`
-- `MILVUS_REQUEST_TIMEOUT_SECONDS`
-- `MILVUS_CONNECT_TIMEOUT_SECONDS`
-
-### DMS / MinIO
-- `DMS_METADATA_BACKEND` (`sqlite` 또는 `postgresql`)
-- `DMS_SQLITE_PATH` 또는 `DMS_POSTGRES_*`
-- `DMS_MINIO_ENDPOINT`
-- `DMS_MINIO_ACCESS_KEY`
-- `DMS_MINIO_SECRET_KEY`
-- `DMS_MINIO_BUCKET`
-- `DMS_MINIO_SECURE`
-- `DMS_CONFIGURATION_STRICT`
-
-`DocmeshRAGServiceFactory.from_host_clients(...)`를 사용하는 경우 위 `OLLAMA_*`, `MILVUS_*`, `DMS_*` 환경변수는 필요하지 않습니다. 상위 애플리케이션이 만든 DMS용 및 metadata용 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 전달합니다.
-
-legacy 패턴은 현재 지원 대상으로 보지 않습니다.
-- `OLLAMA_EMBED__*`
-- `OLLAMA_GENERATE__*`
-- `MILVUS__*`
+`DocmeshRAGServiceFactory.from_host_clients(...)`는 DMS 환경변수나 RAG 환경변수를 읽지 않습니다. 상위 애플리케이션이 만든 DMS용 및 metadata용 SQLAlchemy `Engine`, MinIO client, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 전달해야 합니다.
 
 ---
 

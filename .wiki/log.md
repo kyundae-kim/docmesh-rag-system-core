@@ -615,3 +615,100 @@
   - concepts/settings-loading-and-validation.md
 - Two pages now have `sources: []`, `confidence: low`, and a re-ingest warning.
 - Historical log entries were preserved because `log.md` is append-only.
+
+## [2026-08-18] ingest | dms-core v0.9.0 API and examples
+- Sources ingested:
+  - https://github.com/kyundae-kim/dms-core/wiki/API-Reference-v0.9.0
+  - https://github.com/kyundae-kim/dms-core/wiki/Examples-v0.9.0
+- Raw files created:
+  - raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md
+  - raw/articles/dms-core-examples-v0.9.0-2026-08-18.md
+- Wiki pages updated:
+  - entities/dms-core.md
+  - concepts/dms-configuration-and-assembly.md
+  - concepts/dms-document-lifecycle.md
+  - concepts/dms-metadata-and-recovery.md
+  - concepts/public-api-surface.md
+  - concepts/service-configuration-topology.md
+  - concepts/settings-loading-and-validation.md
+  - queries/applying-dms-core-as-document-storage.md
+  - queries/verifying-dms-core-contract.md
+- Navigation updated:
+  - index.md
+- Synthesis: v0.9.0 documents `DocumentManagementSDKFactory` and direct component assembly, host-owned resource lifecycle, 54 package-root exports, 26 sync/async/scoped facade operations, public/internal metadata separation, opaque cursor pagination, stream ownership, reset/recovery plans, host-defined policy/observer seams, and stable error fields. Older v0.7.0 assembly-plan, health facade, and environment-factory assumptions were marked historical rather than carried forward.
+- GitHub Wiki note: the supplied versioned page URLs were preserved in `source_url`; because no immutable wiki commit URL was supplied, the raw bodies represent the current Wiki revision fetched on 2026-08-18. The pages themselves identify commit `f7a40f1` and package version `0.9.0` as their documented baseline.
+- Verification: `verify_ingest.py` reported `pages=35 indexed=35 issues=0`; all two new raw body hashes matched and all nine affected pages passed frontmatter, index, and wikilink checks.
+
+## [2026-08-18] lint | 35 issues found
+- High: 113 page `sources:` references point to 30 raw files that are no longer present after earlier raw-capture cleanup. Affected pages: `concepts/construction-paths-and-adapter-contracts.md`, `concepts/dms-configuration-and-assembly.md`, `concepts/dms-document-lifecycle.md`, `concepts/dms-metadata-and-recovery.md`, `concepts/first-success-configuration.md`, `concepts/ingestion-pipeline.md`, `concepts/interface-roadmap.md`, `concepts/persistence-and-restart-recovery.md`, `concepts/product-scope-and-requirements.md`, `concepts/project-roadmap.md`, `concepts/public-api-surface.md`, `concepts/rag-service-architecture.md`, `concepts/service-configuration-topology.md`, `concepts/service-factory-registry.md`, `concepts/service-health-orchestration.md`, `concepts/settings-loading-and-validation.md`, `concepts/software-requirements-and-traceability.md`, `concepts/user-scope-isolation.md`, `entities/dms-core.md`, `entities/ragcore.md`, `queries/applying-dms-core-as-document-storage.md`, `queries/directory-refactoring-plan-for-docmesh-runtime-integration.md`, `queries/future-considerations-for-sdk-api-mcp-rag-project.md`, `queries/minimizing-consumer-implementation-with-dms-core-improvements.md`, `queries/minimizing-consumer-implementation-with-docmesh-py-core-improvements.md`, `queries/optimizing-docmesh-py-core-adoption.md`, `queries/sdk-first-with-api-and-mcp-evaluation.md`, `queries/separating-dms-service-environment-variables-with-prefixes.md`, `queries/structural-integration-of-docmesh-py-core-into-docmesh-rag-system-core.md`, `queries/verifying-dms-core-contract.md`.
+- Low: `confidence: low` requires review on `concepts/keycloak-auth-service.md`, `entities/docmesh-config.md`, `entities/docmesh-py-core.md`, `queries/developing-with-docmesh-py-core.md`, and `queries/verifying-docmesh-py-core-contract.md`.
+- Clean checks: broken wikilinks 0, orphan pages 0, index omissions 0, raw SHA-256 drift 0, stale-content findings 0, unknown tags 0, pages over 200 lines 0.
+- Recommendation: re-ingest the missing immutable raw sources or remove/replace their `sources:` references in a separate traceability cleanup. Raw files were not modified during lint.
+
+## [2026-08-18] update | deleted raw-source references removed
+- Scope: removed references to raw files that are absent from the current `raw/` tree; existing raw files were not modified.
+- Wiki pages updated:
+  - concepts/construction-paths-and-adapter-contracts.md
+  - concepts/dms-configuration-and-assembly.md
+  - concepts/dms-document-lifecycle.md
+  - concepts/dms-metadata-and-recovery.md
+  - concepts/first-success-configuration.md
+  - concepts/ingestion-pipeline.md
+  - concepts/interface-roadmap.md
+  - concepts/persistence-and-restart-recovery.md
+  - concepts/product-scope-and-requirements.md
+  - concepts/project-roadmap.md
+  - concepts/public-api-surface.md
+  - concepts/rag-service-architecture.md
+  - concepts/service-configuration-topology.md
+  - concepts/service-factory-registry.md
+  - concepts/service-health-orchestration.md
+  - concepts/settings-loading-and-validation.md
+  - concepts/software-requirements-and-traceability.md
+  - concepts/user-scope-isolation.md
+  - entities/dms-core.md
+  - entities/ragcore.md
+  - queries/applying-dms-core-as-document-storage.md
+  - queries/directory-refactoring-plan-for-docmesh-runtime-integration.md
+  - queries/future-considerations-for-sdk-api-mcp-rag-project.md
+  - queries/minimizing-consumer-implementation-with-dms-core-improvements.md
+  - queries/minimizing-consumer-implementation-with-docmesh-py-core-improvements.md
+  - queries/optimizing-docmesh-py-core-adoption.md
+  - queries/sdk-first-with-api-and-mcp-evaluation.md
+  - queries/separating-dms-service-environment-variables-with-prefixes.md
+  - queries/structural-integration-of-docmesh-py-core-into-docmesh-rag-system-core.md
+  - queries/verifying-dms-core-contract.md
+- Removed: 113 frontmatter source references and 83 body provenance markers.
+- Pages with no remaining source files now use `sources: []`; page content and existing valid source references were preserved.
+- Verification: `verify_ingest.py` reported `pages=35 indexed=35 issues=0`; custom source audit reported missing source refs `0`, remaining missing body refs `0`, and raw SHA-256 mismatches `0`.
+
+## [2026-08-18] query | 프로젝트 엔트리 포인트
+- Question:
+  - 이 프로젝트의 엔트리 포인트는?
+- Wiki pages consulted:
+  - entities/ragcore.md
+  - concepts/public-api-surface.md
+  - concepts/construction-paths-and-adapter-contracts.md
+  - concepts/rag-service-architecture.md
+- Answer: The external SDK entry point is `from rag_system_core import RAGCore`; the recommended composition path is `bootstrap_rag_core(...)` after settings and service-registry preparation.
+- Query was a simple lookup and was not filed as a separate query page.
+
+## [2026-08-18] update | environment-based RAG entrypoint removal
+- User correction: an entrypoint that creates `RAGCore` from environment variables should not be part of the current public contract.
+- Repository verification:
+  - package root does not export `bootstrap_rag_core_from_env`.
+  - `DocmeshRAGServiceFactory` does not expose `from_env`.
+  - Current assembly uses explicit `from_clients(...)` / `from_host_clients(...)` followed by `create_rag_core()`.
+- Wiki pages updated:
+  - entities/ragcore.md
+  - concepts/construction-paths-and-adapter-contracts.md
+  - concepts/product-scope-and-requirements.md
+  - concepts/software-requirements-and-traceability.md
+  - concepts/rag-service-architecture.md
+  - concepts/service-factory-registry.md
+  - concepts/first-success-configuration.md
+  - queries/optimizing-docmesh-py-core-adoption.md
+  - queries/separating-dms-service-environment-variables-with-prefixes.md
+  - queries/verifying-docmesh-py-core-contract.md
+  - index.md
+- Historical log and proposal references were retained and explicitly marked as historical where applicable.

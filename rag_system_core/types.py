@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass(frozen=True)
@@ -9,14 +8,6 @@ class AuthenticatedUser:
     """Authenticated identity required by the RAG user-scope boundary."""
 
     sub: str
-    preferred_username: str | None
-    email: str | None
-    given_name: str | None
-    family_name: str | None
-    name: str | None
-    realm_roles: list[str]
-    client_roles: dict[str, list[str]]
-    claims: dict[str, Any]
 
 
 @dataclass(slots=True)

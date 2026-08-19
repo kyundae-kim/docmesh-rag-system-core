@@ -4,7 +4,6 @@ from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerat
 from rag_system_core.composition.docmesh_runtime import (
     ServiceBundle,
     create_docmesh_service_client,
-    load_docmesh_settings,
 )
 from rag_system_core.composition.configuration import OllamaConfig, ServiceConfigs
 from rag_system_core.ports import EmbeddingClient, GenerationClient, VectorStore
@@ -27,12 +26,9 @@ def _resolve_ollama(
     *,
     settings: ServiceConfigs | None,
     bundle: ServiceBundle | None,
-    model: str | None,
     client: object | None,
 ) -> tuple[object, OllamaConfig | None]:
     resolved_settings = _resolve_settings(settings=settings, bundle=bundle)
-    if resolved_settings is None and (model is None or client is None):
-        resolved_settings = load_docmesh_settings(services={"ollama"})
     if client is None:
         client = create_docmesh_service_client("ollama", settings=resolved_settings, bundle=bundle)
     if client is None:
@@ -51,7 +47,6 @@ def create_rag_embedding_client(
     resolved_client, config = _resolve_ollama(
         settings=settings,
         bundle=bundle,
-        model=model,
         client=client,
     )
     return OllamaEmbeddingClient(
@@ -70,7 +65,6 @@ def create_rag_generation_client(
     resolved_client, config = _resolve_ollama(
         settings=settings,
         bundle=bundle,
-        model=model,
         client=client,
     )
     return OllamaGenerationClient(
@@ -88,8 +82,6 @@ def create_rag_vector_store(
     client: object | None = None,
 ) -> VectorStore:
     resolved_settings = _resolve_settings(settings=settings, bundle=bundle)
-    if resolved_settings is None and (client is None or collection_name is None or timeout is None):
-        resolved_settings = load_docmesh_settings(services={"milvus"})
     config = resolved_settings.milvus if resolved_settings is not None else None
     configured_collection_name = config.collection if config is not None else None
     configured_timeout = float(config.request_timeout_seconds) if config is not None else None

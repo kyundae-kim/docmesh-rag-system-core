@@ -1,16 +1,16 @@
 ---
 title: Interface Roadmap
 created: 2026-06-11
-updated: 2026-06-11
+updated: 2026-08-18
 type: concept
 tags: [roadmap, api, mcp, sdk, integration]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-11.md, raw/articles/docmesh-rag-core-prd-2026-06-11.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md]
+sources: []
 confidence: medium
 ---
 
 # Interface Roadmap
 
-현재 제품의 우선 인터페이스는 Python SDK 형태의 `RAGCore`이지만, PRD는 이후 FastAPI 기반 API 서비스, async 처리, 외부 vector DB 연동, 더 나아가 서비스 분리로의 확장을 명시한다. 사용자가 밝힌 위키 도메인 요구 역시 SDK를 출발점으로 삼되 추후 API와 MCP 등 다양한 인터페이스로 연결하는 방향과 일치한다.^[raw/articles/docmesh-rag-core-prd-2026-06-11.md]
+현재 제품의 우선 인터페이스는 Python SDK 형태의 `RAGCore`이지만, PRD는 이후 FastAPI 기반 API 서비스, async 처리, 외부 vector DB 연동, 더 나아가 서비스 분리로의 확장을 명시한다. 사용자가 밝힌 위키 도메인 요구 역시 SDK를 출발점으로 삼되 추후 API와 MCP 등 다양한 인터페이스로 연결하는 방향과 일치한다.
 
 ## Near-term direction
 

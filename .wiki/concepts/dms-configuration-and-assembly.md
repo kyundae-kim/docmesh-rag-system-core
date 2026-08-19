@@ -1,10 +1,10 @@
 ---
 title: DMS Configuration and Assembly
 created: 2026-07-27
-updated: 2026-08-04
+updated: 2026-08-18
 type: concept
 tags: [config, sdk, integration, persistence, security, observability]
-sources: [raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md, raw/articles/dms-core-examples-v0.6.0-2026-07-27.md, raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md, raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md, raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
+sources: [raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md, raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 confidence: medium
 ---
 
@@ -12,37 +12,34 @@ confidence: medium
 
 ## Host-owned configuration boundary
 
-v0.7.0에서 DMS는 환경변수·`.env`를 읽거나 PostgreSQL/SQLite/MinIO connection을 직접 만들지 않는다. 호스트 애플리케이션이 설정 파일·environment·secret manager를 읽고 engine과 MinIO client 또는 metadata/object/operation store를 만든 뒤 DMS factory에 주입한다. `DmsServiceConfigs`는 host 설정 계층에서 사용할 수 있는 immutable value object이지만, public factory가 이를 자동 소비하는 조립 경로는 아니다.^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]
+v0.9.0에서 DMS는 환경변수·`.env`를 읽거나 PostgreSQL/SQLite/MinIO connection을 직접 만들지 않는다. 호스트 애플리케이션이 설정 파일·environment·secret manager를 읽고 SQLAlchemy `Engine`과 MinIO client 또는 metadata/object/operation component를 만든 뒤 DMS에 주입한다. DMS의 public package root는 configuration loader가 아니라 document-management SDK 경계다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
 
-따라서 v0.6.0에 기록된 environment factory, `ServiceConfigs` 자동 조립, `diagnose_environment()` 기반 선택은 v0.7.0 current documented contract와 분리해 읽어야 한다. v0.7.0의 `metadata_backend`와 `strict_configuration`은 host가 공유할 정책 metadata이지 process environment에서 backend를 찾는 selector가 아니다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]
+따라서 v0.6.0의 environment factory와 v0.7.0의 assembly-plan 서술은 versioned historical context로 분리한다. v0.9.0 문서에는 `DmsServiceConfigs`, environment selector, `DmsAssemblyPlan`, startup health orchestration이 현재 public assembly input으로 제시되지 않는다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
 
 ## Factory paths
 
-| 조립 방식 | 공개 factory | host 입력 | ownership 기본값 |
+| 조립 방식 | 공개 API | host 입력 | ownership 기본값 |
 | --- | --- | --- | --- |
-| client sync | `create_sdk_from_clients()` | SQLAlchemy `Engine`, MinIO client, bucket | engine/client caller-owned |
-| component sync | `create_sdk_from_components()` | metadata/object store, optional operation store | component caller-owned |
-| client async | `create_async_sdk_from_clients()` | client sync와 동일 | sync path와 동일 |
-| component async | `create_async_sdk_from_components()` | component sync와 동일 | sync path와 동일 |
+| client sync | `DocumentManagementSDKFactory` | SQLAlchemy `Engine`, MinIO client, bucket | engine/client caller-owned |
+| component sync | `DefaultDocumentManagementSDK` | metadata/object store, optional operation store | component caller-owned |
+| client async | `factory.create_async()` | client sync와 동일 | sync path와 동일 |
+| scoped operation | `sdk.scoped(context)` | 기존 sync/async SDK와 `DmsOperationContext` | shared SDK lifecycle 비소유 |
 
-client factory는 engine dialect가 `postgresql` 또는 `sqlite`인지, bucket이 비어 있지 않은지를 검사하고 engine에서 persistent upload operation store를 조립한다. component factory는 host가 operation store와 service check를 선택적으로 제공한다. 둘 다 keyword-only 정책 option을 받아 같은 document lifecycle을 제공한다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]
+client factory는 dialect가 `postgresql` 또는 `sqlite`인지와 공백이 아닌 `bucket_name`을 검증하고, engine을 이용해 persistent upload operation store를 조립한다. direct component 조립에서 `operation_store`를 생략하면 idempotency key upload와 operation 조회를 사용할 수 없다. factory의 `max_file_size <= 0`은 `ValueError`, direct SDK 조립의 같은 조건은 `ValidationError`다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 
-## DmsAssemblyPlan
+## Resource ownership and lifecycle
 
-`DmsAssemblyPlan`은 metadata backend policy, strict flag, validator와 size/depth, `max_file_size`, startup check/timeout, logger, recovery audit hook, operation observer, access policy를 immutable하게 묶는다. plan을 전달하면 plan 값이 개별 factory option보다 우선하므로 두 입력 경로의 정책이 갈라지지 않게 하나의 plan을 공유해야 한다.
+기본 주입 engine·MinIO client·component는 caller-owned이며 SDK가 닫지 않는다. v0.9.0 facade에는 전역 `close()`·`aclose()`가 없고, async facade도 같은 lifecycle 비소유 계약을 따른다. SDK가 upload 중 직접 연 파일과 반환한 content stream은 SDK가 정리하지만 caller가 제공한 upload input stream과 copy sink는 caller가 닫는다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 
-- `check_on_startup=False`가 기본이며, true이면 등록한 `service_checks`를 factory 직후 실행한다.
-- 실패·timeout은 `HealthCheckFailedError`가 되고 `service`·`reason`을 제공한다.
-- startup 실패 시 SDK-owned resource만 등록 역순으로 rollback한다.
-- runtime `check_health()`는 예외 대신 service별 latency/error를 포함한 `HealthStatus`를 반환한다.^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-examples-v0.7.0-2026-08-04.md]
+애플리케이션은 engine/client/component의 생성·readiness·종료를 자신의 composition lifecycle에 연결해야 한다. DMS에 없는 전역 health/cleanup method를 consumer adapter의 필수 계약으로 가정하지 말고, host가 필요한 health check와 종료 순서를 별도로 정의한다.
 
-## Resource ownership and cleanup
+## Policy and observation options
 
-기본 주입 client/component는 caller-owned라서 SDK가 자동으로 닫지 않는다. 종료 책임을 넘길 때만 `close_callbacks` 또는 `ManagedResource(ownership=ResourceOwnership.SDK, close/aclose=...)`를 등록한다. SDK-owned 자원은 등록 역순으로 한 번씩 정리하고, 한 cleanup이 실패해도 나머지를 시도한 뒤 모든 예외를 `ResourceCleanupError.errors`에 모은다. `close()`·`aclose()`와 `with`·`async with`는 반복 종료에 안전하며 scoped facade는 shared SDK lifecycle을 소유하지 않는다.^[raw/articles/dms-core-api-reference-v0.7.0-2026-08-04.md]^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]
+Factory와 direct facade는 `max_file_size`, `recovery_audit_hook`, `operation_observer`, `access_policy`를 받을 수 있다. `DocumentAccessPolicy` callback에는 public metadata만 전달되고, `OperationObserver`와 recovery audit hook이 예외를 내도 원래 작업 결과는 바뀌지 않는다. 권한·관찰·transport 변환은 DMS 내부 connection configuration과 분리된 host 정책이다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 
 ## Security and host integration
 
-DMS가 연결값을 읽지 않는다는 것은 secret 책임이 사라진다는 뜻이 아니다. host configuration layer가 endpoint·credential을 검증하고 log/error에서 masking해야 하며, DMS logger/operation event에도 본문·token·password를 기록하지 않는다. DMS 자체는 HTTP server가 아니므로 host API가 `error_descriptor()` 또는 `recommended_http_error()`로 stable error를 외부 응답에 투영한다.^[raw/articles/dms-core-configuration-v0.7.0-2026-08-04.md]
+DMS가 연결값을 읽지 않는다는 것은 secret 책임이 사라진다는 뜻이 아니다. host configuration layer가 endpoint·credential을 검증하고 log/error에서 masking해야 하며, operation event의 conditions와 recovery audit event에 본문·token·password·내부 storage locator를 넣지 않는 운영 경계를 지켜야 한다. DMS는 HTTP server가 아니므로 host transport가 stable error fields를 외부 응답 규칙으로 매핑한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
 
 ## Related pages
 

@@ -98,11 +98,6 @@ class DmsDocumentStorage:
         except (dms.DocumentNotFoundError, dms.DocumentDeletedError):
             return
 
-    def check(self) -> None:
-        if not self.sdk.check_health().ok:
-            raise RuntimeError("DMS health check failed")
-
-
 def _content_type(source: str, *, fallback: str = "application/octet-stream") -> str:
     guessed, _ = mimetypes.guess_type(source)
     return guessed or fallback

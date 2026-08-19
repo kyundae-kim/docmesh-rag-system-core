@@ -1,10 +1,10 @@
 ---
 title: Service Factory Registry
 created: 2026-06-19
-updated: 2026-08-08
+updated: 2026-08-18
 type: concept
 tags: [sdk, python, integration, config, decision]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+sources: []
 confidence: medium
 ---
 
@@ -32,9 +32,9 @@ registry가 반환하는 값은 서비스마다 성격이 다를 수 있다. 특
 
 v0.6.0은 `SERVICE_CATALOG`과 `ServiceDescriptor`로 서비스별 config type·factory·sync 지원·환경 요구사항을 immutable metadata로 제공하고, `generate_environment_template()`과 `generate_configuration_reference()`로 deterministic 문서를 생성한다. 모든 `create_*_client()` factory는 이미 검증된 `docmesh_config` 모델을 받고 임의 kwargs나 test override를 공개하지 않는다. NATS의 persistent connection은 `connect()` 호출자가 소유하며 builder 자체는 자원을 소유하지 않는다.
 
-## RAG bootstrap implications
+## RAG composition implications
 
-RAG Core API reference는 `bootstrap_rag_core(...)`가 settings를 직접 로드하지 않고 `service_factory`를 통해 embedding/generation/vector/metadata/storage/chunker를 조립한다고 명시한다. 또한 DocMesh 경로 예시에서 `load_docmesh_settings()`와 `create_service_registry(settings)`를 먼저 호출한 뒤 `DocmeshRAGServiceFactory(settings=settings, registry=registry)`를 구성한다. 따라서 registry는 RAG bootstrap 경로에서 선택적 주변도구가 아니라 [[construction-paths-and-adapter-contracts]]와 [[public-api-surface]]를 잇는 실제 조립 전제조건이다.^[raw/articles/docmesh-rag-core-api-reference-2026-06-23.md]
+현재 repository에는 `bootstrap_rag_core(...)`나 `bootstrap_rag_core_from_env(...)` 같은 environment-based RAG entrypoint가 없다. `load_docmesh_settings()`와 service assembly helper는 하위 설정·client 조립 경계로 남아 있고, 최종 Core 생성은 `DocmeshRAGServiceFactory.from_clients(...)` 또는 `from_host_clients(...)` 뒤 `create_rag_core()`를 호출하는 명시적 경로가 담당한다. 따라서 registry 중심의 과거 bootstrap 설명은 현재 public contract가 아니라 historical context로 취급해야 하며, 현재 조립 경계는 [[construction-paths-and-adapter-contracts]]와 [[public-api-surface]]에서 확인한다.
 
 ## Return contract
 

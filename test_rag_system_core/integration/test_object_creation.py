@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
+from uuid import uuid4
 
 import dms
 import pytest
@@ -14,16 +16,30 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 from rag_system_core import (
-    AuthenticatedUser,
     DocmeshRAGServiceFactory,
     OllamaEmbeddingClient,
     OllamaGenerationClient,
     RAGCore,
 )
 from rag_system_core.adapters.chunking import FixedWindowChunker
+from rag_system_core.composition.configuration import MilvusConfig, OllamaConfig, ServiceConfigs
+from rag_system_core.composition.docmesh_runtime import (
+    assemble_docmesh_services,
+    build_docmesh_runtime_plan,
+)
+from rag_system_core.composition.factories import (
+    create_rag_embedding_client,
+    create_rag_generation_client,
+    create_rag_vector_store,
+)
 from rag_system_core.storage.dms_document_storage import DmsDocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
+from test_rag_system_core.support import authenticated_user
+
+
+POSTGRES_DSN = "postgresql+psycopg://docmesh:password@postgres:5432/docmesh"
+MILVUS_URI = "http://milvus:19530"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,12 +48,14 @@ class _HostClientFactoryResources:
     metadata_engine: Engine
     ollama_client: OllamaClient
     milvus_client: MilvusClient
+    collection_name: str
 
 
 @contextmanager
-def _create_host_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryResources]:
-    dms_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'dms.db'}")
-    metadata_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
+def _create_host_client_factory() -> Iterator[_HostClientFactoryResources]:
+    collection_name = f"integration_chunks_{uuid4().hex}"
+    dms_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
+    metadata_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
     ollama_client = OllamaClient(
         host="http://ollama:11434",
         timeout=120,
@@ -45,9 +63,10 @@ def _create_host_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryRe
         follow_redirects=False,
     )
     milvus_client = MilvusClient(
-        uri=str(tmp_path / "milvus.db"),
+        uri=MILVUS_URI,
         token="",
         db_name="default",
+        timeout=120,
     )
 
     try:
@@ -65,7 +84,7 @@ def _create_host_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryRe
             milvus_client=milvus_client,
             embedding_model="bge-m3",
             generation_model="llama3.2",
-            collection_name="integration_chunks",
+            collection_name=collection_name,
             timeout=float(120),
             check_on_startup=False,
         ) as factory:
@@ -74,17 +93,73 @@ def _create_host_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryRe
                 metadata_engine=metadata_engine,
                 ollama_client=ollama_client,
                 milvus_client=milvus_client,
+                collection_name=collection_name,
             )
     finally:
+        if milvus_client.has_collection(collection_name):
+            milvus_client.drop_collection(collection_name, timeout=120)
+        milvus_client.close()
+        metadata_engine.dispose()
+        dms_engine.dispose()
+
+
+@contextmanager
+def _create_file_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryResources]:
+    collection_name = f"file_integration_chunks_{uuid4().hex}"
+    dms_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'dms.db'}")
+    metadata_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
+    ollama_client = OllamaClient(
+        host="http://ollama:11434",
+        timeout=120,
+        verify=False,
+        follow_redirects=False,
+    )
+    milvus_path = tmp_path / "milvus.db"
+    milvus_client = MilvusClient(
+        uri=str(milvus_path),
+        token="",
+        db_name="default",
+        timeout=120,
+    )
+
+    try:
+        with DocmeshRAGServiceFactory.from_host_clients(
+            engine=dms_engine,
+            metadata_engine=metadata_engine,
+            minio_client=Minio(
+                "minio:9000",
+                access_key="admin",
+                secret_key="password",
+                secure=False,
+            ),
+            bucket_name="documents",
+            ollama_client=ollama_client,
+            milvus_client=milvus_client,
+            embedding_model="bge-m3",
+            generation_model="llama3.2",
+            collection_name=collection_name,
+            timeout=float(120),
+            check_on_startup=False,
+        ) as factory:
+            yield _HostClientFactoryResources(
+                factory=factory,
+                metadata_engine=metadata_engine,
+                ollama_client=ollama_client,
+                milvus_client=milvus_client,
+                collection_name=collection_name,
+            )
+    finally:
+        if milvus_client.has_collection(collection_name):
+            milvus_client.drop_collection(collection_name, timeout=120)
         milvus_client.close()
         metadata_engine.dispose()
         dms_engine.dispose()
 
 
 @pytest.mark.integration
-def test_host_clients_create_rag_core_object_graph(tmp_path: Path) -> None:
+def test_host_clients_create_rag_core_object_graph() -> None:
     """Create the host-owned dependency graph without running RAG operations."""
-    with _create_host_client_factory(tmp_path) as resources:
+    with _create_host_client_factory() as resources:
         factory = resources.factory
         core = factory.create_rag_core()
 
@@ -97,29 +172,20 @@ def test_host_clients_create_rag_core_object_graph(tmp_path: Path) -> None:
         assert isinstance(core.document_storage, DmsDocumentStorage)
         assert isinstance(core.chunker, FixedWindowChunker)
         assert core.metadata_store.engine is resources.metadata_engine
+        assert core.metadata_store.engine.dialect.name == "postgresql"
         assert core.embedding_client._client is resources.ollama_client
         assert core.vector_store._client is resources.milvus_client
-        assert core.vector_store.collection_name == "integration_chunks"
+        assert core.vector_store.collection_name == resources.collection_name
         assert core.document_storage.sdk is factory.dms_sdk
 
 
 @pytest.mark.integration
-def test_host_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None:
-    """Exercise DMS, Ollama, Milvus Lite, and RAGCore through public APIs."""
-    user = AuthenticatedUser(
-        sub="integration-user",
-        preferred_username=None,
-        email=None,
-        given_name=None,
-        family_name=None,
-        name=None,
-        realm_roles=[],
-        client_roles={},
-        claims={},
-    )
+def test_host_clients_run_ingestion_and_query_end_to_end() -> None:
+    """Exercise DMS, Ollama, Milvus, PostgreSQL, and RAGCore through public APIs."""
+    user = authenticated_user(f"integration-user-{uuid4().hex}")
     doc_id: str | None = None
 
-    with _create_host_client_factory(tmp_path) as resources:
+    with _create_host_client_factory() as resources:
         core = resources.factory.create_rag_core()
         try:
             assert isinstance(core, RAGCore)
@@ -155,3 +221,164 @@ def test_host_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None
         finally:
             if doc_id is not None:
                 core.delete_document(doc_id, user=user)
+
+
+@pytest.mark.integration
+def test_file_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None:
+    """Exercise Milvus Lite and SQLite file-backed access with remote Ollama/MinIO."""
+    user = authenticated_user(f"file-backend-user-{uuid4().hex}")
+    doc_id: str | None = None
+
+    with _create_file_client_factory(tmp_path) as resources:
+        core = resources.factory.create_rag_core()
+        try:
+            source_text = "The file-backed integration document contains the color green."
+            question = "Which color does the file-backed document contain?"
+
+            ingested = core.ingest_text(
+                user=user,
+                text=source_text,
+                source="file-backed-integration.txt",
+            )
+            doc_id = ingested.doc_id
+            response = core.query(user=user, question=question, top_k=1)
+
+            assert resources.metadata_engine.dialect.name == "sqlite"
+            assert (tmp_path / "dms.db").exists()
+            assert (tmp_path / "metadata.db").exists()
+            assert (tmp_path / "milvus.db").exists()
+            assert response.answer.strip()
+            assert source_text in response.prompt
+            assert response.context_chunks[0].doc_id == ingested.doc_id
+            assert response.context_chunks[0].content == source_text
+        finally:
+            if doc_id is not None:
+                core.delete_document(doc_id, user=user)
+
+
+@pytest.mark.integration
+def test_host_clients_health_check_reaches_remote_services() -> None:
+    """Run the public health path against PostgreSQL, Milvus, and Ollama."""
+    with _create_host_client_factory() as resources:
+        result = resources.factory.create_rag_core().health_check()
+
+    assert result.ok is True
+    statuses = {status.service_name: status for status in result.services}
+    assert set(statuses) == {"metadata", "milvus", "embedding", "generation"}
+    assert all(status.ok for status in statuses.values())
+
+
+@pytest.mark.integration
+def test_host_clients_support_file_stream_and_file_path_ingestion(tmp_path: Path) -> None:
+    """Exercise stream and filesystem access paths through the remote services."""
+    user = authenticated_user(f"file-integration-user-{uuid4().hex}")
+    document_ids: list[str] = []
+
+    with _create_host_client_factory() as resources:
+        core = resources.factory.create_rag_core()
+        try:
+            stream_text = "The stream upload contains the word violet."
+            stream_result = core.ingest_file_stream(
+                user=user,
+                file_stream=BytesIO(stream_text.encode("utf-8")),
+                source="stream-upload.txt",
+            )
+            document_ids.append(stream_result.doc_id)
+
+            path = tmp_path / "path-upload.txt"
+            path_text = "The path upload contains the word orange."
+            path.write_text(path_text, encoding="utf-8")
+            path_result = core.ingest_file_path(user=user, file_path=path)
+            document_ids.append(path_result.doc_id)
+
+            assert stream_result.source == "stream-upload.txt"
+            assert path_result.source == path.name
+            assert {document.doc_id for document in core.list_documents(user=user)} == set(document_ids)
+
+            stream_document = core.get_document(stream_result.doc_id, user=user)
+            path_document = core.get_document(path_result.doc_id, user=user)
+            assert stream_document is not None
+            assert path_document is not None
+            assert stream_document.asset_reference == stream_result.doc_id
+            assert path_document.asset_reference == path_result.doc_id
+            assert core.list_document_chunks(stream_result.doc_id, user=user)[0].content == stream_text
+            assert core.list_document_chunks(path_result.doc_id, user=user)[0].content == path_text
+        finally:
+            for document_id in reversed(document_ids):
+                core.delete_document(document_id, user=user)
+
+
+@pytest.mark.integration
+def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
+    """Assemble remote clients from ServiceConfigs and use the public factory path."""
+    collection_name = f"integration_bundle_chunks_{uuid4().hex}"
+    user = authenticated_user(f"bundle-integration-user-{uuid4().hex}")
+    settings = ServiceConfigs(
+        milvus=MilvusConfig(
+            endpoint=MILVUS_URI,
+            db_name="default",
+            collection=collection_name,
+            request_timeout_seconds=120,
+        ),
+        ollama=OllamaConfig(
+            host="http://ollama:11434",
+            verify_ssl=False,
+            follow_redirects=False,
+            embedding_model="bge-m3",
+            generation_model="llama3.2",
+            request_timeout_seconds=120,
+        ),
+    )
+    plan = build_docmesh_runtime_plan(
+        services={"milvus", "ollama"},
+        required={"milvus", "ollama"},
+        check_on_startup=True,
+        parallel_healthchecks=True,
+    )
+    bundle = assemble_docmesh_services(plan=plan, settings=settings)
+    dms_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
+    metadata_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
+    milvus_client = bundle.get_client("milvus")
+    document_id: str | None = None
+
+    try:
+        embedding_client = create_rag_embedding_client(settings=settings, bundle=bundle)
+        generation_client = create_rag_generation_client(settings=settings, bundle=bundle)
+        vector_store = create_rag_vector_store(settings=settings, bundle=bundle)
+        with DocmeshRAGServiceFactory.from_clients(
+            engine=dms_engine,
+            metadata_engine=metadata_engine,
+            minio_client=Minio(
+                "minio:9000",
+                access_key="admin",
+                secret_key="password",
+                secure=False,
+            ),
+            bucket_name="documents",
+            embedding_client=embedding_client,
+            generation_client=generation_client,
+            vector_store=vector_store,
+            check_on_startup=False,
+        ) as factory:
+            core = factory.create_rag_core()
+            try:
+                source_text = "The ServiceBundle path stores a teal integration fact."
+                question = "Which color does the ServiceBundle integration fact mention?"
+
+                ingested = core.ingest_text(user=user, text=source_text, source="bundle.txt")
+                document_id = ingested.doc_id
+                response = core.query(user=user, question=question, top_k=1)
+
+                assert response.answer.strip()
+                assert source_text in response.prompt
+                assert response.context_chunks[0].doc_id == ingested.doc_id
+                assert response.context_chunks[0].content == source_text
+            finally:
+                if document_id is not None:
+                    core.delete_document(document_id, user=user)
+    finally:
+        if milvus_client.has_collection(collection_name):
+            milvus_client.drop_collection(collection_name, timeout=120)
+        bundle.close()
+        metadata_engine.dispose()
+        dms_engine.dispose()

@@ -1,10 +1,10 @@
 ---
 title: SDK-first with API and MCP Evaluation
 created: 2026-06-11
-updated: 2026-06-11
+updated: 2026-08-18
 type: query
 tags: [sdk, api, mcp, architecture, roadmap, decision]
-sources: [raw/articles/docmesh-rag-core-api-reference-2026-06-11.md, raw/articles/docmesh-rag-core-prd-2026-06-11.md, raw/articles/docmesh-rag-core-test-spec-2026-06-11.md]
+sources: []
 confidence: medium
 ---
 

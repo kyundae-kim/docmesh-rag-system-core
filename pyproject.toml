@@ -1,14 +1,14 @@
 [project]
 name = "rag-system-core"
-version = "0.3.0"
+version = "0.4.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "dms",
+    "dms-core>=0.9.0",
     "ollama>=0.6.2",
     "pydantic-settings>=2.14.1",
-    "pymilvus[milvus-lite]>=3.0.0",
+    "pymilvus[milvus-lite]>=3.0.1",
 ]
 
 [dependency-groups]
@@ -22,8 +22,5 @@ exclude = ["test_rag_system_core*"]
 
 [tool.pytest.ini_options]
 markers = [
-    "integration: requires the devcontainer Ollama and MinIO services",
+    "integration: requires the devcontainer Ollama, MinIO, PostgreSQL, and Milvus services",
 ]
-
-[tool.uv.sources]
-dms = { git = "https://github.com/kyundae-kim/dms-core.git", rev = "v0.7.0" }

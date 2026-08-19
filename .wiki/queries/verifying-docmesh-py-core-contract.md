@@ -154,7 +154,7 @@ Lifecycle 검증에서는 “생성 성공”만 보지 말고 정상 종료, �
 
 - `load_docmesh_settings()`와 `assemble_docmesh_services()`에서 positional 환경 mapping 인자를 제거했다.
 - 두 wrapper는 process environment를 직접 읽는 SDK의 keyword-only API만 호출한다.
-- `DocmeshRAGServiceFactory.from_env()`도 별도 mapping을 전달하지 않고 process environment 기반 assembly를 위임한다.
+- 당시 v0.5.0 소비자 검증에서는 `DocmeshRAGServiceFactory.from_env()`도 별도 mapping을 전달하지 않고 process environment 기반 assembly를 위임했다. 이는 historical contract이며 현재 source의 public API가 아니다.
 - fake SDK 함수들을 실제 keyword-only signature로 바꾸고 테스트명의 `v020` 표기를 `v050`으로 갱신했다.
 - 새 계약 테스트 네 개가 수정 전 모두 예상한 `TypeError`로 실패했고, 수정 후 모두 통과했다.
 - 집중 통합 suite는 `13 passed`, 전체 소비 프로젝트 suite는 `69 passed`였다.

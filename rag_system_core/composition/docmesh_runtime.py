@@ -15,21 +15,11 @@ from rag_system_core.composition.configuration import (
     Service,
     ServiceConfigs,
     ServiceSelection,
-    load_available_service_configs,
 )
 
 from rag_system_core.composition.health import run_health_checks
 
 RAG_SERVICES = frozenset({"milvus", "ollama"})
-
-
-def load_docmesh_settings(
-    *,
-    services: set[str | Service] | None = None,
-) -> ServiceConfigs:
-    return load_available_service_configs(
-        services=set(RAG_SERVICES) if services is None else services,
-    )
 
 
 def build_docmesh_runtime_plan(
@@ -127,9 +117,9 @@ def _create_service_client(service_name: str, config: OllamaConfig | MilvusConfi
 def assemble_docmesh_services(
     *,
     plan: RuntimePlan,
+    settings: ServiceConfigs,
 ) -> ServiceBundle:
     selected_services = frozenset(service.value for service in plan.selected_services)
-    settings = load_docmesh_settings(services=set(selected_services))
     clients: dict[str, object] = {}
     bundle: ServiceBundle | None = None
     try:
@@ -178,17 +168,12 @@ def create_docmesh_service_client(
         except ConfigError:
             return None
 
-    resolved_settings = settings
-    if resolved_settings is None:
-        resolved_settings = load_docmesh_settings(services={service_name})
-    config = getattr(resolved_settings, service_name, None)
+    if settings is None:
+        return None
+    config = getattr(settings, service_name, None)
     if config is None:
         return None
-    if service_name == "ollama":
-        return _create_service_client(service_name, config)
-    if service_name == "milvus":
-        return _create_service_client(service_name, config)
-    raise ValueError(f"Unsupported RAG service: {service_name}")
+    return _create_service_client(service_name, config)
 
 
 __all__ = [
@@ -197,5 +182,4 @@ __all__ = [
     "assemble_docmesh_services",
     "build_docmesh_runtime_plan",
     "create_docmesh_service_client",
-    "load_docmesh_settings",
 ]

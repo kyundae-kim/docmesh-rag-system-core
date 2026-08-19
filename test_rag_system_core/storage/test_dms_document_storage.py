@@ -4,7 +4,6 @@ from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 from dms import (
     DocumentContent,
     DocumentDeletedError,
@@ -23,7 +22,6 @@ class FakeDmsSdk:
         self.upload_file_calls: list[dict[str, object]] = []
         self.delete_calls: list[str] = []
         self.content: bytes = b"stored content"
-        self.health_ok = True
         self.content_error: Exception | None = None
         self.delete_error: Exception | None = None
 
@@ -64,10 +62,6 @@ class FakeDmsSdk:
         if self.delete_error is not None:
             raise self.delete_error
         return SimpleNamespace(deleted=True)
-
-    def check_health(self):
-        return SimpleNamespace(ok=self.health_ok)
-
 
 def make_document(*, asset_reference: str = "doc-1") -> DocumentRecord:
     return DocumentRecord(
@@ -181,12 +175,3 @@ def test_delete_soft_deletes_by_public_asset_reference_and_is_idempotent() -> No
     storage.delete(document)
 
     assert sdk.delete_calls == ["doc-1", "doc-1"]
-
-
-def test_check_rejects_unhealthy_dms_status() -> None:
-    sdk = FakeDmsSdk()
-    sdk.health_ok = False
-    storage = DmsDocumentStorage(sdk)
-
-    with pytest.raises(RuntimeError, match="DMS health check failed"):
-        storage.check()

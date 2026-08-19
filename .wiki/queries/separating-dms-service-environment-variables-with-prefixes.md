@@ -1,10 +1,10 @@
 ---
 title: Separating DMS Service Environment Variables with Prefixes
 created: 2026-07-28
-updated: 2026-08-08
+updated: 2026-08-18
 type: query
 tags: [config, integration, architecture, decision]
-sources: [raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md, raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md]
+sources: []
 confidence: medium
 ---
 
@@ -16,9 +16,9 @@ confidence: medium
 
 ## 현재 계약
 
-현재 `dms-core` v0.6.0의 환경 factory는 `DMS_*`, `DOCMESH_*`, `POSTGRES_*`, `SQLITE_*`, `MINIO_*`라는 고정된 canonical key를 process environment에서 읽는다. `create_sdk_from_environment()`에는 접두사나 namespace를 지정하는 공개 옵션이 문서화되어 있지 않다. `docmesh-py-core` v0.5.0의 config 모델과 `load_service_configs()`도 process environment에서 고정 key를 직접 읽으며 mapping을 받지 않는다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]
+현재 `dms-core` v0.6.0의 환경 factory는 `DMS_*`, `DOCMESH_*`, `POSTGRES_*`, `SQLITE_*`, `MINIO_*`라는 고정된 canonical key를 process environment에서 읽는다. `create_sdk_from_environment()`에는 접두사나 namespace를 지정하는 공개 옵션이 문서화되어 있지 않다. `docmesh-py-core` v0.5.0의 config 모델과 `load_service_configs()`도 process environment에서 고정 key를 직접 읽으며 mapping을 받지 않는다.
 
-따라서 prefixed key를 그대로 둔 채 `create_sdk_from_environment()`를 호출하면 DMS가 이를 인식하지 못한다. 호출 직전에 `os.environ`을 임시 변환하는 방식도 환경 기반 조립 중 관련 key를 변경하지 말라는 동시성 제약과 충돌하므로 애플리케이션 기본 경로로 사용하지 않는다.^[raw/articles/dms-core-configuration-v0.6.0-2026-07-27.md]^[raw/articles/dms-core-env-example-v0.6.0-2026-07-27.md]
+따라서 prefixed key를 그대로 둔 채 `create_sdk_from_environment()`를 호출하면 DMS가 이를 인식하지 못한다. 호출 직전에 `os.environ`을 임시 변환하는 방식도 환경 기반 조립 중 관련 key를 변경하지 말라는 동시성 제약과 충돌하므로 애플리케이션 기본 경로로 사용하지 않는다.
 
 ## 권장 경계
 
@@ -47,7 +47,7 @@ confidence: medium
 
 - `rag_system_core/composition/docmesh_runtime.py`의 `load_dms_settings()`는 process environment를 변경하지 않고 `DMS_` namespace만 읽는다. `DMS_DOCMESH_*`, `DMS_POSTGRES_*`, `DMS_SQLITE_*`, `DMS_MINIO_*`를 각각 전용 `docmesh-py-core` config model로 검증하고, `DMS_METADATA_BACKEND`와 `DMS_CONFIGURATION_STRICT`는 중복 접두사 없이 DMS 진단에 전달한다.
 - 같은 모듈은 진단용 mapping에서 공유 서비스 key의 선행 `DMS_` 한 개만 제거해 `dms.diagnose_environment()`의 canonical 계약을 재사용한다. 실제 `os.environ`에는 쓰지 않는다.
-- `rag_system_core/composition/factories.py`의 `DocmeshRAGServiceFactory.from_env()`는 Ollama·Milvus만 RAG `ServiceBundle`로 조립하고, 분리된 DMS `ServiceConfigs`는 `dms.create_sdk_from_service_configs()`에 전달한다. factory가 두 lifecycle을 소유하고 DMS SDK를 먼저 닫은 뒤 RAG bundle을 닫는다.
+- 현재 source의 `DocmeshRAGServiceFactory`는 `from_clients(...)`와 `from_host_clients(...)`만 제공한다. Ollama·Milvus·DMS collaborator를 명시적으로 주입하고 `create_rag_core()`로 최종 Core를 조립하며, 환경변수에서 RAG Core까지 생성하는 `from_env()` 경로는 제공하지 않는다.
 - `.env.example`과 `README.md`는 `DMS_SQLITE_PATH`, `DMS_POSTGRES_*`, `DMS_MINIO_*`, `DMS_DOCMESH_ENV`를 canonical application 설정으로 사용한다.
 - `test_rag_system_core/composition/test_docmesh_integration.py`는 SQLite와 PostgreSQL 양쪽에서 prefixed 값을 읽고 접두사 없는 `SQLITE_PATH`·`MINIO_ENDPOINT`가 DMS 설정에 섞이지 않는지 검증한다. focused composition suite 32개와 전체 suite 79개가 통과했다.
 
@@ -55,7 +55,7 @@ confidence: medium
 
 ## 검증 기준
 
-1. **검증됨:** DMS bootstrap은 접두사 없는 RAG `SQLITE_*`·`MINIO_*` 환경변수를 읽지 않는다.
+1. **검증됨:** DMS composition은 접두사 없는 RAG `SQLITE_*`·`MINIO_*` 환경변수를 읽지 않는다.
 2. **검증됨:** SQLite/PostgreSQL backend와 MinIO 설정이 각각 `DMS_` prefixed config model로 매핑된다.
 3. **부분 검증:** PostgreSQL/SQLite 선택과 MinIO bucket 필수값은 DMS 진단 및 config validation을 재사용한다. production TLS 회귀는 upstream DMS 계약 검증 범위로 유지한다.
 4. **검증됨:** process environment를 호출 중 변경하지 않는다.
