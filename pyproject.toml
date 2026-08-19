@@ -22,5 +22,5 @@ exclude = ["test_rag_system_core*"]
 
 [tool.pytest.ini_options]
 markers = [
-    "integration: requires the devcontainer Ollama and MinIO services",
+    "integration: requires the devcontainer Ollama, MinIO, PostgreSQL, and Milvus services",
 ]

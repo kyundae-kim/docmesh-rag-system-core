@@ -3,12 +3,13 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, event, inspect
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
 from rag_system_core.composition.health import run_health_checks
 from rag_system_core.storage.metadata_store import MetadataStore
+from rag_system_core.types import ChunkRecord, DocumentRecord, IngestionProgressRecord
 
 from test_rag_system_core.support import authenticated_user, create_metadata_store, create_test_rig, FakeDocumentStorage
 
@@ -27,6 +28,58 @@ def test_metadata_store_uses_injected_sqlalchemy_engine(tmp_path: Path) -> None:
 
     try:
         assert store.engine is engine
+    finally:
+        store.close()
+
+
+def test_metadata_store_deletes_child_rows_before_document_with_foreign_keys(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
+
+    @event.listens_for(engine, "connect")
+    def _enable_foreign_keys(dbapi_connection, connection_record) -> None:
+        del connection_record
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    store = MetadataStore(engine)
+    document = DocumentRecord(
+        doc_id="document-fk",
+        user_id="user-fk",
+        source="document.txt",
+        created_at="2026-01-01T00:00:00+00:00",
+        asset_reference="document-fk",
+    )
+    store.add_document(document)
+    store.add_chunks(
+        [
+            ChunkRecord(
+                chunk_id="chunk-fk",
+                doc_id=document.doc_id,
+                user_id=document.user_id,
+                content="foreign key child",
+            )
+        ]
+    )
+    store.add_ingestion_progress(
+        [
+            IngestionProgressRecord(
+                progress_id="progress-fk",
+                job_id="job-fk",
+                doc_id=document.doc_id,
+                user_id=document.user_id,
+                source=document.source,
+                step_name="load",
+                step_order=0,
+                status="completed",
+                created_at=document.created_at,
+            )
+        ]
+    )
+
+    try:
+        assert store.delete_document(doc_id=document.doc_id, user_id=document.user_id) == document
+        assert store.get_document_for_user(doc_id=document.doc_id, user_id=document.user_id) is None
     finally:
         store.close()
 

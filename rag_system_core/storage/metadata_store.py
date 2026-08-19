@@ -175,6 +175,7 @@ class MetadataStore:
             progress_rows = session.scalars(select(IngestionProgressModel).where(IngestionProgressModel.doc_id == doc_id)).all()
             for progress in progress_rows:
                 session.delete(progress)
+            session.flush()
             session.delete(document)
             session.commit()
         return document_record_from_model(document)

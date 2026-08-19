@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
+from uuid import uuid4
 
 import dms
 import pytest
@@ -26,18 +26,24 @@ from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 from test_rag_system_core.support import authenticated_user
 
 
+POSTGRES_DSN = "postgresql+psycopg://docmesh:password@postgres:5432/docmesh"
+MILVUS_URI = "http://milvus:19530"
+
+
 @dataclass(frozen=True, slots=True)
 class _HostClientFactoryResources:
     factory: DocmeshRAGServiceFactory
     metadata_engine: Engine
     ollama_client: OllamaClient
     milvus_client: MilvusClient
+    collection_name: str
 
 
 @contextmanager
-def _create_host_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryResources]:
-    dms_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'dms.db'}")
-    metadata_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
+def _create_host_client_factory() -> Iterator[_HostClientFactoryResources]:
+    collection_name = f"integration_chunks_{uuid4().hex}"
+    dms_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
+    metadata_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
     ollama_client = OllamaClient(
         host="http://ollama:11434",
         timeout=120,
@@ -45,9 +51,10 @@ def _create_host_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryRe
         follow_redirects=False,
     )
     milvus_client = MilvusClient(
-        uri=str(tmp_path / "milvus.db"),
+        uri=MILVUS_URI,
         token="",
         db_name="default",
+        timeout=120,
     )
 
     try:
@@ -65,7 +72,7 @@ def _create_host_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryRe
             milvus_client=milvus_client,
             embedding_model="bge-m3",
             generation_model="llama3.2",
-            collection_name="integration_chunks",
+            collection_name=collection_name,
             timeout=float(120),
             check_on_startup=False,
         ) as factory:
@@ -74,17 +81,20 @@ def _create_host_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryRe
                 metadata_engine=metadata_engine,
                 ollama_client=ollama_client,
                 milvus_client=milvus_client,
+                collection_name=collection_name,
             )
     finally:
+        if milvus_client.has_collection(collection_name):
+            milvus_client.drop_collection(collection_name, timeout=120)
         milvus_client.close()
         metadata_engine.dispose()
         dms_engine.dispose()
 
 
 @pytest.mark.integration
-def test_host_clients_create_rag_core_object_graph(tmp_path: Path) -> None:
+def test_host_clients_create_rag_core_object_graph() -> None:
     """Create the host-owned dependency graph without running RAG operations."""
-    with _create_host_client_factory(tmp_path) as resources:
+    with _create_host_client_factory() as resources:
         factory = resources.factory
         core = factory.create_rag_core()
 
@@ -97,19 +107,20 @@ def test_host_clients_create_rag_core_object_graph(tmp_path: Path) -> None:
         assert isinstance(core.document_storage, DmsDocumentStorage)
         assert isinstance(core.chunker, FixedWindowChunker)
         assert core.metadata_store.engine is resources.metadata_engine
+        assert core.metadata_store.engine.dialect.name == "postgresql"
         assert core.embedding_client._client is resources.ollama_client
         assert core.vector_store._client is resources.milvus_client
-        assert core.vector_store.collection_name == "integration_chunks"
+        assert core.vector_store.collection_name == resources.collection_name
         assert core.document_storage.sdk is factory.dms_sdk
 
 
 @pytest.mark.integration
-def test_host_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None:
-    """Exercise DMS, Ollama, Milvus Lite, and RAGCore through public APIs."""
-    user = authenticated_user("integration-user")
+def test_host_clients_run_ingestion_and_query_end_to_end() -> None:
+    """Exercise DMS, Ollama, Milvus, PostgreSQL, and RAGCore through public APIs."""
+    user = authenticated_user(f"integration-user-{uuid4().hex}")
     doc_id: str | None = None
 
-    with _create_host_client_factory(tmp_path) as resources:
+    with _create_host_client_factory() as resources:
         core = resources.factory.create_rag_core()
         try:
             assert isinstance(core, RAGCore)

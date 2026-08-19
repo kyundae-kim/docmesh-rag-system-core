@@ -50,6 +50,7 @@ class MilvusLiteVectorStore:
             filter=f'user_id == "{escape_milvus_string(user_id)}"',
             limit=top_k,
             output_fields=["chunk_id", "doc_id", "user_id", "content", "metadata"],
+            consistency_level="Strong",
             timeout=self.timeout,
         )
         hits = results[0] if results else []
