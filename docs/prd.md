@@ -5,7 +5,7 @@
 - **문서명:** Product Requirements Document (PRD)
 - **대상 제품:** DocMesh RAG Core Service
 - **문서 목적:** 현재 저장소에 구현된 `rag_system_core`의 제품 목표, 범위, 제약, 운영 경계를 코드 기준으로 정의한다.
-- **문서 상태:** `v0.3.0` implementation baseline (`dms-core v0.7.0`; declared runtime dependencies are maintained in `pyproject.toml`)
+- **문서 상태:** `rag-system-core v0.4.0` implementation baseline (declared runtime contract: `dms-core>=0.9.0`, `ollama>=0.6.2`, `pydantic-settings>=2.14.1`, `pymilvus[milvus-lite]>=3.0.1`)
 
 이 문서는 미래 희망사항보다 **현재 코드가 실제로 제공하는 제품 동작**을 우선 서술한다.
 
@@ -45,7 +45,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 3. 사용자별 문서/청크/검색 결과 격리를 보장한다.
 4. SQLite RAG metadata + Milvus vector store adapter + dms-core source asset lifecycle을 제공한다.
 5. factory / service-factory 기반 구성 경로를 제공한다.
-6. host-owned client 기반 service-factory 조립과 명시적 collaborator 주입을 제공하고 소유 자원의 lifecycle을 정리한다.
+6. host-owned client 기반 service-factory 조립과 명시적 collaborator 주입을 제공하되, caller-owned 자원과 compatibility metadata store의 lifecycle 경계를 명확히 한다.
 7. metadata, Milvus, Ollama, DMS를 아우르는 health check 경로를 제공한다.
 
 ### 3.2 성공 기준
@@ -70,7 +70,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 텍스트 / 파일 스트림 / 파일 경로 ingestion
 - 고정 길이 chunking + overlap
 - embedding batch 호출
-- Milvus Lite 기반 vector search
+- `MilvusLiteVectorStore` adapter 기반 vector search (local Milvus Lite 또는 주입된 remote Milvus client)
 - generation client 기반 답변 생성
 - `AuthenticatedUser.sub` 기반 user scope
 - SQLAlchemy ORM + SQLite metadata persistence
@@ -112,13 +112,13 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 
 #### 시나리오 2: service factory 기반 직접 조립
 - 사용자는 composition layer의 `ServiceConfigs`/`ServiceBundle`을 사용해 필요한 RAG adapter를 먼저 준비하고, DMS용 SQLAlchemy `Engine`과 MinIO client를 준비한다.
-- 사용자는 명시적으로 준비한 RAG collaborator와 DMS client를 `DocmeshRAGServiceFactory.from_clients(..., metadata_engine=...)`에 전달한다. 이 classmethod는 dms-core SDK를 생성하고, Factory가 이를 소유한다.
-- `DocmeshRAGServiceFactory`는 settings나 `ServiceBundle`을 보관하지 않고, 전달된 collaborator만 반환한다.
+- 사용자는 명시적으로 준비한 RAG collaborator와 DMS client를 `DocmeshRAGServiceFactory.from_clients(..., metadata_engine=...)`에 전달한다. 이 classmethod는 dms-core SDK를 생성해 Factory에 보관하지만, dms-core v0.9 SDK에는 `close()` lifecycle이 없어 Factory context 종료 시 DMS SDK를 닫지 않는다.
+- `DocmeshRAGServiceFactory`는 settings나 `ServiceBundle`을 보관하지 않고, 전달된 collaborator만 반환한다. 주입된 Engine, MinIO client, RAG collaborator의 lifecycle은 호출자가 관리한다.
 
 #### 시나리오 2-1: host-owned client 기반 실행
 - 상위 애플리케이션은 DMS용 SQLAlchemy `Engine`, metadata용 SQLAlchemy `Engine`, MinIO client, DMS bucket name, Ollama client, Milvus client와 embedding/generation model 및 vector-store 설정을 직접 준비한다.
-- `DocmeshRAGServiceFactory.from_host_clients(...)`는 DMS 입력을 dms-core의 `create_sdk_from_clients()`에 전달하고, metadata용 Engine과 Ollama/Milvus transport client로 RAG embedding client, generation client, vector store를 조립한 Factory를 반환한다. `create_rag_core(...)`가 이를 `RAGCore`에 전달한다.
-- 이 경로는 DocMesh/DMS 환경 설정을 읽지 않는다. Factory가 정리하는 것은 Factory가 생성한 DMS SDK이며, 주입된 두 Engine과 raw transport client는 상위 애플리케이션이 소유한다.
+- `DocmeshRAGServiceFactory.from_host_clients(...)`는 DMS 입력을 `create_dms_sdk_from_clients()`를 통해 dms-core의 `DocumentManagementSDKFactory`에 전달하고, metadata용 Engine과 Ollama/Milvus transport client로 RAG embedding client, generation client, vector store를 조립한 Factory를 반환한다. `create_rag_core(...)`가 이를 `RAGCore`에 전달한다.
+- 이 경로는 DocMesh/DMS 환경 설정을 읽지 않는다. Factory는 생성한 DMS SDK를 보관하지만 dms-core v0.9의 SDK에 `close()`가 없으므로 context 종료 시 닫지 않는다. DMS/metadata Engine과 MinIO, Ollama, Milvus raw transport client는 상위 애플리케이션이 소유하고 정리한다.
 
 #### 시나리오 3: 사용자별 query
 - 상위 애플리케이션은 인증된 `AuthenticatedUser`를 제공한다.
@@ -251,7 +251,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - Milvus service client는 명시적으로 주입하거나 composition-layer RAG settings / `ServiceBundle`에서 조립해야 한다.
 - service client를 조립할 수 없으면 명확한 구성 오류로 실패해야 한다.
 - collection과 timeout이 명시되지 않았고 composition-layer 설정에도 값이 없으면 각각 `rag_chunks`, `30.0`을 사용해야 한다.
-- 명시적 Milvus client는 client 생성을 대체할 뿐이며, `settings`/`bundle`이 없으면 collection/timeout 해석을 위해 Milvus 환경 설정을 로드해야 한다.
+- 명시적 Milvus client는 client 생성을 대체한다. `settings`/`bundle`이 없으면 collection/timeout은 각각 `rag_chunks`, `30.0`을 사용하며 process environment variable은 읽지 않는다.
 
 ### 6.6 Persistence 및 삭제 요구사항
 
@@ -297,8 +297,8 @@ prompt는 최소 아래 섹션을 포함해야 한다.
   받아 RAG adapter/store를 구성할 수 있어야 한다.
 - `DocmeshRAGServiceFactory`는 생성하거나 직접 주입받은 DMS SDK와 명시적으로 주입된 embedding/generation/vector collaborator를 사용해야 하며, settings나 `ServiceBundle`을 내부에 보관하거나 이를 통해 지연 생성해서는 안 된다.
 - DMS 조립은 현재 프로세스 환경을 읽지 않고, caller가 제공한 SQLAlchemy `Engine`, MinIO client, bucket 이름을 통해 명시적으로 수행해야 한다.
-- `assemble_docmesh_services()`가 반환하는 `ServiceBundle`과 직접 조립한 DMS SDK는 caller가 정상/예외 종료 모두에서 정리해야 한다.
-- `DocmeshRAGServiceFactory.from_clients(...)`와 `from_host_clients(...)`는 생성한 DMS SDK를 Factory context 종료 시 정리하고, 주입된 Engine과 raw transport client는 caller-owned로 유지해야 한다.
+- `assemble_docmesh_services()`가 반환하는 `ServiceBundle`은 caller가 정상/예외 종료 모두에서 `close()`해야 한다. DMS SDK는 dms-core v0.9에서 `close()`를 제공하지 않으므로 underlying DMS Engine과 MinIO client의 lifecycle은 caller가 관리한다.
+- `DocmeshRAGServiceFactory.from_clients(...)`와 `from_host_clients(...)`는 생성한 DMS SDK와 주입된 Engine/raw transport client를 context 종료 시 닫지 않는다. `metadata_engine`이 주입된 경우 MetadataStore도 Factory가 닫지 않으며, `metadata_path` 호환 경로로 Factory가 생성해 추적한 MetadataStore만 Factory `close()`에서 정리한다.
 
 ---
 
@@ -346,7 +346,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
  ├─ rag_factories.py (RAG adapter/store construction)
  ├─ factories.py (stable advanced re-export surface)
  ├─ docmesh_runtime (Ollama / Milvus settings and assembly)
- ├─ dms_runtime (DMS-prefixed settings adaptation)
+ ├─ dms_runtime (explicit host-client DMS SDK assembly)
  └─ health
 
 [Contract Layer]
@@ -359,7 +359,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 - 내부 구현은 역할별로 분리되어야 한다.
 - 구성은 직접 조립과 service-factory 조립을 모두 허용해야 한다.
 - persistence와 retrieval은 결합되지만 저장소 역할은 분리되어야 한다.
-- DMS 환경 해석은 RAG용 DocMesh runtime assembly와 별도 module이 소유해야 한다.
+- DMS client assembly는 RAG용 DocMesh runtime assembly와 별도 module이 소유하며, process environment를 해석하지 않는다.
 
 ---
 
@@ -446,8 +446,9 @@ QueryResult
 - file-path payload의 UTF-8 decode는 DMS 업로드 뒤 수행되므로 decode 실패 시 document metadata 없이 DMS asset만 남을 수 있다.
 
 ### R6. lifecycle 소유권
-- 직접 구성한 service factory의 lifecycle은 caller가 관리해야 한다.
-- `DocmeshRAGServiceFactory.from_host_clients(...)`는 생성한 DMS SDK를 context 종료 시 정리하고, 주입된 DMS/metadata Engine과 RAG transport client는 호출자가 정리해야 한다. Factory가 만든 RAG adapter와 MetadataStore는 주입된 client를 소유하지 않는다.
+- 직접 구성한 `RAGCore`, collaborator, Engine, raw transport client의 lifecycle은 caller가 관리해야 한다.
+- `ServiceBundle.close()`는 bundle이 조립한 client 중 `close()`를 제공하는 client를 정리한다.
+- `DocmeshRAGServiceFactory`는 dms-core v0.9 SDK에 close API가 없으므로 DMS SDK나 주입된 DMS/metadata Engine, MinIO, Ollama, Milvus client를 정리하지 않는다. Factory가 `metadata_path`로 생성해 추적한 MetadataStore만 Factory `close()`에서 정리한다.
 
 ---
 
@@ -494,7 +495,7 @@ QueryResult
 12. 삭제 성공 시 document / chunk / progress / Milvus 엔트리가 제거되고 DMS asset은 soft delete된다.
 13. vector store 또는 DMS soft delete가 실패하면 metadata는 유지된다. DMS 실패 시 vector는 이미 삭제됐을 수 있다.
 14. health check는 metadata 및 사용 가능한 의존 서비스 상태를 집계한다.
-15. `DocmeshRAGServiceFactory.from_host_clients(...)`는 환경 설정을 읽지 않고 직접 전달된 DMS/metadata Engine, DMS, Ollama, Milvus clients와 명시적 model/store 설정으로 RAG adapters를 조립하며 생성한 DMS SDK만 정리한다.
+15. `DocmeshRAGServiceFactory.from_host_clients(...)`는 환경 설정을 읽지 않고 직접 전달된 DMS/metadata Engine, DMS, Ollama, Milvus clients와 명시적 model/store 설정으로 RAG adapters를 조립한다. Factory context는 dms-core v0.9 SDK와 host-owned clients를 닫지 않으며, compatibility `metadata_path`로 생성된 MetadataStore만 정리한다.
 16. `ingest_text`의 DMS 업로드는 RAG `doc_id`, 사용자 metadata, ingestion `job_id` 기반 idempotency 정보를 보존한다. file-stream/file-path 업로드는 현재 idempotency key를 전달하지 않는다.
 
 ---

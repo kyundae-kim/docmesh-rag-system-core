@@ -3,7 +3,7 @@
 ## 1. Introduction
 
 ### 1.1 Purpose
-This Software Requirements Specification (SRS) defines the software requirements for the **DocMesh RAG Core Service v0.3.0 implementation baseline**. The document translates the product-level expectations in `docs/prd.md` into software requirements that can be implemented, verified, and maintained. The dependency contract baseline is `dms-core v0.7.0`; declared runtime dependencies are maintained in `pyproject.toml`.
+This Software Requirements Specification (SRS) defines the software requirements for the **DocMesh RAG Core Service v0.4.0 implementation baseline**. The document translates the product-level expectations in `docs/prd.md` into software requirements that can be implemented, verified, and maintained. The declared runtime dependency contract is `dms-core>=0.9.0`, `ollama>=0.6.2`, `pydantic-settings>=2.14.1`, and `pymilvus[milvus-lite]>=3.0.1` in `pyproject.toml`.
 
 This SRS is intentionally implementation-aligned. When aspirational language conflicts with current behavior, this document prefers the behavior that is actually supported by the current codebase and reflected by the companion development documents.
 
@@ -15,10 +15,10 @@ At the software level, the system shall:
 - expose a single primary public entry point centered on `RAGCore`
 - support document ingestion from text, file streams, and file paths
 - isolate stored data and retrieval results by authenticated user information
-- persist metadata in SQLite and vector data in Milvus Lite
+- persist metadata in SQLite and vector data through the standard `MilvusLiteVectorStore` adapter; local Milvus Lite or remote Milvus connectivity follows the supplied client/configuration
 - support restart-time recovery by reopening the same metadata and vector storage
 - support composition through helper factories and service-factory-based assembly paths
-- require explicit RAG client/configuration injection and provide a separate DMS environment-configuration path; environment values are not automatically converted into a `RAGCore`
+- require explicit RAG client/configuration injection and explicit DMS client assembly; process environment values are not automatically loaded or converted into a `RAGCore`
 - integrate with composition-layer settings, assembled service bundles, dms-core document lifecycle, and aggregate health checks
 
 This SRS covers the current library behavior. It does not define an external HTTP service contract or frontend behavior.
@@ -35,7 +35,7 @@ This SRS covers the current library behavior. It does not define an external HTT
 | user scope | The `AuthenticatedUser.sub` boundary used to isolate document storage and retrieval |
 | resolved user identity | The `AuthenticatedUser.sub` value persisted and filtered as `user_id` |
 | metadata store | SQLite-backed persistence for document, chunk, and ingestion progress records |
-| vector store | Milvus Lite-backed storage for embeddings and similarity search |
+| vector store | The standard `MilvusLiteVectorStore` adapter for embeddings and similarity search; local or remote connectivity follows the supplied Milvus client/configuration |
 | document asset storage | A port for original document content; the production implementation delegates to dms-core and stores an opaque `asset_reference` |
 | restart recovery | Reopening the same metadata and vector-store configuration after process restart |
 | health check | Aggregation of metadata and available Milvus, embedding, generation, and DMS checks |
@@ -72,7 +72,7 @@ DocMesh RAG Core Service is a library component intended to be embedded inside a
 4. generation of final answers
 5. dms-core-backed source asset lifecycle
 6. composition with helper factories and DocMesh runtime services
-7. lifecycle and aggregate health management for assembled runtime resources
+7. aggregate health management for assembled runtime resources and explicit lifecycle handling for `ServiceBundle`/metadata resources
 
 A simplified logical view is shown below.
 
@@ -97,7 +97,7 @@ Document Storage
  - rag_factories.py: RAG adapter/store construction
  - factories.py: stable advanced re-export surface
  - docmesh_runtime: Ollama / Milvus settings and assembly
- - dms_runtime: DMS-prefixed settings adaptation
+ - dms_runtime: explicit host-client DMS SDK assembly
 
 [Contract Layer]
  - types.py: public records
@@ -118,7 +118,7 @@ The system provides the following software functions:
 - prompt assembly and answer generation through a generation client
 - listing, reading, and deleting user-scoped documents and document chunks
 - health checking across metadata and available dependent services
-- deterministic cleanup of Factory-owned DMS SDK resources and explicit cleanup of assembled `ServiceBundle` resources
+- explicit cleanup of assembled `ServiceBundle` resources and compatibility-path metadata stores; the dms-core v0.9 DMS SDK has no `close()` lifecycle
 
 ### 2.3 User Classes and Characteristics
 
@@ -132,10 +132,10 @@ The system provides the following software functions:
 The software is expected to run in a Python environment with:
 
 - Python `>= 3.11`
-- `dms-core v0.7.0` (Python package name `dms`)
+- `dms-core>=0.9.0` (Python package name `dms`)
 - `ollama>=0.6.2`
 - `pydantic-settings>=2.14.1`
-- `pymilvus[milvus-lite]>=3.0.0`
+- `pymilvus[milvus-lite]>=3.0.1`
 - the SQLAlchemy and MinIO integrations supplied by the DMS/runtime dependency set
 
 The runtime environment shall provide:
@@ -168,7 +168,7 @@ The following assumptions and dependencies apply:
 - embedding and generation clients satisfy their documented protocol contracts
 - embedding/vector-store adapters are expected to preserve chunk/vector cardinality; the standard Milvus adapter rejects mismatched input counts
 - the configured Milvus storage is reachable and reusable across restarts when configured consistently
-- the calling application's composition layer is responsible for reaching Ollama, Milvus, DMS metadata, and MinIO using its selected configuration path
+- the calling application's composition layer is responsible for explicitly creating or supplying Ollama, Milvus, DMS metadata, and MinIO clients; this package does not read process environment variables for those clients
 - authentication and `AuthenticatedUser` creation are owned by the calling application
 
 ---
@@ -190,9 +190,9 @@ The system shall expose the following public construction paths:
 - `DocmeshRAGServiceFactory.from_clients(...)`
 - `DocmeshRAGServiceFactory.from_host_clients(...)`
 
-`DocmeshRAGServiceFactory.from_clients(...)` shall accept a host-created DMS SQLAlchemy `Engine`, MinIO client, bucket name, already-created embedding/generation/vector collaborators, and an optional metadata SQLAlchemy `Engine`. It shall create the DMS SDK through dms-core's client assembly path and own that SDK. A `metadata_engine` is required for the normal `create_rag_core(...)` path; the lower-level `create_metadata_store(metadata_path=...)` path remains available for compatibility.
+`DocmeshRAGServiceFactory.from_clients(...)` shall accept a host-created DMS SQLAlchemy `Engine`, MinIO client, bucket name, already-created embedding/generation/vector collaborators, and an optional metadata SQLAlchemy `Engine`. It shall create the DMS SDK through dms-core's client assembly path and retain a reference to it; the dms-core v0.9 SDK has no `close()` lifecycle, so the Factory does not close it. A `metadata_engine` is required for the normal `create_rag_core(...)` path; the lower-level `create_metadata_store(metadata_path=...)` path remains available for compatibility.
 
-`DocmeshRAGServiceFactory.from_host_clients(...)` shall accept host-created DMS and metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, model names, vector collection/timeout, and the DMS bucket name. It shall build the RAG adapters, delegate DMS assembly to `from_clients(...)`, and return a context-managed Factory without loading RAG or DMS environment configuration. The injected engines and transport clients shall remain caller-owned, and `create_rag_core(...)` shall assemble the final core. Neither classmethod shall store `ServiceConfigs` or `ServiceBundle` instances or lazily create collaborators from them.
+`DocmeshRAGServiceFactory.from_host_clients(...)` shall accept host-created DMS and metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, model names, vector collection/timeout, and the DMS bucket name. It shall build the RAG adapters, delegate DMS assembly to `from_clients(...)`, and return a context-managed Factory without loading RAG or DMS environment configuration. The injected engines and transport clients shall remain caller-owned, and `create_rag_core(...)` shall assemble the final core. Neither classmethod shall store `ServiceConfigs` or `ServiceBundle` instances or lazily create collaborators from them. The accepted `check_on_startup` argument is retained for compatibility in these classmethods and does not execute a startup health check; startup health checks belong to `assemble_docmesh_services(...)` and its `RuntimePlan`.
 
 #### 3.3.2 Public Operational Interfaces
 The system shall expose the following public operational interfaces:
@@ -238,7 +238,7 @@ Module-qualified advanced helpers shall not be described as package-root exports
 
 The implementation owners are separated inside the composition package:
 `rag_factories.py` owns RAG adapter/store construction, `service_factory.py`
-owns the DMS-backed Factory and lifecycle, and `factories.py` preserves the
+owns the DMS-backed Factory and compatibility metadata-store lifecycle, and `factories.py` preserves the
 established advanced import path as a compatibility surface.
 
 #### 3.3.6 External Runtime Integrations
@@ -423,7 +423,7 @@ This feature reports operational status and supports composition with helper fac
 - **SRS-FR-071** The system shall support service assembly through the composition-layer `build_docmesh_runtime_plan()` and `assemble_docmesh_services()` functions with an explicit `ServiceConfigs`, `RuntimePlan`, and `ServiceBundle`; `DocmeshRAGServiceFactory` shall consume only explicitly supplied DMS and RAG collaborators.
 - **SRS-FR-073** When document asset storage provides `check()`, the system shall include DMS health information.
 - **SRS-FR-075** DMS configuration shall be supplied explicitly through caller-created SQLAlchemy `Engine` instances, a MinIO client, and a bucket name; DMS composition shall not read process environment variables.
-- **SRS-FR-079** `DocmeshRAGServiceFactory.from_host_clients(...)` shall accept caller-created DMS/metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, embedding/generation model names, and vector collection/timeout, pass the DMS inputs to dms-core's client assembly path, and assemble the RAG adapters without loading DMS or RAG environment configuration. The context-managed Factory shall close only its created DMS SDK while leaving every injected Engine and transport client caller-owned.
+- **SRS-FR-079** `DocmeshRAGServiceFactory.from_host_clients(...)` shall accept caller-created DMS/metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, embedding/generation model names, and vector collection/timeout, pass the DMS inputs to dms-core's client assembly path, and assemble the RAG adapters without loading DMS or RAG environment configuration. Because the dms-core v0.9 SDK has no `close()` lifecycle, the context-managed Factory shall not close that SDK or any injected Engine/transport client. It shall close only MetadataStore instances that it created through the compatibility `metadata_path` path.
 
 ---
 
@@ -463,7 +463,7 @@ This feature reports operational status and supports composition with helper fac
 
 ### 5.7 Operational Requirements
 
-- **SRS-NFR-015** Resource lifecycle ownership shall remain explicit: caller-supplied collaborators, Engines, transport clients, and `ServiceBundle` instances are caller-owned, while a `DocmeshRAGServiceFactory` classmethod's created DMS SDK is Factory-context-owned.
+- **SRS-NFR-015** Resource lifecycle ownership shall remain explicit: caller-supplied collaborators, Engines, transport clients, and `ServiceBundle` instances are caller-owned; `ServiceBundle.close()` closes its closable clients, while `DocmeshRAGServiceFactory` closes only compatibility-path MetadataStore instances because the dms-core v0.9 SDK exposes no `close()` lifecycle.
 - **SRS-NFR-016** RAG and DMS configuration shall remain explicit and independent from process environment variables.
 
 ---
@@ -548,7 +548,7 @@ The implementation shall be considered conformant to this SRS when the following
 12. Successful deletion removes document metadata, chunk metadata, progress metadata, and Milvus entries and invokes asset deletion; the production DMS adapter uses soft delete.
 13. Failed vector-store deletion preserves metadata for retry.
 14. Health checking aggregates metadata and available dependency checks.
-15. `DocmeshRAGServiceFactory.from_host_clients(...)` assembles embedding/generation/vector adapters from explicitly supplied DMS/metadata engines, Ollama/Milvus clients, and settings without loading environment configuration, and closes only its created DMS SDK.
+15. `DocmeshRAGServiceFactory.from_host_clients(...)` assembles embedding/generation/vector adapters from explicitly supplied DMS/metadata engines, Ollama/Milvus clients, and settings without loading environment configuration. Its context does not close the dms-core v0.9 SDK or host-owned clients; it only cleans up MetadataStore instances created through compatibility `metadata_path`.
 16. Text DMS uploads preserve the RAG document identifier, user metadata, and ingestion idempotency information; file-stream/file-path uploads preserve the identifier and metadata but do not currently pass an idempotency key.
 17. DMS soft-delete failure preserves RAG metadata for retry.
 
@@ -566,18 +566,22 @@ Verification of this SRS is performed primarily through:
 
 | Requirement range | Verification status | Primary evidence |
 |---|---|---|
-| `SRS-FR-001`–`011` | Verified | `test_rag_system_core/domain/test_ingestion_api.py`, `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/domain/test_metadata_and_progress.py` |
+| `SRS-FR-001`–`003`, `SRS-FR-008`–`010` | Verified | `test_rag_system_core/domain/test_ingestion_api.py`, `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/domain/test_metadata_and_progress.py` |
+| `SRS-FR-011` | Partially verified | Query, document retrieval, and progress scope checks are automated; cross-user deletion and chunk-listing negative scenarios are not directly covered. Evidence: `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py`. |
 | `SRS-NFR-006`–`007` | Partially verified | Query/get/progress isolation is automated; negative cross-user deletion and chunk-listing scenarios are not directly covered. |
 | `SRS-FR-012`–`023`, `SRS-NFR-001` | Verified | `test_rag_system_core/domain/test_ingestion_api.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py` |
+| `SRS-NFR-002`–`005` | Partially verified | Top-k retrieval, synchronous health aggregation, and composition/module boundaries are code-grounded and exercised by representative tests; no dedicated performance or scalability benchmark is maintained. Evidence: `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/composition/test_module_boundaries.py`. |
 | `SRS-FR-024`–`029`, `SRS-FR-078`, `SRS-DR-006`–`007` | Partially verified | Text upload, asset identity, load/delete idempotency, and UTF-8 behavior are automated; the documented absence of idempotency-key forwarding for file-stream/file-path uploads is code-grounded but not asserted as a dedicated negative test. Evidence: `test_rag_system_core/storage/test_dms_document_storage.py`, `test_rag_system_core/domain/test_ingestion_api.py`. |
 | `SRS-FR-030`–`031`, `033`–`037`, `SRS-FR-077` | Verified | `test_rag_system_core/adapters/`, `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py` |
 | `SRS-FR-032` | Partially verified | Standard-adapter validation exists in `rag_system_core/storage/vector_store.py`; there is no direct automated chunk/vector input-count mismatch test. |
 | `SRS-FR-038`–`044`, `SRS-FR-070`–`071` | Verified | `test_rag_system_core/composition/test_core_configuration.py`, `test_rag_system_core/composition/test_docmesh_integration.py` |
 | `SRS-FR-045`–`052`, `SRS-DR-001`–`005` | Verified | `test_rag_system_core/domain/test_metadata_and_progress.py` |
-| `SRS-FR-053`–`062` | Verified | `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/domain/test_metadata_and_progress.py` |
+| `SRS-NFR-008`–`012` | Partially verified | Restart persistence, deletion-failure preservation, public API ownership, and composition/domain separation are covered by representative tests; no separate reliability or maintainability benchmark is maintained. Evidence: `test_rag_system_core/domain/test_metadata_and_progress.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/composition/test_module_boundaries.py`. |
+| `SRS-FR-053`–`062` | Partially verified | Listing, single-document retrieval, progress retrieval, successful deletion, and vector/DMS failure preservation are automated; cross-user chunk-listing and deletion negative scenarios are not directly covered. Evidence: `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`. |
 | `SRS-FR-063` | Partially verified | Vector retry and DMS-failure metadata preservation are automated; a second successful delete attempt after DMS failure is not directly covered. |
 | `SRS-FR-064`–`069`, `SRS-FR-073` | Partially verified | Positive health aggregation and DMS health inclusion are automated; failed-check conversion and missing-required-check semantics are not directly covered. Evidence: `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/storage/test_dms_document_storage.py`. |
-| `SRS-FR-075`, `SRS-FR-079`, `SRS-NFR-013`, `015`–`016` | Partially verified | Client-based factory, namespace separation, module ownership, and lifecycle checks are automated; strict-mode conflict diagnosis is code-grounded but not directly tested. Evidence: `test_rag_system_core/composition/test_core_configuration.py`, `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/composition/test_module_boundaries.py`. |
+| `SRS-FR-075`, `SRS-FR-079`, `SRS-NFR-013`, `015`–`016` | Partially verified | Client-based factory, explicit namespace separation, module ownership, no-DMS-SDK-close behavior, and compatibility-path metadata cleanup are automated; host-owned Engine/transport-client cleanup and the accepted-but-ignored classmethod startup-check flag are not directly tested. Evidence: `test_rag_system_core/composition/test_core_configuration.py`, `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/composition/test_module_boundaries.py`. |
+| `SRS-NFR-014` | Inspection-only | Python version and declared dependency lower bounds are defined in `pyproject.toml`; a separate portability matrix is not maintained. |
 
 ---
 
@@ -589,10 +593,10 @@ Verification of this SRS is performed primarily through:
 - The calling application must authenticate users and construct `AuthenticatedUser` instances.
 - Deletion executes vector → asset → metadata. A DMS failure can leave vectors deleted and metadata retained; a metadata failure can occur after vector and asset cleanup. No distributed rollback is provided.
 - Ingestion uploads the asset and creates document metadata before vector/chunk completion; a later failure can therefore leave retryable document/DMS state rather than performing a full distributed rollback.
-- Directly assembled factories, Engines, transport clients, and `ServiceBundle` instances remain caller-owned; `DocmeshRAGServiceFactory` classmethod callers use the Factory context manager for its created DMS SDK only.
+- Directly assembled factories, Engines, transport clients, and `ServiceBundle` instances remain caller-owned; `ServiceBundle.close()` handles closable assembled clients, while `DocmeshRAGServiceFactory` does not close the dms-core v0.9 SDK and only tracks MetadataStore instances created through `metadata_path`.
 
 ---
 
 ## 9. Summary
 
-The current implementation of DocMesh RAG Core Service is a **composition-oriented Python RAG library** centered on `RAGCore`. Its software requirements emphasize user-scope isolation, SQLite + Milvus Lite search persistence, dms-core document lifecycle, predictable ingestion and retrieval flow, and explicit caller-owned composition with clear resource ownership. This SRS documents only behavior that is presently supported by code and companion tests.
+The current implementation of DocMesh RAG Core Service is a **composition-oriented Python RAG library** centered on `RAGCore`. Its software requirements emphasize user-scope isolation, SQLite + configured Milvus-adapter search persistence, dms-core document lifecycle, predictable ingestion and retrieval flow, and explicit caller-owned composition with clear resource ownership. This SRS documents only behavior that is presently supported by code and companion tests.
