@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
-import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -24,7 +24,11 @@ from rag_system_core import (
     RAGCore,
 )
 from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.composition.configuration import MilvusConfig, OllamaConfig, ServiceConfigs
+from rag_system_core.composition.configuration import (
+    MilvusConfig,
+    OllamaConfig,
+    ServiceConfigs,
+)
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
     build_docmesh_runtime_plan,
@@ -38,7 +42,6 @@ from rag_system_core.storage.dms_document_storage import DmsDocumentStorage
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 from test_rag_system_core.support import authenticated_user
-
 
 POSTGRES_DSN = "postgresql+psycopg://docmesh:password@postgres:5432/docmesh"
 MILVUS_URI = "http://milvus:19530"

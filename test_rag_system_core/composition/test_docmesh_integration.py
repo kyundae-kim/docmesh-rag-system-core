@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-import importlib.util
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
 import dms
-from pymilvus import MilvusClient
 import pytest
 
-from rag_system_core import RAGCore
-from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
-import rag_system_core.composition.dms_runtime as dms_runtime
-import rag_system_core.composition.docmesh_runtime as docmesh_runtime
 import rag_system_core.composition.service_factory as service_factory_module
+from rag_system_core.adapters.ollama import (
+    OllamaEmbeddingClient,
+    OllamaGenerationClient,
+)
+from rag_system_core.composition import dms_runtime, docmesh_runtime
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
     build_docmesh_runtime_plan,
@@ -27,9 +25,6 @@ from rag_system_core.composition.factories import (
 )
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 from test_rag_system_core.support import (
-    FakeDocumentStorage,
-    FakeEmbeddingClient,
-    FakeGenerationClient,
     create_metadata_store,
 )
 

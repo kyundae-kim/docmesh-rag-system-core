@@ -10,8 +10,12 @@ from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.types import ChunkRecord, DocumentRecord, IngestionProgressRecord
-
-from test_rag_system_core.support import authenticated_user, create_metadata_store, create_test_rig, FakeDocumentStorage
+from test_rag_system_core.support import (
+    FakeDocumentStorage,
+    authenticated_user,
+    create_metadata_store,
+    create_test_rig,
+)
 
 USER_A = authenticated_user("user-a")
 USER_B = authenticated_user("user-b")

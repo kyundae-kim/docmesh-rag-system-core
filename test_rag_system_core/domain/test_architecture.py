@@ -9,7 +9,6 @@ import rag_system_core.ports as ports_module
 import rag_system_core.storage.vector_store as vector_store_module
 import rag_system_core.types as types_module
 
-
 DOMAIN_PATH = Path("rag_system_core/domain")
 
 

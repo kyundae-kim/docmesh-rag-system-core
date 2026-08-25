@@ -7,8 +7,7 @@ from typing import BinaryIO
 from pymilvus import MilvusClient
 from sqlalchemy import create_engine
 
-from rag_system_core import RAGCore
-from rag_system_core import AuthenticatedUser
+from rag_system_core import AuthenticatedUser, RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
 from rag_system_core.storage.metadata_store import MetadataStore

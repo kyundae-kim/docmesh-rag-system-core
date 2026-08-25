@@ -5,25 +5,24 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, get_type_hints
 
-import rag_system_core.composition.rag_factories as rag_factories_module
-from pymilvus import MilvusClient
 import pytest
+from pymilvus import MilvusClient
+
+import rag_system_core.composition.rag_factories as rag_factories_module
 from rag_system_core import RAGCore
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import (
-    DocmeshRAGServiceFactory,
     create_rag_embedding_client,
     create_rag_generation_client,
     create_rag_vector_store,
 )
 from rag_system_core.ports import EmbeddingClient, GenerationClient, VectorStore
-
 from test_rag_system_core.support import (
-    authenticated_user,
-    create_metadata_store,
     FakeDocumentStorage,
     FakeEmbeddingClient,
     FakeGenerationClient,
+    authenticated_user,
+    create_metadata_store,
 )
 
 USER_A = authenticated_user("user-a")

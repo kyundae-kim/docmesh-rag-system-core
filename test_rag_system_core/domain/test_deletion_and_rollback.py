@@ -10,13 +10,12 @@ from rag_system_core.domain.ingestion import IngestionService
 from rag_system_core.ports import VectorStore
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.types import ChunkRecord
-
 from test_rag_system_core.support import (
+    FakeDocumentStorage,
+    FakeEmbeddingClient,
     authenticated_user,
     create_metadata_store,
     create_test_rig,
-    FakeDocumentStorage,
-    FakeEmbeddingClient,
 )
 
 USER_A = authenticated_user("user-a")

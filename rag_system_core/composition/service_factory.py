@@ -12,8 +12,8 @@ from pymilvus import MilvusClient as _MilvusClient
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
-import rag_system_core.composition.dms_runtime as dms_runtime
 from rag_system_core.adapters.chunking import FixedWindowChunker
+from rag_system_core.composition import dms_runtime
 from rag_system_core.composition.rag_factories import (
     create_rag_embedding_client,
     create_rag_generation_client,
@@ -78,7 +78,7 @@ class DocmeshRAGServiceFactory:
         generation_client: GenerationClient,
         vector_store: VectorStore,
         metadata_engine: Engine | None = None,
-    ) -> "DocmeshRAGServiceFactory":
+    ) -> DocmeshRAGServiceFactory:
         """Assemble RAG services exclusively from host-owned clients."""
         dms_sdk = dms_runtime.create_dms_sdk_from_clients(
             engine=engine,
@@ -107,7 +107,7 @@ class DocmeshRAGServiceFactory:
         generation_model: str,
         collection_name: str = "rag_chunks",
         timeout: float = 30.0,
-    ) -> "DocmeshRAGServiceFactory":
+    ) -> DocmeshRAGServiceFactory:
         """Assemble RAG services from host-owned transport clients."""
         embedding_client = create_rag_embedding_client(
             client=ollama_client,
