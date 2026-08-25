@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "dms-core>=0.9.0",
+    "dms-core>=0.10.0",
     "ollama>=0.6.2",
     "pydantic-settings>=2.14.1",
     "pymilvus[milvus-lite]>=3.0.1",

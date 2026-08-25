@@ -1,10 +1,10 @@
 ---
 title: User Scope Isolation
 created: 2026-06-11
-updated: 2026-08-18
+updated: 2026-08-25
 type: concept
 tags: [rag, security, api, sdk]
-sources: []
+sources: [raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md, raw/articles/dms-core-examples-v0.10.0-2026-08-25.md]
 confidence: high
 ---
 
@@ -27,6 +27,10 @@ API reference는 `resolve_user_id(token)`의 기본 규칙을 더 구체적으�
 ## Enforcement points
 
 스코프 제한은 ingestion 시 메타데이터 기록, retrieval 시 필터링, `get_document`, `list_document_chunks`, `list_ingestion_progress`, `delete_document` 같은 관리 API 전반에 적용되어야 한다. query 역시 반드시 현재 user scope에 속한 chunk만 사용해야 하며, 이것은 acceptance criteria의 명시 항목이다.
+
+## DMS document-storage boundary
+
+v0.10.0 `dms-core`는 `AccessContext.user_id`와 `DmsOperationContext.user_id`를 document metadata, object namespace, idempotency operation, cursor에 같은 사용자 범위로 적용한다. user-scoped facade는 다른 user의 read/list/content/delete/recovery를 거부하고, reset도 해당 user의 DMS 관리 데이터만 대상으로 한다. 이는 RAG Core의 token-to-`user_id` 해석과 연결할 수 있지만, 제품-level document/chunk 관계와 tenant 의미는 여전히 RAG metadata 및 host policy가 소유한다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]^[raw/articles/dms-core-examples-v0.10.0-2026-08-25.md]
 
 ## Future implications
 
