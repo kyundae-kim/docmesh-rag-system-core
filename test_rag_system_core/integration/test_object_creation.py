@@ -413,3 +413,88 @@ def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
         bundle.close()
         metadata_engine.dispose()
         dms_engine.dispose()
+
+
+@pytest.mark.integration
+def test_ragcore_public_api_covers_ingestion_query_and_document_lifecycle(tmp_path: Path) -> None:
+    """Exercise every RAGCore public operation through the assembled services."""
+    user = authenticated_user(f"core-public-api-user-{uuid4().hex}")
+    other_user = authenticated_user(f"core-public-api-other-user-{uuid4().hex}")
+    document_ids: list[str] = []
+
+    with _create_sqlite_client_factory(tmp_path, in_memory=True) as resources:
+        core = resources.factory.create_rag_core()
+        try:
+            assert isinstance(core, RAGCore)
+
+            source_text = "The public API integration document states that the primary color is amber."
+            text_result = core.ingest_text(
+                user=user,
+                text=source_text,
+                source="public-api-text.txt",
+            )
+            document_ids.append(text_result.doc_id)
+
+            question = "Which primary color does the public API integration document state?"
+            response = core.query(user=user, question=question, top_k=1)
+
+            assert response.answer.strip()
+            assert source_text in response.prompt
+            assert len(response.context_chunks) == 1
+            assert response.context_chunks[0].doc_id == text_result.doc_id
+
+            stream_result = core.ingest_file_stream(
+                user=user,
+                file_stream=BytesIO(b"The stream document contains a violet value."),
+                source="public-api-stream.txt",
+            )
+            document_ids.append(stream_result.doc_id)
+
+            path = tmp_path / "public-api-path.txt"
+            path.write_text("The path document contains an orange value.", encoding="utf-8")
+            path_result = core.ingest_file_path(user=user, file_path=path)
+            document_ids.append(path_result.doc_id)
+
+            assert stream_result.source == "public-api-stream.txt"
+            assert path_result.source == path.name
+            assert {
+                document.doc_id for document in core.list_documents(user=user)
+            } == set(document_ids)
+
+            stored = core.get_document(text_result.doc_id, user=user)
+            assert stored is not None
+            assert stored.doc_id == text_result.doc_id
+            assert stored.user_id == user.sub
+            assert stored.source == "public-api-text.txt"
+
+            chunks = core.list_document_chunks(text_result.doc_id, user=user)
+            assert len(chunks) == text_result.chunk_count
+            assert all(chunk.doc_id == text_result.doc_id for chunk in chunks)
+            assert all(chunk.user_id == user.sub for chunk in chunks)
+
+            progress_rows = core.list_ingestion_progress(
+                text_result.doc_id,
+                user=user,
+                job_id=text_result.job_id,
+            )
+            assert progress_rows
+            assert all(row.doc_id == text_result.doc_id for row in progress_rows)
+            assert all(row.job_id == text_result.job_id for row in progress_rows)
+            assert any(row.status == "completed" for row in progress_rows)
+
+            assert core.get_document(text_result.doc_id, user=other_user) is None
+            assert core.list_document_chunks(text_result.doc_id, user=other_user) == []
+            assert core.list_ingestion_progress(text_result.doc_id, user=other_user) == []
+            assert core.delete_document(text_result.doc_id, user=other_user) is False
+            assert core.get_document(text_result.doc_id, user=user) is not None
+
+            assert core.delete_document(text_result.doc_id, user=user) is True
+            assert core.get_document(text_result.doc_id, user=user) is None
+            assert core.list_document_chunks(text_result.doc_id, user=user) == []
+            assert core.list_ingestion_progress(text_result.doc_id, user=user) == []
+            assert text_result.doc_id not in {
+                document.doc_id for document in core.list_documents(user=user)
+            }
+        finally:
+            for document_id in reversed(document_ids):
+                core.delete_document(document_id, user=user)
