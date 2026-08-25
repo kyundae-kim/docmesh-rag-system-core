@@ -8,7 +8,6 @@ import dms
 
 from rag_system_core.types import DocumentRecord
 
-
 DocumentManagementSdk = dms.DocumentManagementClient
 
 

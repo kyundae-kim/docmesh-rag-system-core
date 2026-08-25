@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import BinaryIO, Callable
+from typing import BinaryIO
 
 from rag_system_core.domain.generation import GenerationService
 from rag_system_core.domain.ingestion import IngestionService
@@ -11,7 +11,6 @@ from rag_system_core.ports import (
     DocumentAssetStorage,
     EmbeddingClient,
     GenerationClient,
-    HealthCheckRunner,
     MetadataRepository,
     VectorStore,
 )
@@ -35,7 +34,6 @@ class RAGCore:
         metadata_store: MetadataRepository,
         document_storage: DocumentAssetStorage,
         chunker: Chunker,
-        health_check_runner: HealthCheckRunner,
     ) -> None:
         self.embedding_client = embedding_client
         self.generation_client = generation_client
@@ -43,7 +41,6 @@ class RAGCore:
         self.document_storage = document_storage
         self.vector_store = vector_store
         self.chunker = chunker
-        self.health_check_runner = health_check_runner
         self.ingestor = IngestionService(
             chunker=self.chunker,
             embedding_client=embedding_client,
@@ -116,6 +113,37 @@ class RAGCore:
     ) -> list[IngestionProgressRecord]:
         return self.metadata_store.list_ingestion_progress(doc_id=doc_id, user_id=user.sub, job_id=job_id)
 
+    def get_ingestion_step_statuses(
+        self,
+        doc_id: str,
+        *,
+        user: AuthenticatedUser,
+        job_id: str | None = None,
+    ) -> dict[str, str]:
+        """Return the final known status for each ingestion pipeline step."""
+        progress_rows = self.metadata_store.list_ingestion_progress(
+            doc_id=doc_id,
+            user_id=user.sub,
+            job_id=job_id,
+        )
+        status_priority = {
+            "not_started": 0,
+            "running": 1,
+            "completed": 2,
+            "failed": 3,
+        }
+        statuses = {step_name: "not_started" for step_name in self.ingestor.PIPELINE_STEPS}
+        if not progress_rows:
+            document = self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=user.sub)
+            if job_id is None and document is not None:
+                return statuses
+            return {}
+        for row in progress_rows:
+            current_status = statuses.get(row.step_name, "not_started")
+            if status_priority.get(row.status, 0) >= status_priority.get(current_status, 0):
+                statuses[row.step_name] = row.status
+        return statuses
+
     def delete_document(self, doc_id: str, *, user: AuthenticatedUser) -> bool:
         document = self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=user.sub)
         if document is None:
@@ -127,28 +155,15 @@ class RAGCore:
             return False
         return True
 
-    def health_check(self):
-        service_checks: dict[str, Callable[[], None]] = {"metadata": self.metadata_store.check}
-        if hasattr(self.vector_store, "check"):
-            service_checks["milvus"] = self.vector_store.check
-        if hasattr(self.embedding_client, "check"):
-            service_checks["embedding"] = self.embedding_client.check
-        if hasattr(self.generation_client, "check"):
-            service_checks["generation"] = self.generation_client.check
-        if hasattr(self.document_storage, "check"):
-            service_checks["dms"] = self.document_storage.check
-        return self.health_check_runner(service_checks, required_services=set(service_checks))
-
-
 __all__ = [
     "ChunkRecord",
     "DocumentRecord",
     "EmbeddingClient",
     "GenerationClient",
     "GenerationService",
+    "IngestResult",
     "IngestionProgressRecord",
     "IngestionService",
-    "IngestResult",
     "QueryResult",
     "RAGCore",
     "RetrievalService",

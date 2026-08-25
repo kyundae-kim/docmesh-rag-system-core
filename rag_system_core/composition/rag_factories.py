@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from rag_system_core.adapters.ollama import OllamaEmbeddingClient, OllamaGenerationClient
+from rag_system_core.adapters.ollama import (
+    OllamaEmbeddingClient,
+    OllamaGenerationClient,
+)
+from rag_system_core.composition.configuration import OllamaConfig, ServiceConfigs
 from rag_system_core.composition.docmesh_runtime import (
     ServiceBundle,
     create_docmesh_service_client,
 )
-from rag_system_core.composition.configuration import OllamaConfig, ServiceConfigs
 from rag_system_core.ports import EmbeddingClient, GenerationClient, VectorStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 

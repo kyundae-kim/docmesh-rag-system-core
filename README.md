@@ -8,7 +8,7 @@ DocMesh 환경에서 사용할 수 있는 **조립형 Python RAG 코어 라이�
 - 생성 모델 호출을 통한 답변 생성(generation)
 - SQLite + configured Milvus adapter 기반 검색 persistence
 - dms-core + MinIO 기반 원문 lifecycle
-- DocMesh settings / `ServiceBundle` / health-check 연동을 위한 composition 경로 제공
+- DocMesh settings / `ServiceBundle` 연동을 위한 composition 경로 제공
 
 이 패키지는 **HTTP 서버가 아니라 라이브러리**입니다. 외부 애플리케이션이나 서비스가 `RAGCore`를 조립해 사용합니다.
 
@@ -176,7 +176,12 @@ print(first_doc.asset_reference)
 
 chunks = core.list_document_chunks(first_doc.doc_id, user=user)
 progress_rows = core.list_ingestion_progress(first_doc.doc_id, user=user)
+step_statuses = core.get_ingestion_step_statuses(first_doc.doc_id, user=user)
 ```
+
+`progress_rows`에는 각 파이프라인 단계의 상태 전이가 포함되고, `step_statuses`에는
+문서에 대해 확인된 각 단계의 최종 상태가 포함됩니다. 아직 실행되지 않은 후속 단계는
+`"not_started"`로 표시됩니다. 특정 ingestion 실행만 조회하려면 `job_id`를 함께 전달합니다.
 
 ### 5. 삭제
 
@@ -223,15 +228,11 @@ with DocmeshRAGServiceFactory.from_host_clients(
     generation_model="gpt-oss:20b",
     collection_name="rag_chunks",
     timeout=30.0,
-    check_on_startup=True,
 ) as service_factory:
     core = service_factory.create_rag_core()
-    print(core.health_check().ok)
 ```
 
 context 종료 시 host-client 경로에서 Factory는 dms-core SDK, `Engine`, `metadata_engine`, MinIO, Ollama, Milvus raw client를 닫지 않습니다. 이 자원은 caller-owned이며 상위 애플리케이션 lifecycle에서 정리합니다. Factory가 `metadata_path`로 생성한 compatibility MetadataStore만 Factory가 추적·정리합니다. Factory가 생성한 RAG adapter와 MetadataStore는 주입된 transport client를 소유하지 않습니다. `DocmeshRAGServiceFactory.from_clients(...)`는 이미 만들어진 RAG collaborator를 주입받는 경로입니다. Factory를 직접 사용할 때는 context 안에서 `create_rag_core(...)`를 호출하고, 반환된 Core도 같은 context 안에서 사용해야 합니다.
-
-참고로 `from_clients(...)`와 `from_host_clients(...)`의 `check_on_startup` 인자는 현재 dms-core v0.9 조립 경로에서 호환성을 위해 유지되지만 startup health check를 실행하지 않습니다. startup 점검이 필요하면 `build_docmesh_runtime_plan(..., check_on_startup=True)`와 `assemble_docmesh_services(...)` 경로를 사용합니다.
 
 ---
 
@@ -246,7 +247,6 @@ context 종료 시 host-client 경로에서 Factory는 dms-core SDK, `Engine`, `
 - `list_document_chunks(...)`
 - `list_ingestion_progress(...)`
 - `delete_document(...)`
-- `health_check()`
 
 추가 구현 특성:
 - fixed-window chunking (`chunk_size`, `chunk_overlap`)
@@ -254,7 +254,6 @@ context 종료 시 host-client 경로에서 Factory는 dms-core SDK, `Engine`, `
 - prompt 구조에 `[System Prompt]`, `[Retrieved Context]`, `[User Query]` 포함
 - user scope 기반 retrieval / 조회 / 삭제 제한
 - 삭제는 vector → DMS soft delete → RAG metadata 순서로 실행해 실패 시 metadata 기반 재시도를 보존
-- health check에서 metadata, Milvus 및 `check()`를 제공하는 embedding/generation/document-storage dependency status 집계
 
 ---
 

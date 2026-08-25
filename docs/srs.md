@@ -19,7 +19,7 @@ At the software level, the system shall:
 - support restart-time recovery by reopening the same metadata and vector storage
 - support composition through helper factories and service-factory-based assembly paths
 - require explicit RAG client/configuration injection and explicit DMS client assembly; process environment values are not automatically loaded or converted into a `RAGCore`
-- integrate with composition-layer settings, assembled service bundles, dms-core document lifecycle, and aggregate health checks
+- integrate with composition-layer settings, assembled service bundles, and dms-core document lifecycle
 
 This SRS covers the current library behavior. It does not define an external HTTP service contract or frontend behavior.
 
@@ -38,7 +38,7 @@ This SRS covers the current library behavior. It does not define an external HTT
 | vector store | The standard `MilvusLiteVectorStore` adapter for embeddings and similarity search; local or remote connectivity follows the supplied Milvus client/configuration |
 | document asset storage | A port for original document content; the production implementation delegates to dms-core and stores an opaque `asset_reference` |
 | restart recovery | Reopening the same metadata and vector-store configuration after process restart |
-| health check | Aggregation of metadata and available Milvus, embedding, generation, and DMS checks |
+
 | ingestion | Process of loading content, preprocessing, chunking, embedding, and storing it |
 
 ### 1.4 References
@@ -72,7 +72,7 @@ DocMesh RAG Core Service is a library component intended to be embedded inside a
 4. generation of final answers
 5. dms-core-backed source asset lifecycle
 6. composition with helper factories and DocMesh runtime services
-7. aggregate health management for assembled runtime resources and explicit lifecycle handling for `ServiceBundle`/metadata resources
+7. explicit lifecycle handling for assembled `ServiceBundle`/metadata resources
 
 A simplified logical view is shown below.
 
@@ -117,7 +117,6 @@ The system provides the following software functions:
 - user-scoped retrieval of relevant chunks
 - prompt assembly and answer generation through a generation client
 - listing, reading, and deleting user-scoped documents and document chunks
-- health checking across metadata and available dependent services
 - explicit cleanup of assembled `ServiceBundle` resources and compatibility-path metadata stores; the dms-core v0.9 DMS SDK has no `close()` lifecycle
 
 ### 2.3 User Classes and Characteristics
@@ -126,7 +125,7 @@ The system provides the following software functions:
 |---|---|---|
 | Local consumer | Local or single-instance user ingesting and querying documents | Explicit user information and predictable behavior |
 | Multi-user integrator | Application/service integrating this library for multiple users | Strict user-scope isolation |
-| composition-integrated developer | Developer using composition-layer settings, service-bundle assembly, and health integrations | Stable composition and reuse of runtime services |
+| composition-integrated developer | Developer using composition-layer settings and service-bundle assembly | Stable composition and reuse of runtime services |
 
 ### 2.4 Operating Environment
 The software is expected to run in a Python environment with:
@@ -192,7 +191,7 @@ The system shall expose the following public construction paths:
 
 `DocmeshRAGServiceFactory.from_clients(...)` shall accept a host-created DMS SQLAlchemy `Engine`, MinIO client, bucket name, already-created embedding/generation/vector collaborators, and an optional metadata SQLAlchemy `Engine`. It shall create the DMS SDK through dms-core's client assembly path and retain a reference to it; the dms-core v0.9 SDK has no `close()` lifecycle, so the Factory does not close it. A `metadata_engine` is required for the normal `create_rag_core(...)` path; the lower-level `create_metadata_store(metadata_path=...)` path remains available for compatibility.
 
-`DocmeshRAGServiceFactory.from_host_clients(...)` shall accept host-created DMS and metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, model names, vector collection/timeout, and the DMS bucket name. It shall build the RAG adapters, delegate DMS assembly to `from_clients(...)`, and return a context-managed Factory without loading RAG or DMS environment configuration. The injected engines and transport clients shall remain caller-owned, and `create_rag_core(...)` shall assemble the final core. Neither classmethod shall store `ServiceConfigs` or `ServiceBundle` instances or lazily create collaborators from them. The accepted `check_on_startup` argument is retained for compatibility in these classmethods and does not execute a startup health check; startup health checks belong to `assemble_docmesh_services(...)` and its `RuntimePlan`.
+`DocmeshRAGServiceFactory.from_host_clients(...)` shall accept host-created DMS and metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, model names, vector collection/timeout, and the DMS bucket name. It shall build the RAG adapters, delegate DMS assembly to `from_clients(...)`, and return a context-managed Factory without loading RAG or DMS environment configuration. The injected engines and transport clients shall remain caller-owned, and `create_rag_core(...)` shall assemble the final core. Neither classmethod shall store `ServiceConfigs` or `ServiceBundle` instances or lazily create collaborators from them.
 
 #### 3.3.2 Public Operational Interfaces
 The system shall expose the following public operational interfaces:
@@ -205,8 +204,8 @@ The system shall expose the following public operational interfaces:
 - `get_document(...)`
 - `list_document_chunks(...)`
 - `list_ingestion_progress(...)`
+- `get_ingestion_step_statuses(...)`
 - `delete_document(...)`
-- `health_check()`
 
 #### 3.3.3 Public Data Types
 The package root `rag_system_core` shall expose `AuthenticatedUser` and the following public record types:
@@ -229,7 +228,7 @@ The system shall distinguish composition interfaces by canonical import path:
 | Surface | Canonical interfaces |
 |---|---|
 | Package root `rag_system_core` | `RAGCore`, `RAGServiceFactory`, `DocmeshRAGServiceFactory`, `OllamaEmbeddingClient`, `OllamaGenerationClient`, public records, client protocols, and `AuthenticatedUser` |
-| `rag_system_core.composition` | `assemble_docmesh_services`, `create_docmesh_service_client`, `create_dms_sdk_from_clients`, `run_health_checks`, and the two service-factory types |
+| `rag_system_core.composition` | `assemble_docmesh_services`, `create_docmesh_service_client`, `create_dms_sdk_from_clients`, and the two service-factory types |
 | `rag_system_core.composition.docmesh_runtime` | `build_docmesh_runtime_plan`, `ServiceBundle`, and runtime assembly helpers |
 | `rag_system_core.composition.configuration` / `rag_system_core.composition.dms_runtime` | explicit `ServiceConfigs` and host-client DMS SDK assembly |
 | Advanced factory module `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
@@ -310,7 +309,7 @@ This feature accepts source content, normalizes it into text, processes it into 
 - **SRS-FR-020** After the API-specific source/DMS/document operations, the system shall record tracked ingestion stages in the following order: `load`, `preprocess`, `chunking`, `embedding`, `vector_store`, `chunk_persistence`. The tracked `load` stage shall not be interpreted as ownership of the preceding source read or DMS upload.
 - **SRS-FR-021** The system shall create a `job_id` for each ingestion execution.
 - **SRS-FR-022** The system shall record ingestion progress using statuses that can represent `running`, `completed`, and `failed`. It shall compensate vector insertion when generated ID count mismatches, chunk metadata persistence fails, or `vector_store=completed` progress persistence fails. If `chunk_persistence=completed` progress persistence fails, it shall attempt both metadata-chunk and vector cleanup. A compensation failure shall not prevent remaining compensations or replace the original pipeline error.
-- **SRS-FR-023** The system shall limit ingestion progress queries by document and resolved user scope.
+- **SRS-FR-023** The system shall limit ingestion progress queries, including final step-status lookup, by document and resolved user scope.
 
 ### 4.3 Feature: Document Asset Storage
 
@@ -395,7 +394,7 @@ This feature allows callers to inspect and remove previously ingested documents 
 - **SRS-FR-053** The system shall provide document listing within the current user scope.
 - **SRS-FR-054** The system shall provide single-document retrieval within the current user scope.
 - **SRS-FR-055** The system shall provide chunk listing for a document within the current user scope.
-- **SRS-FR-056** The system shall provide ingestion progress listing for a document within the current user scope.
+- **SRS-FR-056** The system shall provide ingestion progress listing and final per-step status lookup for a document within the current user scope. Final status lookup shall return `not_started` for defined pipeline steps with no recorded progress.
 - **SRS-FR-057** On successful document deletion, the system shall remove document metadata.
 - **SRS-FR-058** On successful document deletion, the system shall remove chunk metadata.
 - **SRS-FR-059** On successful document deletion, the system shall remove ingestion progress metadata.
@@ -404,24 +403,19 @@ This feature allows callers to inspect and remove previously ingested documents 
 - **SRS-FR-062** If vector store deletion fails, the system shall not proceed with metadata or asset deletion.
 - **SRS-FR-063** If vector deletion or DMS soft deletion fails, the system shall preserve RAG metadata and permit retry. Because vector deletion occurs first, DMS failure may leave vectors already removed; the retry path shall tolerate that state.
 
-### 4.8 Feature: Health Check and Composition / DocMesh Integration
+### 4.8 Feature: Composition / DocMesh Integration
 
 #### 4.8.1 Description and Priority
-This feature reports operational status and supports composition with helper factories and the surrounding DocMesh runtime.
+This feature supports composition with helper factories and the surrounding DocMesh runtime.
 
 **Priority:** Medium
 
 #### 4.8.2 Functional Requirements
 
-- **SRS-FR-064** The system shall include metadata health checking in every health-check result.
-- **SRS-FR-065** When the vector store provides `check()`, the system shall include vector-store health information.
-- **SRS-FR-066** When the embedding client provides `check()`, the system shall include embedding-client health information.
-- **SRS-FR-067** When the generation client provides `check()`, the system shall include generation-client health information.
-- **SRS-FR-068** The system shall aggregate health checks through `rag_system_core.composition.health.run_health_checks()`.
-- **SRS-FR-069** The default health runner shall return `HealthCheckResult` and per-service `ServiceHealthStatus` records. A check exception shall become an `ok=False` service status, and missing required checks shall also make the aggregate result unhealthy; the injected `HealthCheckRunner` may define another policy.
+The former health-check requirements `SRS-FR-064`–`SRS-FR-069` and `SRS-FR-073` are retired because health-check functionality was removed from the implementation.
+
 - **SRS-FR-070** The system shall support explicit selected-service settings through `ServiceConfigs` without reading RAG settings from process environment variables.
 - **SRS-FR-071** The system shall support service assembly through the composition-layer `build_docmesh_runtime_plan()` and `assemble_docmesh_services()` functions with an explicit `ServiceConfigs`, `RuntimePlan`, and `ServiceBundle`; `DocmeshRAGServiceFactory` shall consume only explicitly supplied DMS and RAG collaborators.
-- **SRS-FR-073** When document asset storage provides `check()`, the system shall include DMS health information.
 - **SRS-FR-075** DMS configuration shall be supplied explicitly through caller-created SQLAlchemy `Engine` instances, a MinIO client, and a bucket name; DMS composition shall not read process environment variables.
 - **SRS-FR-079** `DocmeshRAGServiceFactory.from_host_clients(...)` shall accept caller-created DMS/metadata SQLAlchemy `Engine` instances, MinIO client, Ollama client, Milvus client, embedding/generation model names, and vector collection/timeout, pass the DMS inputs to dms-core's client assembly path, and assemble the RAG adapters without loading DMS or RAG environment configuration. Because the dms-core v0.9 SDK has no `close()` lifecycle, the context-managed Factory shall not close that SDK or any injected Engine/transport client. It shall close only MetadataStore instances that it created through the compatibility `metadata_path` path.
 
@@ -433,12 +427,13 @@ This feature reports operational status and supports composition with helper fac
 
 - **SRS-NFR-001** Ingestion shall use batch embedding calls rather than one embedding call per chunk.
 - **SRS-NFR-002** Retrieval shall use a top-k-based flow that remains simple and predictable.
-- **SRS-NFR-003** Health-check execution shall synchronously aggregate metadata and available dependency checks through the configured runner; this package shall not claim a separate end-to-end health deadline beyond client-level timeout configuration.
+
+`SRS-NFR-003` is retired because health-check functionality was removed from the implementation.
 
 ### 5.2 Scalability and Extensibility Requirements
 
 - **SRS-NFR-004** The system shall preserve a single primary public entry point while keeping internal responsibilities separated.
-- **SRS-NFR-005** The system shall permit alternate chunker, vector-store, metadata, asset-storage, embedding, generation, and health-runner implementations through ports and `RAGServiceFactory` without changing the `RAGCore` operational method surface.
+- **SRS-NFR-005** The system shall permit alternate chunker, vector-store, metadata, asset-storage, embedding, and generation implementations through ports and `RAGServiceFactory` without changing the `RAGCore` operational method surface.
 
 ### 5.3 Data Isolation Requirements
 
@@ -544,13 +539,12 @@ The implementation shall be considered conformant to this SRS when the following
 8. Generated prompts contain `[System Prompt]`, `[Retrieved Context]`, and `[User Query]`.
 9. Metadata is stored in SQLite.
 10. Retrieval remains possible after restart when the same Milvus configuration is reused.
-11. Chunk listings and ingestion progress listings are available per document.
+11. Chunk listings, ingestion progress listings, and final per-step ingestion statuses are available per document.
 12. Successful deletion removes document metadata, chunk metadata, progress metadata, and Milvus entries and invokes asset deletion; the production DMS adapter uses soft delete.
 13. Failed vector-store deletion preserves metadata for retry.
-14. Health checking aggregates metadata and available dependency checks.
-15. `DocmeshRAGServiceFactory.from_host_clients(...)` assembles embedding/generation/vector adapters from explicitly supplied DMS/metadata engines, Ollama/Milvus clients, and settings without loading environment configuration. Its context does not close the dms-core v0.9 SDK or host-owned clients; it only cleans up MetadataStore instances created through compatibility `metadata_path`.
-16. Text DMS uploads preserve the RAG document identifier, user metadata, and ingestion idempotency information; file-stream/file-path uploads preserve the identifier and metadata but do not currently pass an idempotency key.
-17. DMS soft-delete failure preserves RAG metadata for retry.
+14. `DocmeshRAGServiceFactory.from_host_clients(...)` assembles embedding/generation/vector adapters from explicitly supplied DMS/metadata engines, Ollama/Milvus clients, and settings without loading environment configuration. Its context does not close the dms-core v0.9 SDK or host-owned clients; it only cleans up MetadataStore instances created through compatibility `metadata_path`.
+15. Text DMS uploads preserve the RAG document identifier, user metadata, and ingestion idempotency information; file-stream/file-path uploads preserve the identifier and metadata but do not currently pass an idempotency key.
+16. DMS soft-delete failure preserves RAG metadata for retry.
 
 ### 7.2 Traceability Source
 Automated verification for these requirements is maintained under `test_rag_system_core/`.
@@ -570,17 +564,18 @@ Verification of this SRS is performed primarily through:
 | `SRS-FR-011` | Partially verified | Query, document retrieval, and progress scope checks are automated; cross-user deletion and chunk-listing negative scenarios are not directly covered. Evidence: `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py`. |
 | `SRS-NFR-006`–`007` | Partially verified | Query/get/progress isolation is automated; negative cross-user deletion and chunk-listing scenarios are not directly covered. |
 | `SRS-FR-012`–`023`, `SRS-NFR-001` | Verified | `test_rag_system_core/domain/test_ingestion_api.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py` |
-| `SRS-NFR-002`–`005` | Partially verified | Top-k retrieval, synchronous health aggregation, and composition/module boundaries are code-grounded and exercised by representative tests; no dedicated performance or scalability benchmark is maintained. Evidence: `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/composition/test_module_boundaries.py`. |
+| `SRS-NFR-002`, `SRS-NFR-004`–`005` | Partially verified | Top-k retrieval and composition/module boundaries are code-grounded and exercised by representative tests; no dedicated performance or scalability benchmark is maintained. Evidence: `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/composition/test_module_boundaries.py` |
+| `SRS-NFR-003` | Retired | Health-check functionality was removed from the implementation. |
 | `SRS-FR-024`–`029`, `SRS-FR-078`, `SRS-DR-006`–`007` | Partially verified | Text upload, asset identity, load/delete idempotency, and UTF-8 behavior are automated; the documented absence of idempotency-key forwarding for file-stream/file-path uploads is code-grounded but not asserted as a dedicated negative test. Evidence: `test_rag_system_core/storage/test_dms_document_storage.py`, `test_rag_system_core/domain/test_ingestion_api.py`. |
 | `SRS-FR-030`–`031`, `033`–`037`, `SRS-FR-077` | Verified | `test_rag_system_core/adapters/`, `test_rag_system_core/domain/test_query.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py` |
 | `SRS-FR-032` | Partially verified | Standard-adapter validation exists in `rag_system_core/storage/vector_store.py`; there is no direct automated chunk/vector input-count mismatch test. |
 | `SRS-FR-038`–`044`, `SRS-FR-070`–`071` | Verified | `test_rag_system_core/composition/test_core_configuration.py`, `test_rag_system_core/composition/test_docmesh_integration.py` |
 | `SRS-FR-045`–`052`, `SRS-DR-001`–`005` | Verified | `test_rag_system_core/domain/test_metadata_and_progress.py` |
 | `SRS-NFR-008`–`012` | Partially verified | Restart persistence, deletion-failure preservation, public API ownership, and composition/domain separation are covered by representative tests; no separate reliability or maintainability benchmark is maintained. Evidence: `test_rag_system_core/domain/test_metadata_and_progress.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/composition/test_module_boundaries.py`. |
-| `SRS-FR-053`–`062` | Partially verified | Listing, single-document retrieval, progress retrieval, successful deletion, and vector/DMS failure preservation are automated; cross-user chunk-listing and deletion negative scenarios are not directly covered. Evidence: `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`. |
+| `SRS-FR-053`–`062` | Partially verified | Listing, single-document retrieval, progress retrieval, final per-step status lookup, successful deletion, and vector/DMS failure preservation are automated; cross-user chunk-listing and deletion negative scenarios are not directly covered. Evidence: `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`. |
 | `SRS-FR-063` | Partially verified | Vector retry and DMS-failure metadata preservation are automated; a second successful delete attempt after DMS failure is not directly covered. |
-| `SRS-FR-064`–`069`, `SRS-FR-073` | Partially verified | Positive health aggregation and DMS health inclusion are automated; failed-check conversion and missing-required-check semantics are not directly covered. Evidence: `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/storage/test_dms_document_storage.py`. |
-| `SRS-FR-075`, `SRS-FR-079`, `SRS-NFR-013`, `015`–`016` | Partially verified | Client-based factory, explicit namespace separation, module ownership, no-DMS-SDK-close behavior, and compatibility-path metadata cleanup are automated; host-owned Engine/transport-client cleanup and the accepted-but-ignored classmethod startup-check flag are not directly tested. Evidence: `test_rag_system_core/composition/test_core_configuration.py`, `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/composition/test_module_boundaries.py`. |
+| `SRS-FR-064`–`069`, `SRS-FR-073` | Retired | Health-check functionality was removed from the implementation. |
+| `SRS-FR-075`, `SRS-FR-079`, `SRS-NFR-013`, `015`–`016` | Partially verified | Client-based factory, explicit namespace separation, module ownership, no-DMS-SDK-close behavior, and compatibility-path metadata cleanup are automated; host-owned Engine/transport-client cleanup is not directly tested. Evidence: `test_rag_system_core/composition/test_core_configuration.py`, `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/composition/test_module_boundaries.py` |
 | `SRS-NFR-014` | Inspection-only | Python version and declared dependency lower bounds are defined in `pyproject.toml`; a separate portability matrix is not maintained. |
 
 ---

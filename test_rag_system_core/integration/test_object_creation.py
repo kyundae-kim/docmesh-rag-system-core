@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from ollama import Client as OllamaClient
 from pymilvus import MilvusClient
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import StaticPool
 
 from rag_system_core import (
     DocmeshRAGServiceFactory,
@@ -22,7 +24,11 @@ from rag_system_core import (
     RAGCore,
 )
 from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.composition.configuration import MilvusConfig, OllamaConfig, ServiceConfigs
+from rag_system_core.composition.configuration import (
+    MilvusConfig,
+    OllamaConfig,
+    ServiceConfigs,
+)
 from rag_system_core.composition.docmesh_runtime import (
     assemble_docmesh_services,
     build_docmesh_runtime_plan,
@@ -37,9 +43,9 @@ from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 from test_rag_system_core.support import authenticated_user
 
-
 POSTGRES_DSN = "postgresql+psycopg://docmesh:password@postgres:5432/docmesh"
 MILVUS_URI = "http://milvus:19530"
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +63,7 @@ def _create_host_client_factory() -> Iterator[_HostClientFactoryResources]:
     dms_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
     metadata_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
     ollama_client = OllamaClient(
-        host="http://ollama:11434",
+        host=OLLAMA_HOST,
         timeout=120,
         verify=False,
         follow_redirects=False,
@@ -86,7 +92,6 @@ def _create_host_client_factory() -> Iterator[_HostClientFactoryResources]:
             generation_model="llama3.2",
             collection_name=collection_name,
             timeout=float(120),
-            check_on_startup=False,
         ) as factory:
             yield _HostClientFactoryResources(
                 factory=factory,
@@ -104,12 +109,25 @@ def _create_host_client_factory() -> Iterator[_HostClientFactoryResources]:
 
 
 @contextmanager
-def _create_file_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryResources]:
-    collection_name = f"file_integration_chunks_{uuid4().hex}"
-    dms_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'dms.db'}")
-    metadata_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
+def _create_sqlite_client_factory(
+    tmp_path: Path,
+    *,
+    in_memory: bool,
+) -> Iterator[_HostClientFactoryResources]:
+    storage_prefix = "memory" if in_memory else "file"
+    collection_name = f"{storage_prefix}_integration_chunks_{uuid4().hex}"
+    if in_memory:
+        sqlite_engine_kwargs = {
+            "connect_args": {"check_same_thread": False},
+            "poolclass": StaticPool,
+        }
+        dms_engine = create_engine("sqlite+pysqlite:///:memory:", **sqlite_engine_kwargs)
+        metadata_engine = create_engine("sqlite+pysqlite:///:memory:", **sqlite_engine_kwargs)
+    else:
+        dms_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'dms.db'}")
+        metadata_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
     ollama_client = OllamaClient(
-        host="http://ollama:11434",
+        host=OLLAMA_HOST,
         timeout=120,
         verify=False,
         follow_redirects=False,
@@ -139,7 +157,6 @@ def _create_file_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryRe
             generation_model="llama3.2",
             collection_name=collection_name,
             timeout=float(120),
-            check_on_startup=False,
         ) as factory:
             yield _HostClientFactoryResources(
                 factory=factory,
@@ -229,7 +246,7 @@ def test_file_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None
     user = authenticated_user(f"file-backend-user-{uuid4().hex}")
     doc_id: str | None = None
 
-    with _create_file_client_factory(tmp_path) as resources:
+    with _create_sqlite_client_factory(tmp_path, in_memory=False) as resources:
         core = resources.factory.create_rag_core()
         try:
             source_text = "The file-backed integration document contains the color green."
@@ -257,15 +274,36 @@ def test_file_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None
 
 
 @pytest.mark.integration
-def test_host_clients_health_check_reaches_remote_services() -> None:
-    """Run the public health path against PostgreSQL, Milvus, and Ollama."""
-    with _create_host_client_factory() as resources:
-        result = resources.factory.create_rag_core().health_check()
+def test_memory_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None:
+    """Exercise Milvus Lite and in-memory SQLite with remote Ollama/MinIO."""
+    user = authenticated_user(f"memory-backend-user-{uuid4().hex}")
+    doc_id: str | None = None
 
-    assert result.ok is True
-    statuses = {status.service_name: status for status in result.services}
-    assert set(statuses) == {"metadata", "milvus", "embedding", "generation"}
-    assert all(status.ok for status in statuses.values())
+    with _create_sqlite_client_factory(tmp_path, in_memory=True) as resources:
+        core = resources.factory.create_rag_core()
+        try:
+            source_text = "The in-memory integration document contains the color purple."
+            question = "Which color does the in-memory document contain?"
+
+            ingested = core.ingest_text(
+                user=user,
+                text=source_text,
+                source="memory-backed-integration.txt",
+            )
+            doc_id = ingested.doc_id
+            response = core.query(user=user, question=question, top_k=1)
+
+            assert resources.metadata_engine.dialect.name == "sqlite"
+            assert resources.metadata_engine.url.database == ":memory:"
+            assert not (tmp_path / "dms.db").exists()
+            assert not (tmp_path / "metadata.db").exists()
+            assert response.answer.strip()
+            assert source_text in response.prompt
+            assert response.context_chunks[0].doc_id == ingested.doc_id
+            assert response.context_chunks[0].content == source_text
+        finally:
+            if doc_id is not None:
+                core.delete_document(doc_id, user=user)
 
 
 @pytest.mark.integration
@@ -321,7 +359,7 @@ def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
             request_timeout_seconds=120,
         ),
         ollama=OllamaConfig(
-            host="http://ollama:11434",
+            host=OLLAMA_HOST,
             verify_ssl=False,
             follow_redirects=False,
             embedding_model="bge-m3",
@@ -331,9 +369,6 @@ def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
     )
     plan = build_docmesh_runtime_plan(
         services={"milvus", "ollama"},
-        required={"milvus", "ollama"},
-        check_on_startup=True,
-        parallel_healthchecks=True,
     )
     bundle = assemble_docmesh_services(plan=plan, settings=settings)
     dms_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
@@ -358,7 +393,6 @@ def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
             embedding_client=embedding_client,
             generation_client=generation_client,
             vector_store=vector_store,
-            check_on_startup=False,
         ) as factory:
             core = factory.create_rag_core()
             try:
@@ -382,3 +416,100 @@ def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
         bundle.close()
         metadata_engine.dispose()
         dms_engine.dispose()
+
+
+@pytest.mark.integration
+def test_ragcore_public_api_covers_ingestion_query_and_document_lifecycle(tmp_path: Path) -> None:
+    """Exercise every RAGCore public operation through the assembled services."""
+    user = authenticated_user(f"core-public-api-user-{uuid4().hex}")
+    other_user = authenticated_user(f"core-public-api-other-user-{uuid4().hex}")
+    document_ids: list[str] = []
+
+    with _create_sqlite_client_factory(tmp_path, in_memory=True) as resources:
+        core = resources.factory.create_rag_core()
+        try:
+            assert isinstance(core, RAGCore)
+
+            source_text = "The public API integration document states that the primary color is amber."
+            text_result = core.ingest_text(
+                user=user,
+                text=source_text,
+                source="public-api-text.txt",
+            )
+            document_ids.append(text_result.doc_id)
+
+            question = "Which primary color does the public API integration document state?"
+            response = core.query(user=user, question=question, top_k=1)
+
+            assert response.answer.strip()
+            assert source_text in response.prompt
+            assert len(response.context_chunks) == 1
+            assert response.context_chunks[0].doc_id == text_result.doc_id
+
+            stream_result = core.ingest_file_stream(
+                user=user,
+                file_stream=BytesIO(b"The stream document contains a violet value."),
+                source="public-api-stream.txt",
+            )
+            document_ids.append(stream_result.doc_id)
+
+            path = tmp_path / "public-api-path.txt"
+            path.write_text("The path document contains an orange value.", encoding="utf-8")
+            path_result = core.ingest_file_path(user=user, file_path=path)
+            document_ids.append(path_result.doc_id)
+
+            assert stream_result.source == "public-api-stream.txt"
+            assert path_result.source == path.name
+            assert {
+                document.doc_id for document in core.list_documents(user=user)
+            } == set(document_ids)
+
+            stored = core.get_document(text_result.doc_id, user=user)
+            assert stored is not None
+            assert stored.doc_id == text_result.doc_id
+            assert stored.user_id == user.sub
+            assert stored.source == "public-api-text.txt"
+
+            chunks = core.list_document_chunks(text_result.doc_id, user=user)
+            assert len(chunks) == text_result.chunk_count
+            assert all(chunk.doc_id == text_result.doc_id for chunk in chunks)
+            assert all(chunk.user_id == user.sub for chunk in chunks)
+
+            progress_rows = core.list_ingestion_progress(
+                text_result.doc_id,
+                user=user,
+                job_id=text_result.job_id,
+            )
+            assert progress_rows
+            assert all(row.doc_id == text_result.doc_id for row in progress_rows)
+            assert all(row.job_id == text_result.job_id for row in progress_rows)
+            assert any(row.status == "completed" for row in progress_rows)
+            assert core.get_ingestion_step_statuses(
+                text_result.doc_id,
+                user=user,
+                job_id=text_result.job_id,
+            ) == {
+                "load": "completed",
+                "preprocess": "completed",
+                "chunking": "completed",
+                "embedding": "completed",
+                "vector_store": "completed",
+                "chunk_persistence": "completed",
+            }
+
+            assert core.get_document(text_result.doc_id, user=other_user) is None
+            assert core.list_document_chunks(text_result.doc_id, user=other_user) == []
+            assert core.list_ingestion_progress(text_result.doc_id, user=other_user) == []
+            assert core.delete_document(text_result.doc_id, user=other_user) is False
+            assert core.get_document(text_result.doc_id, user=user) is not None
+
+            assert core.delete_document(text_result.doc_id, user=user) is True
+            assert core.get_document(text_result.doc_id, user=user) is None
+            assert core.list_document_chunks(text_result.doc_id, user=user) == []
+            assert core.list_ingestion_progress(text_result.doc_id, user=user) == []
+            assert text_result.doc_id not in {
+                document.doc_id for document in core.list_documents(user=user)
+            }
+        finally:
+            for document_id in reversed(document_ids):
+                core.delete_document(document_id, user=user)

@@ -64,36 +64,19 @@ class Service(StrEnum):
 @dataclass(frozen=True, slots=True)
 class ServiceSelection:
     service: Service
-    required: bool = False
 
     def __post_init__(self) -> None:
-        if not isinstance(self.required, bool):
-            raise ConfigError("Service selection required flag must be boolean")
         object.__setattr__(self, "service", Service.parse(self.service))
-
-
-@dataclass(frozen=True, slots=True)
-class HealthcheckPolicy:
-    on_startup: bool = False
-    parallel: bool = False
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.on_startup, bool) or not isinstance(self.parallel, bool):
-            raise ConfigError("Healthcheck policy flags must be boolean")
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimePlan:
     services: tuple[ServiceSelection | Service, ...]
     one_of: tuple[tuple[Service, ...], ...] = ()
-    healthcheck: HealthcheckPolicy = HealthcheckPolicy()
 
     def __post_init__(self) -> None:
         if not self.services:
             raise ConfigError("Runtime plan must select at least one service")
-        if not isinstance(self.healthcheck, HealthcheckPolicy):
-            raise ConfigError("Runtime plan healthcheck must be a HealthcheckPolicy")
-
         normalized = tuple(
             item if isinstance(item, ServiceSelection) else ServiceSelection(Service.parse(item))
             for item in self.services
@@ -120,14 +103,8 @@ class RuntimePlan:
     def selected_services(self) -> frozenset[Service]:
         return frozenset(selection.service for selection in self.services)
 
-    @property
-    def required_services(self) -> frozenset[Service]:
-        return frozenset(selection.service for selection in self.services if selection.required)
-
-
 __all__ = [
     "ConfigError",
-    "HealthcheckPolicy",
     "MilvusConfig",
     "OllamaConfig",
     "RuntimePlan",

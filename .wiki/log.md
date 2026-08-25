@@ -712,3 +712,25 @@
   - queries/verifying-docmesh-py-core-contract.md
   - index.md
 - Historical log and proposal references were retained and explicitly marked as historical where applicable.
+
+## [2026-08-25] ingest | dms-core v0.10.0 API Reference and Examples
+- Sources:
+  - `https://github.com/kyundae-kim/dms-core/wiki/API-Reference-v0.10.0`
+  - `https://github.com/kyundae-kim/dms-core/wiki/Examples-v0.10.0`
+- Raw captures created:
+  - `raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md` — SHA-256 `a436f8d1927f70be1b8ad11ac3b54c88c7e5a5b7f2a0cfa13c01da3a928270cc`
+  - `raw/articles/dms-core-examples-v0.10.0-2026-08-25.md` — SHA-256 `dab98842eafee0c0c5677958033f7e401114204d901d93396460f8168a4d8ce3`
+- Wiki pages updated:
+  - `entities/dms-core.md`
+  - `concepts/dms-configuration-and-assembly.md`
+  - `concepts/dms-document-lifecycle.md`
+  - `concepts/dms-metadata-and-recovery.md`
+  - `concepts/public-api-surface.md`
+  - `concepts/service-configuration-topology.md`
+  - `concepts/settings-loading-and-validation.md`
+  - `concepts/user-scope-isolation.md`
+  - `queries/applying-dms-core-as-document-storage.md`
+  - `queries/verifying-dms-core-contract.md`
+  - `index.md`
+- Verification: `verify_ingest.py` passed with `pages=35 indexed=35 issues=0`; both new raw body hashes recomputed successfully.
+- Notes: the supplied GitHub Wiki URLs are versioned page names, not immutable wiki commit URLs. The raw captures use the GitHub raw Wiki endpoint and represent the current Wiki revision fetched at ingest time; the documents themselves identify source commit `d508b7c2ea82fb79bfcf008c948a364fcaa962d9`. v0.9.0 raw captures remain preserved as historical evidence.

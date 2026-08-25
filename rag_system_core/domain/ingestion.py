@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO, Callable, TypeVar
+from typing import BinaryIO, TypeVar
 from uuid import uuid4
 
 from rag_system_core.ports import (

@@ -1,32 +1,32 @@
 ---
 title: Verifying the dms-core Contract
 created: 2026-07-27
-updated: 2026-08-18
+updated: 2026-08-25
 type: query
 tags: [sdk, testing, integration, config, persistence, security, observability]
-sources: [raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md, raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
+sources: [raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md, raw/articles/dms-core-examples-v0.9.0-2026-08-18.md, raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md, raw/articles/dms-core-examples-v0.10.0-2026-08-25.md]
 confidence: medium
 ---
 
 # Verifying the dms-core Contract
 
-`dms-core` v0.9.0 계약 검증은 import 성공만 확인하는 작업이 아니다. package-root 공개면, factory/direct 조립, host-owned resource, sync/async/scoped facade, 문서 작업, public/internal metadata 경계, idempotency, pagination, reset/recovery, stable error와 consumer adapter를 각각 검증해야 한다. 기준 지식은 [[dms-core]], [[dms-configuration-and-assembly]], [[dms-document-lifecycle]], [[dms-metadata-and-recovery]]에 나뉘어 있다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
+`dms-core` v0.10.0 계약 검증은 import 성공만 확인하는 작업이 아니다. package-root 공개면, factory/direct 조립, host-owned resource, sync/async/scoped facade, 문서 작업, public/internal metadata 경계, idempotency, pagination, reset/recovery, stable error와 consumer adapter를 각각 검증해야 한다. 기준 지식은 [[dms-core]], [[dms-configuration-and-assembly]], [[dms-document-lifecycle]], [[dms-metadata-and-recovery]]에 나뉘어 있다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]^[raw/articles/dms-core-examples-v0.10.0-2026-08-25.md]
 
 ## 1. 기준 version과 문서 경계 고정
 
 1. 소비 프로젝트 manifest에서 `dms` source와 target tag/revision을 고정한다.
 2. 격리 환경에서 실제 설치 배포물의 `importlib.metadata.version("dms")`와 package root를 기록한다.
-3. 같은 tag source의 commit SHA를 기록한다. v0.9.0 Wiki 문서의 기준은 commit `f7a40f1`이다.
+3. 같은 tag source의 commit SHA를 기록한다. v0.10.0 Wiki 문서의 기준은 commit `d508b7c2ea82fb79bfcf008c948a364fcaa962d9`이다.
 4. versioned wiki 문서, tag source, 설치 배포물이 다르면 설치 배포물과 immutable tag source를 실행 계약의 우선 근거로 삼고 문서 drift를 별도로 보고한다.
-5. v0.6/v0.7 legacy environment factory와 assembly-plan symbols를 v0.9.0 성공 조건에 포함하지 않는다.
+5. v0.6/v0.7 legacy environment factory와 assembly-plan symbols를 v0.10.0 성공 조건에 포함하지 않는다.
 
-현재 이 페이지는 v0.9.0 Wiki 문서를 ingest한 것이며 installed package나 consumer repository를 새로 live 검증한 결과는 아니다. 사용자가 제공한 GitHub Wiki URL은 `source_url`로 보존했지만 immutable wiki commit URL은 아니므로 raw body는 ingest 시점 revision이다.
+현재 이 페이지는 v0.10.0 Wiki 문서를 ingest한 것이며 installed package나 consumer repository를 새로 live 검증한 결과는 아니다. 사용자가 제공한 GitHub Wiki URL은 `source_url`로 보존했지만 immutable wiki commit URL은 아니므로 raw body는 ingest 시점 revision이다.
 
 ## 2. Package-root export와 facade surface
 
-`from dms import ...`만 사용해 API reference의 54개 공개 이름과 실제 `dms.__all__`을 비교한다. 특히 다음 범위를 확인한다.
+`from dms import ...`만 사용해 API reference의 55개 공개 이름과 실제 `dms.__all__`을 비교한다. 특히 다음 범위를 확인한다.
 
-- assembly: `DocumentManagementSDKFactory`, `DefaultDocumentManagementSDK`
+- assembly: `DocumentManagementSDKFactory`, `AsyncDocumentManagementSDKFactory`, `DefaultDocumentManagementSDK`
 - facade: sync/async base 및 sync/async scoped facade
 - policy/observation: `AccessContext`, `DmsOperationContext`, `DocumentAccessPolicy`, `OperationEvent`, `OperationObserver`
 - capability protocol: writer/reader/lister/deleter/reset 및 aggregate client
@@ -34,7 +34,7 @@ confidence: medium
 - recovery: inspection, issue/action, reconciliation result/plan/audit
 - errors: `DmsError` hierarchy와 stable fields
 
-API reference의 26개 facade 작업이 네 facade에 대응하는지 확인한다. `async for` iterator, async content stream, context manager와 `sdk.scoped(...)` 기본값이 문서와 실제 signature에 일치해야 한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
+API reference의 sync 26개 작업, native async 28개 public member, 두 scoped facade의 각 25개 작업이 문서와 실제 signature에 대응하는지 확인한다. `async for` iterator, async content stream, context manager와 `sdk.scoped(...)` 기본값이 문서와 실제 signature에 일치해야 한다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]
 
 ## 3. Assembly와 ownership matrix
 
@@ -44,7 +44,7 @@ API reference의 26개 facade 작업이 네 facade에 대응하는지 확인한�
 | --- | --- |
 | client sync | `Engine` dialect, non-empty bucket, MinIO injection, operation store assembly |
 | component sync | metadata/object/optional operation store injection |
-| client async | sync client path와 동일한 작업 결과 및 resource non-ownership |
+| client native async | `AsyncDocumentManagementSDKFactory`의 lazy/eager readiness와 async component 경계 |
 | scoped sync/async | context defaults, explicit override, shared SDK lifecycle non-ownership |
 
 추가로 다음을 검증한다.
@@ -54,7 +54,7 @@ API reference의 26개 facade 작업이 네 facade에 대응하는지 확인한�
 - factory의 blank bucket과 unsupported dialect가 `ConfigurationError`인지 확인한다.
 - factory/direct SDK의 `max_file_size` invalid 값이 각각 문서화된 오류를 내는지 확인한다.
 - `operation_store`가 없을 때 idempotency upload와 operation lookup이 `ValidationError`인지 확인한다.
-- DMS facade에 `close()`·`aclose()`·`check_health()`가 없다는 negative surface를 확인하고 host lifecycle/readiness를 별도로 검증한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
+- DMS facade에 `close()`·`aclose()`·`check_health()`가 없고 sync factory에 `create_async()`가 없다는 negative surface를 확인하며 host lifecycle/readiness를 별도로 검증한다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]^[raw/articles/dms-core-examples-v0.10.0-2026-08-25.md]
 
 ## 4. Document lifecycle contract
 
@@ -74,11 +74,18 @@ API reference의 26개 facade 작업이 네 facade에 대응하는지 확인한�
 - persistent `operation_store`와 non-empty scope/key가 bytes idempotency에 필요한지 확인한다.
 - 같은 scope/key와 같은 fingerprint가 같은 document ID와 `created=False`인지 확인한다.
 - 다른 fingerprint는 `IdempotencyConflictError`, pending은 retryable `IdempotencyInProgressError`, 없는 operation은 not-found인지 확인한다.
-- cursor의 status·limit 결합, 1~1000 범위, 변조/조건 변경 거부와 `iter_documents()` 전체 순회를 검증한다.
+- cursor의 status·limit·user scope 결합, 1~1000 범위, 변조/조건 변경/user scope 변경 거부와 `iter_documents()` 전체 순회를 검증한다.
 - soft delete가 일반 metadata/list에서 문서를 숨기고 content에는 `DocumentDeletedError`를 주는지, hard delete 결과와 상태를 확인한다.
-- `clear_all_data()`/`initialize_for_data_load()`가 metadata·`documents/` objects·operations를 대상으로 하고 partial count, `failed_stores`, `ready_for_data_load`를 보존하는지 확인한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
+- `clear_all_data()`/`initialize_for_data_load()`가 metadata·`documents/` objects·operations를 대상으로 하고 partial count, `failed_stores`, `ready_for_data_load`를 보존하는지 확인한다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]^[raw/articles/dms-core-examples-v0.10.0-2026-08-25.md]
 
-API reference의 추적성 matrix는 persistent idempotency replay/conflict/lookup 일부를 `source-only` gap으로 표시한다. 따라서 facade membership test만으로 이 영역을 pass 처리하지 말고 별도 focused test 결과를 보고한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
+API reference의 추적성 matrix는 persistent idempotency replay/conflict/lookup 일부를 `source-only` gap으로 표시한다. 따라서 facade membership test만으로 이 영역을 pass 처리하지 말고 별도 focused test 결과를 보고한다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]
+
+## v0.10 native async and user-scope checks
+
+- `AsyncDocumentManagementSDKFactory(engine=AsyncEngine, ...)`의 `create()` lazy path와 `await create_async()` ready path를 분리해 검증한다.
+- `AsyncDocumentManagementSDK(sync_sdk)` compatibility wrapper가 native async assembly와 다른 lifecycle/ownership 경계를 유지하는지 확인한다.
+- `AccessContext.user_id`와 `DmsOperationContext.user_id`가 upload/list/read/content/delete/recovery/reset, object namespace, idempotency operation, cursor에 일관되게 적용되는지 확인한다.
+- scoped facade의 명시 user 값이 context와 다르면 `ValidationError`, 다른 user 문서 접근은 `AccessDeniedError`인지 확인한다.
 
 ## 6. Metadata, policy, observer, recovery
 
@@ -88,26 +95,26 @@ API reference의 추적성 matrix는 persistent idempotency replay/conflict/look
 - policy/observer/audit hook의 예외가 원래 작업 결과를 덮지 않는지, event에 body·credential·storage locator가 없는지 검사한다.
 - metadata/object 부재를 `DocumentInspection`의 issue/boolean으로 표현하는지 확인한다.
 - recovery candidate가 `FAILED`·`DELETING`만 허용하고, orphan purge에 명시적 `storage_key`가 필요한지 확인한다.
-- dry-run batch만 `to_plan()` 가능하고 plan 실행 전 각 item을 재검사하는지, 항목별 실패와 요약 count를 보존하는지 확인한다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
+- dry-run batch만 `to_plan()` 가능하고 plan 실행 전 각 item을 재검사하는지, 항목별 실패와 요약 count를 보존하는지 확인한다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]^[raw/articles/dms-core-examples-v0.10.0-2026-08-25.md]
 
 ## 7. Error와 host transport adapter
 
-모든 `DmsError`에서 stable `code`, `category`, `retryable`, 선택적 `document_id`/diagnosis shape를 확인한다. `DataResetError`의 partial result, `errors`, `failed_stores`를 별도로 확인한다. HTTP status, response body, retry header는 DMS가 결정하지 않으므로 host transport의 mapping을 별도 contract test로 둔다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]^[raw/articles/dms-core-examples-v0.9.0-2026-08-18.md]
+모든 `DmsError`에서 stable `code`, `category`, `retryable`, 선택적 `document_id`/diagnosis shape를 확인한다. `DataResetError`의 partial result, `errors`, `failed_stores`를 별도로 확인한다. HTTP status, response body, retry header는 DMS가 결정하지 않으므로 host transport의 mapping을 별도 contract test로 둔다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]^[raw/articles/dms-core-examples-v0.10.0-2026-08-25.md]
 
 ## 8. Documentation traceability
 
-v0.9.0 API 문서가 제시한 검증 범위를 package source에 맞춰 실행한다.
+v0.10.0 API 문서가 제시한 검증 범위를 package source에 맞춰 실행한다.
 
 ```bash
 # dms-core checkout에서 provisioned project interpreter 사용
-.venv/bin/python -m pytest test_dms -q
+uv run pytest test_dms -m "not integration" -q
 
 # Wiki clone에서 Python fence 구문 검사
 python - <<'PY'
 import ast
 from pathlib import Path
 
-for path in (Path("API-Reference-v0.9.0.md"), Path("Examples-v0.9.0.md")):
+for path in (Path("API-Reference-v0.10.0.md"), Path("Examples-v0.10.0.md")):
     in_python = False
     block = []
     for line in path.read_text().splitlines():
@@ -123,7 +130,7 @@ for path in (Path("API-Reference-v0.9.0.md"), Path("Examples-v0.9.0.md")):
 PY
 ```
 
-API source baseline은 `f7a40f1`의 line 기준이며, source-only row를 behavior coverage로 과장하지 않는다.^[raw/articles/dms-core-api-reference-v0.9.0-2026-08-18.md]
+API source baseline은 `d508b7c2ea82fb79bfcf008c948a364fcaa962d9`의 line 기준이며, source-only row를 behavior coverage로 과장하지 않는다.^[raw/articles/dms-core-api-reference-v0.10.0-2026-08-25.md]
 
 ## 9. Consumer regression과 완료 판정
 

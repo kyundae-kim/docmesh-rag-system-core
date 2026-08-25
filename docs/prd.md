@@ -20,7 +20,7 @@
 - **vector store**: 표준 composition에서 Milvus adapter가 담당하는 embedding 저장 및 retrieval 계층
 - **document asset storage**: dms-core가 관리하는 source asset을 opaque `asset_reference`로 추적하는 저장 계층
 - **restart recovery**: 동일한 metadata store 및 vector store 구성을 다시 열어 상태를 재사용하는 동작
-- **health check**: metadata 및 사용 가능한 의존 서비스 상태를 집계하는 점검 동작
+
 
 ---
 
@@ -46,7 +46,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 4. SQLite RAG metadata + Milvus vector store adapter + dms-core source asset lifecycle을 제공한다.
 5. factory / service-factory 기반 구성 경로를 제공한다.
 6. host-owned client 기반 service-factory 조립과 명시적 collaborator 주입을 제공하되, caller-owned 자원과 compatibility metadata store의 lifecycle 경계를 명확히 한다.
-7. metadata, Milvus, Ollama, DMS를 아우르는 health check 경로를 제공한다.
+
 
 ### 3.2 성공 기준
 
@@ -56,7 +56,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - query는 항상 현재 user scope로 제한된 chunk만 사용한다.
 - metadata는 SQLite에 유지되고, 동일한 vector store 구성을 재사용하면 retrieval이 복원된다.
 - 문서 삭제 성공 시 metadata / progress / Milvus 엔트리가 제거되고 DMS asset은 soft delete된다.
-- health check는 `rag_system_core.composition.health.run_health_checks()`를 통해 metadata와 실제 구성요소가 제공하는 Milvus, embedding, generation, DMS 점검을 집계한다.
+
 
 ---
 
@@ -75,9 +75,9 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - `AuthenticatedUser.sub` 기반 user scope
 - SQLAlchemy ORM + SQLite metadata persistence
 - dms-core 기반 document asset storage (MinIO object storage + PostgreSQL/SQLite DMS metadata)
-- 문서 목록/단건/청크/progress 조회
+- 문서 목록/단건/청크/progress 및 단계별 최종 상태 조회
 - 문서 삭제
-- health check 집계
+
 
 ### 4.2 제외 범위 (Out of Scope)
 
@@ -101,12 +101,12 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 2. **멀티유저 상위 애플리케이션**
    - 여러 사용자 데이터를 user scope 기준으로 분리해야 하는 시스템
 3. **DocMesh 통합 개발자**
-   - composition-layer settings / assembled service clients / health path를 재사용하려는 개발자
+   - composition-layer settings / assembled service clients를 재사용하려는 개발자
 
 ### 5.2 핵심 사용 시나리오
 
 #### 시나리오 1: 직접 조립 기반 실행
-- 사용자는 embedding client, generation client, vector store, metadata store, document storage, chunker, `health_check_runner`를 준비한다.
+- 사용자는 embedding client, generation client, vector store, metadata store, document storage, chunker를 준비한다.
 - 사용자는 `RAGCore(...)`를 조립한다.
 - 사용자는 `ingest_text(...)` 또는 파일 기반 ingestion 후 `query(...)`를 호출한다.
 
@@ -130,14 +130,10 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 동일한 Milvus URI/collection을 다시 열면 기존 retrieval이 복원된다.
 
 #### 시나리오 5: document management / deletion
-- 사용자는 문서 목록, 특정 문서, 청크, ingestion progress를 조회할 수 있다.
+- 사용자는 문서 목록, 특정 문서, 청크, ingestion progress와 단계별 최종 상태를 조회할 수 있다.
 - 사용자는 문서를 삭제할 수 있다.
 - vector store 삭제 실패 시 metadata / asset은 보존되어 재시도할 수 있다.
 - DMS soft delete 실패 시 RAG metadata는 보존되어 재시도할 수 있다.
-
-#### 시나리오 6: health check
-- 사용자는 `health_check()`로 metadata와 Milvus/Ollama/DMS 등 사용 가능한 의존 서비스 상태를 확인한다.
-- 기본 health runner는 각 점검 결과와 실행 시간을 `HealthCheckResult`로 집계하며, 직접 조립 시 다른 `HealthCheckRunner`를 주입할 수 있다.
 
 ---
 
@@ -212,6 +208,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 각 ingestion 실행은 `job_id`로 구분되어야 한다.
 - progress status는 `running`, `completed`, `failed`를 표현할 수 있어야 한다.
 - progress 조회는 문서와 user scope 기준으로 제한되어야 한다.
+- `RAGCore.get_ingestion_step_statuses(...)`는 각 정의된 파이프라인 단계의 최종 확인 상태를 반환해야 하며, 아직 실행되지 않은 후속 단계는 `not_started`로 표시해야 한다.
 - vector insert 후 해당 단계의 `completed` progress 저장이 실패하면 방금 생성한 vector를 보상 삭제해야 한다.
 - vector store가 chunk 수와 다른 개수의 ID를 반환하면 반환된 ID를 보상 삭제하고 ingestion을 실패시켜야 한다.
 - chunk metadata 저장이 실패하면 생성한 vector를 보상 삭제해야 한다.
@@ -281,12 +278,6 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 
 ### 6.7 구성 및 운영성 요구사항
 
-#### PRD-FR-18. health check
-- 시스템은 metadata health check를 항상 포함해야 한다.
-- vector store / embedding client / generation client가 `check()`를 제공하면 함께 포함해야 한다.
-- document asset storage가 `check()`를 제공하면 DMS 상태를 함께 포함해야 한다.
-- health aggregation은 `rag_system_core.composition.health.run_health_checks()` 경계를 사용해야 한다.
-
 #### PRD-FR-19. 구성 helper 및 DocMesh integration
 - 시스템은 구성 helper를 통해 `RAGCore` 조립을 단순화해야 한다.
 - 시스템은 composition layer의 `build_docmesh_runtime_plan()`과
@@ -307,7 +298,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
 ### 7.1 성능
 - ingestion의 embedding 호출은 batch 방식이어야 한다.
 - retrieval은 top-k 기반으로 단순하고 예측 가능해야 한다.
-- health check는 빠르게 실패를 감지할 수 있어야 한다.
+
 
 ### 7.2 확장성
 - 단일 public entry point를 유지하되 내부 책임은 ingestion / retrieval / generation / storage / composition으로 분리되어야 한다.
@@ -346,8 +337,7 @@ prompt는 최소 아래 섹션을 포함해야 한다.
  ├─ rag_factories.py (RAG adapter/store construction)
  ├─ factories.py (stable advanced re-export surface)
  ├─ docmesh_runtime (Ollama / Milvus settings and assembly)
- ├─ dms_runtime (explicit host-client DMS SDK assembly)
- └─ health
+ └─ dms_runtime (explicit host-client DMS SDK assembly)
 
 [Contract Layer]
  ├─ types.py (public records)
@@ -415,7 +405,7 @@ QueryResult
 | 계층 | 지원 인터페이스 |
 |---|---|
 | package root `rag_system_core` | `RAGCore`, `RAGServiceFactory`, `DocmeshRAGServiceFactory`, 두 Ollama adapter, public records, `EmbeddingClient`/`GenerationClient`, `AuthenticatedUser` |
-| `rag_system_core.composition` | `assemble_docmesh_services`, `create_dms_sdk_from_clients`, `create_docmesh_service_client`, `run_health_checks`, 두 service-factory type |
+| `rag_system_core.composition` | `assemble_docmesh_services`, `create_dms_sdk_from_clients`, `create_docmesh_service_client`, 두 service-factory type |
 | `rag_system_core.composition.factories` | `create_rag_embedding_client`, `create_rag_generation_client`, `create_rag_vector_store` |
 
 `build_docmesh_runtime_plan()`, `ServiceBundle` 같은 advanced composition/runtime helper는 package-root 또는 `rag_system_core.composition` re-export가 아니며 module-qualified import를 사용해야 한다.
@@ -425,7 +415,7 @@ QueryResult
 ## 10. 제약사항 및 리스크
 
 ### R1. 조립형 생성자
-- `RAGCore`는 고수준 convenience 생성자가 아니라 `health_check_runner`를 포함한 fully assembled dependency graph를 요구한다.
+- `RAGCore`는 고수준 convenience 생성자가 아니라 fully assembled dependency graph를 요구한다.
 - 따라서 사용자는 factory helper 또는 자체 조립 코드를 준비해야 한다.
 - `DocmeshRAGServiceFactory.create_rag_core()`는 `metadata_engine`이 주입된 Factory에서 바로 사용할 수 있다. `metadata_engine`이 없으면 `create_metadata_store(metadata_path=...)`는 사용할 수 있지만 `create_rag_core()`가 `metadata_path`를 대신 받아 주지는 않는다.
 
@@ -463,7 +453,7 @@ QueryResult
 - 세 가지 ingestion API
 - query / document management API
 - progress persistence / 조회
-- health check
+
 - composition-layer settings / `ServiceBundle` integration
 - dms-core SDK / MinIO 기반 document asset lifecycle
 - 명시적 host-owned client 기반 DMS/RAG 조립
@@ -494,9 +484,8 @@ QueryResult
 11. 문서별 chunk 목록과 ingestion progress를 조회할 수 있다.
 12. 삭제 성공 시 document / chunk / progress / Milvus 엔트리가 제거되고 DMS asset은 soft delete된다.
 13. vector store 또는 DMS soft delete가 실패하면 metadata는 유지된다. DMS 실패 시 vector는 이미 삭제됐을 수 있다.
-14. health check는 metadata 및 사용 가능한 의존 서비스 상태를 집계한다.
-15. `DocmeshRAGServiceFactory.from_host_clients(...)`는 환경 설정을 읽지 않고 직접 전달된 DMS/metadata Engine, DMS, Ollama, Milvus clients와 명시적 model/store 설정으로 RAG adapters를 조립한다. Factory context는 dms-core v0.9 SDK와 host-owned clients를 닫지 않으며, compatibility `metadata_path`로 생성된 MetadataStore만 정리한다.
-16. `ingest_text`의 DMS 업로드는 RAG `doc_id`, 사용자 metadata, ingestion `job_id` 기반 idempotency 정보를 보존한다. file-stream/file-path 업로드는 현재 idempotency key를 전달하지 않는다.
+14. `DocmeshRAGServiceFactory.from_host_clients(...)`는 환경 설정을 읽지 않고 직접 전달된 DMS/metadata Engine, DMS, Ollama, Milvus clients와 명시적 model/store 설정으로 RAG adapters를 조립한다. Factory context는 dms-core v0.9 SDK와 host-owned clients를 닫지 않으며, compatibility `metadata_path`로 생성된 MetadataStore만 정리한다.
+15. `ingest_text`의 DMS 업로드는 RAG `doc_id`, 사용자 metadata, ingestion `job_id` 기반 idempotency 정보를 보존한다. file-stream/file-path 업로드는 현재 idempotency key를 전달하지 않는다.
 
 ---
 

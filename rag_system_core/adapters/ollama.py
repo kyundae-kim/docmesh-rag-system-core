@@ -2,17 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import ollama
-
-
-def _check_ollama_client(client: Any) -> None:
-    if hasattr(client, "check"):
-        client.check()
-    elif hasattr(client, "ps"):
-        client.ps()
-    else:
-        raise RuntimeError("Ollama client does not support health checks")
-
 
 class OllamaEmbeddingClient:
     def __init__(self, *, client: Any, model: str) -> None:
@@ -37,10 +26,6 @@ class OllamaEmbeddingClient:
 
         return [[float(value) for value in vector] for vector in embeddings]
 
-    def check(self) -> None:
-        _check_ollama_client(self._client)
-
-
 class OllamaGenerationClient:
     def __init__(self, *, client: Any, model: str) -> None:
         if not model or not model.strip():
@@ -60,6 +45,3 @@ class OllamaGenerationClient:
             raise RuntimeError("Ollama returned a malformed generation response") from exc
 
         return str(generated_text)
-
-    def check(self) -> None:
-        _check_ollama_client(self._client)

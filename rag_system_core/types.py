@@ -61,14 +61,13 @@ class QueryResult:
 # Compatibility exports; canonical protocol definitions live in ports.py.
 from rag_system_core.ports import EmbeddingClient, GenerationClient
 
-
 __all__ = [
     "AuthenticatedUser",
     "ChunkRecord",
     "DocumentRecord",
     "EmbeddingClient",
     "GenerationClient",
-    "IngestionProgressRecord",
     "IngestResult",
+    "IngestionProgressRecord",
     "QueryResult",
 ]

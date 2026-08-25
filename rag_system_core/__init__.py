@@ -4,7 +4,10 @@ from rag_system_core.adapters.ollama import (
     OllamaEmbeddingClient,
     OllamaGenerationClient,
 )
-from rag_system_core.composition.factories import DocmeshRAGServiceFactory, RAGServiceFactory
+from rag_system_core.composition.factories import (
+    DocmeshRAGServiceFactory,
+    RAGServiceFactory,
+)
 from rag_system_core.domain.core import RAGCore
 from rag_system_core.ports import EmbeddingClient, GenerationClient
 from rag_system_core.types import (
@@ -19,15 +22,15 @@ from rag_system_core.types import (
 __all__ = [
     "AuthenticatedUser",
     "ChunkRecord",
+    "DocmeshRAGServiceFactory",
     "DocumentRecord",
     "EmbeddingClient",
     "GenerationClient",
-    "IngestionProgressRecord",
     "IngestResult",
+    "IngestionProgressRecord",
     "OllamaEmbeddingClient",
     "OllamaGenerationClient",
     "QueryResult",
     "RAGCore",
-    "DocmeshRAGServiceFactory",
     "RAGServiceFactory",
 ]

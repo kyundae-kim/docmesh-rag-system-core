@@ -9,7 +9,10 @@ from rag_system_core.composition.rag_factories import (
     create_rag_generation_client,
     create_rag_vector_store,
 )
-from rag_system_core.composition.service_factory import DocmeshRAGServiceFactory, RAGServiceFactory
+from rag_system_core.composition.service_factory import (
+    DocmeshRAGServiceFactory,
+    RAGServiceFactory,
+)
 
 __all__ = [
     "DocmeshRAGServiceFactory",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import JSON, ForeignKey, Integer, String, select, text
+from sqlalchemy import JSON, ForeignKey, Integer, String, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -179,11 +179,6 @@ class MetadataStore:
             session.delete(document)
             session.commit()
         return document_record_from_model(document)
-
-    def check(self) -> None:
-        with self.session() as session:
-            session.execute(text("SELECT 1"))
-
 
 def document_record_from_model(row: DocumentModel | None) -> DocumentRecord | None:
     if row is None:

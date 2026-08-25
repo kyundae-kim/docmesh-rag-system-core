@@ -3,15 +3,19 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, event, inspect
 
 from rag_system_core.adapters.chunking import FixedWindowChunker
 from rag_system_core.composition.factories import create_rag_vector_store
-from rag_system_core.composition.health import run_health_checks
 from rag_system_core.storage.metadata_store import MetadataStore
 from rag_system_core.types import ChunkRecord, DocumentRecord, IngestionProgressRecord
-
-from test_rag_system_core.support import authenticated_user, create_metadata_store, create_test_rig, FakeDocumentStorage
+from test_rag_system_core.support import (
+    FakeDocumentStorage,
+    authenticated_user,
+    create_metadata_store,
+    create_test_rig,
+)
 
 USER_A = authenticated_user("user-a")
 USER_B = authenticated_user("user-b")
@@ -155,7 +159,6 @@ def test_ingest_text_persists_milvus_generated_chunk_ids_to_metadata(tmp_path: P
         metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("memory", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=32, chunk_overlap=4),
-        health_check_runner=run_health_checks,
     )
     result = rig.core.ingest_text(
         user=USER_A,
@@ -216,6 +219,68 @@ def test_ingestion_progress_records_running_and_completed_statuses_per_job(tmp_p
     assert any(row.status == "running" for row in progress_rows)
     assert any(row.status == "completed" for row in progress_rows)
     assert {row.job_id for row in progress_rows}
+
+
+def test_get_ingestion_step_statuses_returns_final_status_for_each_pipeline_step(tmp_path: Path) -> None:
+    rig = create_test_rig(tmp_path)
+
+    result = rig.core.ingest_text(
+        user=USER_A,
+        text="alpha final status tracking",
+        source="final-status.txt",
+    )
+
+    assert rig.core.get_ingestion_step_statuses(
+        result.doc_id,
+        user=USER_A,
+        job_id=result.job_id,
+    ) == {
+        "load": "completed",
+        "preprocess": "completed",
+        "chunking": "completed",
+        "embedding": "completed",
+        "vector_store": "completed",
+        "chunk_persistence": "completed",
+    }
+
+
+def test_get_ingestion_step_statuses_marks_failed_and_unreached_steps(tmp_path: Path) -> None:
+    rig = create_test_rig(tmp_path)
+
+    with pytest.raises(ValueError, match="Document must contain non-empty text"):
+        rig.core.ingest_text(user=USER_A, text="   ", source="failed-final-status.txt")
+
+    failed_document = rig.core.list_documents(user=USER_A)[0]
+
+    assert rig.core.get_ingestion_step_statuses(failed_document.doc_id, user=USER_A) == {
+        "load": "completed",
+        "preprocess": "completed",
+        "chunking": "failed",
+        "embedding": "not_started",
+        "vector_store": "not_started",
+        "chunk_persistence": "not_started",
+    }
+    assert rig.core.get_ingestion_step_statuses(failed_document.doc_id, user=USER_B) == {}
+
+
+def test_get_ingestion_step_statuses_returns_not_started_for_document_without_progress(tmp_path: Path) -> None:
+    rig = create_test_rig(tmp_path)
+    document = DocumentRecord(
+        doc_id="document-without-progress",
+        user_id=USER_A.sub,
+        source="without-progress.txt",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    rig.core.metadata_store.add_document(document)
+
+    assert rig.core.get_ingestion_step_statuses(document.doc_id, user=USER_A) == {
+        "load": "not_started",
+        "preprocess": "not_started",
+        "chunking": "not_started",
+        "embedding": "not_started",
+        "vector_store": "not_started",
+        "chunk_persistence": "not_started",
+    }
 
 
 def test_ingestion_progress_records_failed_step_when_ingest_errors(tmp_path: Path) -> None:
