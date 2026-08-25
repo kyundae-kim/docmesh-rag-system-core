@@ -14,10 +14,6 @@ class RecordingOllamaGenerateClient:
         self._captured["messages"] = messages
         return {"message": {"content": "cloud answer"}}
 
-    def check(self) -> None:
-        self._captured["checked"] = True
-
-
 def test_ollama_generation_client_uses_injected_client() -> None:
     captured: dict[str, object] = {}
     injected_client = RecordingOllamaGenerateClient(captured)
@@ -58,12 +54,3 @@ def test_ollama_generation_client_rejects_malformed_response() -> None:
         client.generate("alpha")
 
     assert isinstance(exc_info.value.__cause__, KeyError)
-
-
-def test_ollama_generation_client_delegates_health_checks() -> None:
-    captured: dict[str, object] = {}
-    client = OllamaGenerationClient(client=RecordingOllamaGenerateClient(captured), model="gpt-oss:20b")
-
-    client.check()
-
-    assert captured["checked"] is True

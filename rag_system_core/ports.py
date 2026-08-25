@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import BinaryIO, Callable, Protocol
+from typing import BinaryIO, Protocol
 
 
 class EmbeddingClient(Protocol):
@@ -56,9 +56,6 @@ class MetadataRepository(Protocol):
 
     def delete_document(self, *, doc_id: str, user_id: str) -> DocumentRecord | None: ...
 
-    def check(self) -> None: ...
-
-
 class DocumentAssetStorage(Protocol):
     def store_text(
         self,
@@ -96,20 +93,11 @@ class DocumentAssetStorage(Protocol):
     def delete(self, document: DocumentRecord) -> None: ...
 
 
-class HealthCheckRunner(Protocol):
-    def __call__(
-        self,
-        service_checks: dict[str, Callable[[], None]],
-        required_services: set[str] | None = None,
-    ) -> object: ...
-
-
 __all__ = [
     "Chunker",
     "DocumentAssetStorage",
     "EmbeddingClient",
     "GenerationClient",
-    "HealthCheckRunner",
     "MetadataRepository",
     "VectorStore",
 ]

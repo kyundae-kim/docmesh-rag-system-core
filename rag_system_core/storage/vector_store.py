@@ -74,15 +74,6 @@ class MilvusLiteVectorStore:
             timeout=self.timeout,
         )
 
-    def check(self) -> None:
-        if hasattr(self._client, "check"):
-            self._client.check()
-            return
-        if hasattr(self._client, "list_collections"):
-            self._client.list_collections(timeout=self.timeout)
-            return
-        raise RuntimeError("Milvus client does not support health checks")
-
     def _ensure_collection(self, *, dimension: int) -> None:
         if self._client.has_collection(self.collection_name):
             return

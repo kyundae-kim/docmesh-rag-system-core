@@ -25,7 +25,6 @@ from rag_system_core.composition.factories import (
     create_rag_generation_client,
     create_rag_vector_store,
 )
-from rag_system_core.composition.health import run_health_checks
 from rag_system_core.storage.vector_store import MilvusLiteVectorStore
 from test_rag_system_core.support import (
     FakeDocumentStorage,
@@ -48,14 +47,6 @@ class FakeDocmeshOllamaWrapper:
     def chat(self, *, model: str, messages: list[dict[str, str]]) -> dict[str, dict[str, str]]:
         self.chat_calls.append({"model": model, "messages": messages})
         return {"message": {"content": self.answer}}
-
-
-class FakeDocmeshMilvusWrapper:
-    def __init__(self) -> None:
-        self.check_calls = 0
-
-    def check(self) -> None:
-        self.check_calls += 1
 
 
 def make_settings() -> SimpleNamespace:
@@ -85,8 +76,7 @@ def test_assemble_docmesh_services_uses_runtime_plan_api(monkeypatch) -> None:
     expected_settings = make_settings()
 
     class FakeServiceClient:
-        def check(self) -> None:
-            return None
+        pass
 
     expected_clients = {"milvus": FakeServiceClient(), "ollama": FakeServiceClient()}
 
@@ -103,18 +93,12 @@ def test_assemble_docmesh_services_uses_runtime_plan_api(monkeypatch) -> None:
 
     plan = build_docmesh_runtime_plan(
         services={"milvus", "ollama"},
-        required={"ollama"},
-        check_on_startup=True,
-        parallel_healthchecks=True,
     )
     bundle = assemble_docmesh_services(plan=plan, settings=expected_settings)
 
     assert bundle.configs is expected_settings
     assert bundle.clients == expected_clients
     assert records == {"settings": expected_settings}
-    assert plan.required_services == {"ollama"}
-    assert plan.healthcheck.on_startup is True
-    assert plan.healthcheck.parallel is True
 
 
 def test_ollama_factories_use_clients_from_service_bundle() -> None:
@@ -190,43 +174,6 @@ def test_ollama_factories_require_models_from_settings() -> None:
             settings=settings,
             bundle=SimpleNamespace(get_client=lambda service: FakeDocmeshOllamaWrapper()),
         )
-
-
-def test_rag_core_health_check_uses_docmesh_aggregate(tmp_path: Path) -> None:
-    class CheckedEmbedding(FakeEmbeddingClient):
-        def check(self) -> None:
-            return None
-
-    class CheckedGeneration(FakeGenerationClient):
-        def check(self) -> None:
-            return None
-
-    class CheckedDocumentStorage(FakeDocumentStorage):
-        def check(self) -> None:
-            return None
-
-    core = RAGCore(
-        embedding_client=CheckedEmbedding(),
-        generation_client=CheckedGeneration(),
-        vector_store=create_rag_vector_store(
-            client=MilvusClient(uri=str(tmp_path / "health.milvus.db")),
-        ),
-        metadata_store=create_metadata_store(tmp_path),
-        document_storage=CheckedDocumentStorage("local", tmp_path / "documents"),
-        chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
-        health_check_runner=run_health_checks,
-    )
-
-    result = core.health_check()
-
-    assert result.ok is True
-    assert sorted(status.service_name for status in result.services) == [
-        "dms",
-        "embedding",
-        "generation",
-        "metadata",
-        "milvus",
-    ]
 
 
 def test_vector_store_requires_client_when_milvus_is_not_configured() -> None:
@@ -324,7 +271,6 @@ def test_docmesh_factory_from_clients_uses_injected_clients_without_runtime_sett
         embedding_client=embedding_client,
         generation_client=generation_client,
         vector_store=vector_store,
-        check_on_startup=True,
     )
 
     assert not hasattr(factory, "settings")
@@ -376,7 +322,6 @@ def test_docmesh_factory_from_host_clients_builds_rag_adapters_without_runtime_s
         generation_model="gpt-oss:20b",
         collection_name="host_chunks",
         timeout=4.0,
-        check_on_startup=True,
     )
 
     assert factory.dms_sdk is dms_sdk
@@ -472,7 +417,6 @@ def test_docmesh_factory_create_rag_core_uses_host_owned_metadata_engine(
     assert core.document_storage.sdk is dms_sdk
     assert core.chunker.chunk_size == 64
     assert core.chunker.chunk_overlap == 8
-    assert core.health_check_runner is run_health_checks
 
     factory.close()
 

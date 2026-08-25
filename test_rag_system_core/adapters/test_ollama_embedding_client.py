@@ -18,10 +18,6 @@ class RecordingOllamaClient:
         }
         return {"embeddings": [embeddings_by_text[text] for text in input]}
 
-    def check(self) -> None:
-        self._captured["checked"] = True
-
-
 def test_ollama_embedding_client_uses_injected_client() -> None:
     captured: dict[str, object] = {}
     injected_client = RecordingOllamaClient(captured)
@@ -62,12 +58,3 @@ def test_ollama_embedding_client_rejects_malformed_embeddings_response() -> None
         client.embed(["alpha"])
 
     assert isinstance(exc_info.value.__cause__, KeyError)
-
-
-def test_ollama_embedding_client_delegates_health_checks() -> None:
-    captured: dict[str, object] = {}
-    client = OllamaEmbeddingClient(client=RecordingOllamaClient(captured), model="bge-m3")
-
-    client.check()
-
-    assert captured["checked"] is True

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import BinaryIO, Callable
+from typing import BinaryIO
 
 from rag_system_core.domain.generation import GenerationService
 from rag_system_core.domain.ingestion import IngestionService
@@ -11,7 +11,6 @@ from rag_system_core.ports import (
     DocumentAssetStorage,
     EmbeddingClient,
     GenerationClient,
-    HealthCheckRunner,
     MetadataRepository,
     VectorStore,
 )
@@ -35,7 +34,6 @@ class RAGCore:
         metadata_store: MetadataRepository,
         document_storage: DocumentAssetStorage,
         chunker: Chunker,
-        health_check_runner: HealthCheckRunner,
     ) -> None:
         self.embedding_client = embedding_client
         self.generation_client = generation_client
@@ -43,7 +41,6 @@ class RAGCore:
         self.document_storage = document_storage
         self.vector_store = vector_store
         self.chunker = chunker
-        self.health_check_runner = health_check_runner
         self.ingestor = IngestionService(
             chunker=self.chunker,
             embedding_client=embedding_client,
@@ -126,19 +123,6 @@ class RAGCore:
         if deleted_document is None:
             return False
         return True
-
-    def health_check(self):
-        service_checks: dict[str, Callable[[], None]] = {"metadata": self.metadata_store.check}
-        if hasattr(self.vector_store, "check"):
-            service_checks["milvus"] = self.vector_store.check
-        if hasattr(self.embedding_client, "check"):
-            service_checks["embedding"] = self.embedding_client.check
-        if hasattr(self.generation_client, "check"):
-            service_checks["generation"] = self.generation_client.check
-        if hasattr(self.document_storage, "check"):
-            service_checks["dms"] = self.document_storage.check
-        return self.health_check_runner(service_checks, required_services=set(service_checks))
-
 
 __all__ = [
     "ChunkRecord",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import ollama
@@ -8,7 +7,6 @@ from pymilvus import MilvusClient
 
 from rag_system_core.composition.configuration import (
     ConfigError,
-    HealthcheckPolicy,
     MilvusConfig,
     OllamaConfig,
     RuntimePlan,
@@ -17,18 +15,13 @@ from rag_system_core.composition.configuration import (
     ServiceSelection,
 )
 
-from rag_system_core.composition.health import run_health_checks
-
 RAG_SERVICES = frozenset({"milvus", "ollama"})
 
 
 def build_docmesh_runtime_plan(
     *,
     services: set[str | Service] | None = None,
-    required: set[str | Service] | None = None,
     one_of: tuple[set[str | Service], ...] = (),
-    check_on_startup: bool = False,
-    parallel_healthchecks: bool = False,
 ) -> RuntimePlan:
     """Build the typed plan consumed by the v0.6 assembly API."""
     selected = tuple(
@@ -37,24 +30,16 @@ def build_docmesh_runtime_plan(
             RAG_SERVICES if services is None else {str(service) for service in services}
         )
     )
-    required_services = {
-        Service.parse(service)
-        for service in (required or set())
-    }
     alternatives = tuple(
         tuple(Service.parse(service) for service in sorted(group))
         for group in one_of
     )
     return RuntimePlan(
         services=tuple(
-            ServiceSelection(service=service, required=service in required_services)
+            ServiceSelection(service=service)
             for service in selected
         ),
         one_of=alternatives,
-        healthcheck=HealthcheckPolicy(
-            on_startup=check_on_startup,
-            parallel=parallel_healthchecks,
-        ),
     )
 
 
@@ -63,7 +48,6 @@ class ServiceBundle:
     configs: ServiceConfigs
     clients: dict[str, object]
     selected_services: frozenset[str]
-    required_services: frozenset[str] = frozenset()
     _closed: bool = field(default=False, init=False, repr=False)
 
     def get_client(self, service: Service | str) -> object:
@@ -72,18 +56,6 @@ class ServiceBundle:
             return self.clients[service_name]
         except KeyError as exc:
             raise ConfigError(f"Service client is not available: {service_name}") from exc
-
-    @property
-    def checks(self) -> dict[str, Callable[[], None]]:
-        checks: dict[str, Callable[[], None]] = {}
-        for service_name, client in self.clients.items():
-            if hasattr(client, "check"):
-                checks[service_name] = getattr(client, "check")
-            elif service_name == "ollama" and hasattr(client, "ps"):
-                checks[service_name] = getattr(client, "ps")
-            elif service_name == "milvus" and hasattr(client, "list_collections"):
-                checks[service_name] = getattr(client, "list_collections")
-        return checks
 
     def close(self) -> None:
         if self._closed:
@@ -132,17 +104,7 @@ def assemble_docmesh_services(
             configs=settings,
             clients=clients,
             selected_services=selected_services,
-            required_services=frozenset(service.value for service in plan.required_services),
         )
-        if plan.healthcheck.on_startup:
-            result = run_health_checks(
-                bundle.checks,
-                required_services=set(bundle.required_services),
-                parallel=plan.healthcheck.parallel,
-            )
-            if not result.ok:
-                bundle.close()
-                raise RuntimeError("DocMesh service startup health check failed")
         return bundle
     except Exception:
         if bundle is not None:

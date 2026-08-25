@@ -4,13 +4,11 @@ from rag_system_core.composition.docmesh_runtime import (
 )
 from rag_system_core.composition.dms_runtime import create_dms_sdk_from_clients
 from rag_system_core.composition.factories import DocmeshRAGServiceFactory, RAGServiceFactory
-from rag_system_core.composition.health import run_health_checks
 
 __all__ = [
     "assemble_docmesh_services",
     "create_dms_sdk_from_clients",
     "create_docmesh_service_client",
-    "run_health_checks",
     "DocmeshRAGServiceFactory",
     "RAGServiceFactory",
 ]

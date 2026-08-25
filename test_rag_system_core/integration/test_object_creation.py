@@ -89,7 +89,6 @@ def _create_host_client_factory() -> Iterator[_HostClientFactoryResources]:
             generation_model="llama3.2",
             collection_name=collection_name,
             timeout=float(120),
-            check_on_startup=False,
         ) as factory:
             yield _HostClientFactoryResources(
                 factory=factory,
@@ -155,7 +154,6 @@ def _create_sqlite_client_factory(
             generation_model="llama3.2",
             collection_name=collection_name,
             timeout=float(120),
-            check_on_startup=False,
         ) as factory:
             yield _HostClientFactoryResources(
                 factory=factory,
@@ -306,18 +304,6 @@ def test_memory_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> No
 
 
 @pytest.mark.integration
-def test_host_clients_health_check_reaches_remote_services() -> None:
-    """Run the public health path against PostgreSQL, Milvus, and Ollama."""
-    with _create_host_client_factory() as resources:
-        result = resources.factory.create_rag_core().health_check()
-
-    assert result.ok is True
-    statuses = {status.service_name: status for status in result.services}
-    assert set(statuses) == {"metadata", "milvus", "embedding", "generation"}
-    assert all(status.ok for status in statuses.values())
-
-
-@pytest.mark.integration
 def test_host_clients_support_file_stream_and_file_path_ingestion(tmp_path: Path) -> None:
     """Exercise stream and filesystem access paths through the remote services."""
     user = authenticated_user(f"file-integration-user-{uuid4().hex}")
@@ -380,9 +366,6 @@ def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
     )
     plan = build_docmesh_runtime_plan(
         services={"milvus", "ollama"},
-        required={"milvus", "ollama"},
-        check_on_startup=True,
-        parallel_healthchecks=True,
     )
     bundle = assemble_docmesh_services(plan=plan, settings=settings)
     dms_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
@@ -407,7 +390,6 @@ def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
             embedding_client=embedding_client,
             generation_client=generation_client,
             vector_store=vector_store,
-            check_on_startup=False,
         ) as factory:
             core = factory.create_rag_core()
             try:

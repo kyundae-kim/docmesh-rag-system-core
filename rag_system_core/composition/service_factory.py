@@ -14,7 +14,6 @@ from sqlalchemy.engine import Engine
 
 import rag_system_core.composition.dms_runtime as dms_runtime
 from rag_system_core.adapters.chunking import FixedWindowChunker
-from rag_system_core.composition.health import run_health_checks
 from rag_system_core.composition.rag_factories import (
     create_rag_embedding_client,
     create_rag_generation_client,
@@ -26,7 +25,6 @@ from rag_system_core.ports import (
     DocumentAssetStorage,
     EmbeddingClient,
     GenerationClient,
-    HealthCheckRunner,
     MetadataRepository,
     VectorStore,
 )
@@ -80,10 +78,8 @@ class DocmeshRAGServiceFactory:
         generation_client: GenerationClient,
         vector_store: VectorStore,
         metadata_engine: Engine | None = None,
-        check_on_startup: bool = False,
     ) -> "DocmeshRAGServiceFactory":
         """Assemble RAG services exclusively from host-owned clients."""
-        del check_on_startup  # dms-core v0.9 has no SDK startup-health hook.
         dms_sdk = dms_runtime.create_dms_sdk_from_clients(
             engine=engine,
             minio_client=minio_client,
@@ -111,7 +107,6 @@ class DocmeshRAGServiceFactory:
         generation_model: str,
         collection_name: str = "rag_chunks",
         timeout: float = 30.0,
-        check_on_startup: bool = True,
     ) -> "DocmeshRAGServiceFactory":
         """Assemble RAG services from host-owned transport clients."""
         embedding_client = create_rag_embedding_client(
@@ -135,7 +130,6 @@ class DocmeshRAGServiceFactory:
             embedding_client=embedding_client,
             generation_client=generation_client,
             vector_store=vector_store,
-            check_on_startup=check_on_startup,
         )
 
     def create_rag_core(
@@ -143,7 +137,6 @@ class DocmeshRAGServiceFactory:
         *,
         chunk_size: int = 512,
         chunk_overlap: int = 64,
-        health_check_runner: HealthCheckRunner = run_health_checks,
     ) -> RAGCore:
         """Create an RAGCore from this factory's assembled collaborators."""
         metadata_store = self.create_metadata_store()
@@ -158,7 +151,6 @@ class DocmeshRAGServiceFactory:
                     chunk_size=chunk_size,
                     chunk_overlap=chunk_overlap,
                 ),
-                health_check_runner=health_check_runner,
             )
         except Exception as exc:
             if metadata_store not in self._metadata_stores:

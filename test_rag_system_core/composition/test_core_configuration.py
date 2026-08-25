@@ -16,7 +16,6 @@ from rag_system_core.composition.factories import (
     create_rag_generation_client,
     create_rag_vector_store,
 )
-from rag_system_core.composition.health import run_health_checks
 from rag_system_core.ports import EmbeddingClient, GenerationClient, VectorStore
 
 from test_rag_system_core.support import (
@@ -68,7 +67,6 @@ def test_rag_core_uses_explicit_milvus_configuration(tmp_path: Path) -> None:
             metadata_store=create_metadata_store(tmp_path),
             document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
             chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
-            health_check_runner=run_health_checks,
         )
 
     core = create_core()
@@ -130,7 +128,6 @@ def test_rag_core_integration_uses_explicit_service_settings(monkeypatch, tmp_pa
         metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
-        health_check_runner=run_health_checks,
     )
 
     ingested = core.ingest_text(user=USER_A, text="alpha beta gamma", source="configured.txt")
@@ -176,7 +173,6 @@ def test_rag_core_uses_explicitly_constructed_vector_store(monkeypatch, tmp_path
         metadata_store=create_metadata_store(tmp_path),
         document_storage=FakeDocumentStorage("local", tmp_path / "documents"),
         chunker=FixedWindowChunker(chunk_size=512, chunk_overlap=64),
-        health_check_runner=run_health_checks,
     )
 
     assert core.vector_store.collection_name == "resolved_chunks"
