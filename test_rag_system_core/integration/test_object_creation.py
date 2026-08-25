@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -40,6 +41,7 @@ from test_rag_system_core.support import authenticated_user
 
 POSTGRES_DSN = "postgresql+psycopg://docmesh:password@postgres:5432/docmesh"
 MILVUS_URI = "http://milvus:19530"
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +59,7 @@ def _create_host_client_factory() -> Iterator[_HostClientFactoryResources]:
     dms_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
     metadata_engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
     ollama_client = OllamaClient(
-        host="http://ollama:11434",
+        host=OLLAMA_HOST,
         timeout=120,
         verify=False,
         follow_redirects=False,
@@ -109,7 +111,7 @@ def _create_file_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryRe
     dms_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'dms.db'}")
     metadata_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
     ollama_client = OllamaClient(
-        host="http://ollama:11434",
+        host=OLLAMA_HOST,
         timeout=120,
         verify=False,
         follow_redirects=False,
@@ -321,7 +323,7 @@ def test_service_bundle_access_path_runs_remote_ingestion_and_query() -> None:
             request_timeout_seconds=120,
         ),
         ollama=OllamaConfig(
-            host="http://ollama:11434",
+            host=OLLAMA_HOST,
             verify_ssl=False,
             follow_redirects=False,
             embedding_model="bge-m3",
