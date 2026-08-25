@@ -481,6 +481,18 @@ def test_ragcore_public_api_covers_ingestion_query_and_document_lifecycle(tmp_pa
             assert all(row.doc_id == text_result.doc_id for row in progress_rows)
             assert all(row.job_id == text_result.job_id for row in progress_rows)
             assert any(row.status == "completed" for row in progress_rows)
+            assert core.get_ingestion_step_statuses(
+                text_result.doc_id,
+                user=user,
+                job_id=text_result.job_id,
+            ) == {
+                "load": "completed",
+                "preprocess": "completed",
+                "chunking": "completed",
+                "embedding": "completed",
+                "vector_store": "completed",
+                "chunk_persistence": "completed",
+            }
 
             assert core.get_document(text_result.doc_id, user=other_user) is None
             assert core.list_document_chunks(text_result.doc_id, user=other_user) == []

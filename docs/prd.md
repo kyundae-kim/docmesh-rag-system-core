@@ -75,7 +75,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - `AuthenticatedUser.sub` 기반 user scope
 - SQLAlchemy ORM + SQLite metadata persistence
 - dms-core 기반 document asset storage (MinIO object storage + PostgreSQL/SQLite DMS metadata)
-- 문서 목록/단건/청크/progress 조회
+- 문서 목록/단건/청크/progress 및 단계별 최종 상태 조회
 - 문서 삭제
 
 
@@ -130,7 +130,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 동일한 Milvus URI/collection을 다시 열면 기존 retrieval이 복원된다.
 
 #### 시나리오 5: document management / deletion
-- 사용자는 문서 목록, 특정 문서, 청크, ingestion progress를 조회할 수 있다.
+- 사용자는 문서 목록, 특정 문서, 청크, ingestion progress와 단계별 최종 상태를 조회할 수 있다.
 - 사용자는 문서를 삭제할 수 있다.
 - vector store 삭제 실패 시 metadata / asset은 보존되어 재시도할 수 있다.
 - DMS soft delete 실패 시 RAG metadata는 보존되어 재시도할 수 있다.
@@ -208,6 +208,7 @@ DocMesh RAG Core는 문서를 적재하고, 관련 컨텍스트를 검색한 뒤
 - 각 ingestion 실행은 `job_id`로 구분되어야 한다.
 - progress status는 `running`, `completed`, `failed`를 표현할 수 있어야 한다.
 - progress 조회는 문서와 user scope 기준으로 제한되어야 한다.
+- `RAGCore.get_ingestion_step_statuses(...)`는 각 정의된 파이프라인 단계의 최종 확인 상태를 반환해야 하며, 아직 실행되지 않은 후속 단계는 `not_started`로 표시해야 한다.
 - vector insert 후 해당 단계의 `completed` progress 저장이 실패하면 방금 생성한 vector를 보상 삭제해야 한다.
 - vector store가 chunk 수와 다른 개수의 ID를 반환하면 반환된 ID를 보상 삭제하고 ingestion을 실패시켜야 한다.
 - chunk metadata 저장이 실패하면 생성한 vector를 보상 삭제해야 한다.

@@ -113,6 +113,37 @@ class RAGCore:
     ) -> list[IngestionProgressRecord]:
         return self.metadata_store.list_ingestion_progress(doc_id=doc_id, user_id=user.sub, job_id=job_id)
 
+    def get_ingestion_step_statuses(
+        self,
+        doc_id: str,
+        *,
+        user: AuthenticatedUser,
+        job_id: str | None = None,
+    ) -> dict[str, str]:
+        """Return the final known status for each ingestion pipeline step."""
+        progress_rows = self.metadata_store.list_ingestion_progress(
+            doc_id=doc_id,
+            user_id=user.sub,
+            job_id=job_id,
+        )
+        status_priority = {
+            "not_started": 0,
+            "running": 1,
+            "completed": 2,
+            "failed": 3,
+        }
+        statuses = {step_name: "not_started" for step_name in self.ingestor.PIPELINE_STEPS}
+        if not progress_rows:
+            document = self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=user.sub)
+            if job_id is None and document is not None:
+                return statuses
+            return {}
+        for row in progress_rows:
+            current_status = statuses.get(row.step_name, "not_started")
+            if status_priority.get(row.status, 0) >= status_priority.get(current_status, 0):
+                statuses[row.step_name] = row.status
+        return statuses
+
     def delete_document(self, doc_id: str, *, user: AuthenticatedUser) -> bool:
         document = self.metadata_store.get_document_for_user(doc_id=doc_id, user_id=user.sub)
         if document is None:

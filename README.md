@@ -176,7 +176,12 @@ print(first_doc.asset_reference)
 
 chunks = core.list_document_chunks(first_doc.doc_id, user=user)
 progress_rows = core.list_ingestion_progress(first_doc.doc_id, user=user)
+step_statuses = core.get_ingestion_step_statuses(first_doc.doc_id, user=user)
 ```
+
+`progress_rows`에는 각 파이프라인 단계의 상태 전이가 포함되고, `step_statuses`에는
+문서에 대해 확인된 각 단계의 최종 상태가 포함됩니다. 아직 실행되지 않은 후속 단계는
+`"not_started"`로 표시됩니다. 특정 ingestion 실행만 조회하려면 `job_id`를 함께 전달합니다.
 
 ### 5. 삭제
 

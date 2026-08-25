@@ -204,6 +204,7 @@ The system shall expose the following public operational interfaces:
 - `get_document(...)`
 - `list_document_chunks(...)`
 - `list_ingestion_progress(...)`
+- `get_ingestion_step_statuses(...)`
 - `delete_document(...)`
 
 #### 3.3.3 Public Data Types
@@ -308,7 +309,7 @@ This feature accepts source content, normalizes it into text, processes it into 
 - **SRS-FR-020** After the API-specific source/DMS/document operations, the system shall record tracked ingestion stages in the following order: `load`, `preprocess`, `chunking`, `embedding`, `vector_store`, `chunk_persistence`. The tracked `load` stage shall not be interpreted as ownership of the preceding source read or DMS upload.
 - **SRS-FR-021** The system shall create a `job_id` for each ingestion execution.
 - **SRS-FR-022** The system shall record ingestion progress using statuses that can represent `running`, `completed`, and `failed`. It shall compensate vector insertion when generated ID count mismatches, chunk metadata persistence fails, or `vector_store=completed` progress persistence fails. If `chunk_persistence=completed` progress persistence fails, it shall attempt both metadata-chunk and vector cleanup. A compensation failure shall not prevent remaining compensations or replace the original pipeline error.
-- **SRS-FR-023** The system shall limit ingestion progress queries by document and resolved user scope.
+- **SRS-FR-023** The system shall limit ingestion progress queries, including final step-status lookup, by document and resolved user scope.
 
 ### 4.3 Feature: Document Asset Storage
 
@@ -393,7 +394,7 @@ This feature allows callers to inspect and remove previously ingested documents 
 - **SRS-FR-053** The system shall provide document listing within the current user scope.
 - **SRS-FR-054** The system shall provide single-document retrieval within the current user scope.
 - **SRS-FR-055** The system shall provide chunk listing for a document within the current user scope.
-- **SRS-FR-056** The system shall provide ingestion progress listing for a document within the current user scope.
+- **SRS-FR-056** The system shall provide ingestion progress listing and final per-step status lookup for a document within the current user scope. Final status lookup shall return `not_started` for defined pipeline steps with no recorded progress.
 - **SRS-FR-057** On successful document deletion, the system shall remove document metadata.
 - **SRS-FR-058** On successful document deletion, the system shall remove chunk metadata.
 - **SRS-FR-059** On successful document deletion, the system shall remove ingestion progress metadata.
@@ -538,7 +539,7 @@ The implementation shall be considered conformant to this SRS when the following
 8. Generated prompts contain `[System Prompt]`, `[Retrieved Context]`, and `[User Query]`.
 9. Metadata is stored in SQLite.
 10. Retrieval remains possible after restart when the same Milvus configuration is reused.
-11. Chunk listings and ingestion progress listings are available per document.
+11. Chunk listings, ingestion progress listings, and final per-step ingestion statuses are available per document.
 12. Successful deletion removes document metadata, chunk metadata, progress metadata, and Milvus entries and invokes asset deletion; the production DMS adapter uses soft delete.
 13. Failed vector-store deletion preserves metadata for retry.
 14. `DocmeshRAGServiceFactory.from_host_clients(...)` assembles embedding/generation/vector adapters from explicitly supplied DMS/metadata engines, Ollama/Milvus clients, and settings without loading environment configuration. Its context does not close the dms-core v0.9 SDK or host-owned clients; it only cleans up MetadataStore instances created through compatibility `metadata_path`.
@@ -571,7 +572,7 @@ Verification of this SRS is performed primarily through:
 | `SRS-FR-038`–`044`, `SRS-FR-070`–`071` | Verified | `test_rag_system_core/composition/test_core_configuration.py`, `test_rag_system_core/composition/test_docmesh_integration.py` |
 | `SRS-FR-045`–`052`, `SRS-DR-001`–`005` | Verified | `test_rag_system_core/domain/test_metadata_and_progress.py` |
 | `SRS-NFR-008`–`012` | Partially verified | Restart persistence, deletion-failure preservation, public API ownership, and composition/domain separation are covered by representative tests; no separate reliability or maintainability benchmark is maintained. Evidence: `test_rag_system_core/domain/test_metadata_and_progress.py`, `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/composition/test_module_boundaries.py`. |
-| `SRS-FR-053`–`062` | Partially verified | Listing, single-document retrieval, progress retrieval, successful deletion, and vector/DMS failure preservation are automated; cross-user chunk-listing and deletion negative scenarios are not directly covered. Evidence: `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`. |
+| `SRS-FR-053`–`062` | Partially verified | Listing, single-document retrieval, progress retrieval, final per-step status lookup, successful deletion, and vector/DMS failure preservation are automated; cross-user chunk-listing and deletion negative scenarios are not directly covered. Evidence: `test_rag_system_core/domain/test_deletion_and_rollback.py`, `test_rag_system_core/domain/test_metadata_and_progress.py`. |
 | `SRS-FR-063` | Partially verified | Vector retry and DMS-failure metadata preservation are automated; a second successful delete attempt after DMS failure is not directly covered. |
 | `SRS-FR-064`–`069`, `SRS-FR-073` | Retired | Health-check functionality was removed from the implementation. |
 | `SRS-FR-075`, `SRS-FR-079`, `SRS-NFR-013`, `015`–`016` | Partially verified | Client-based factory, explicit namespace separation, module ownership, no-DMS-SDK-close behavior, and compatibility-path metadata cleanup are automated; host-owned Engine/transport-client cleanup is not directly tested. Evidence: `test_rag_system_core/composition/test_core_configuration.py`, `test_rag_system_core/composition/test_docmesh_integration.py`, `test_rag_system_core/composition/test_module_boundaries.py` |
