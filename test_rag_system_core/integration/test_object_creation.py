@@ -15,6 +15,7 @@ from ollama import Client as OllamaClient
 from pymilvus import MilvusClient
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import StaticPool
 
 from rag_system_core import (
     DocmeshRAGServiceFactory,
@@ -106,10 +107,23 @@ def _create_host_client_factory() -> Iterator[_HostClientFactoryResources]:
 
 
 @contextmanager
-def _create_file_client_factory(tmp_path: Path) -> Iterator[_HostClientFactoryResources]:
-    collection_name = f"file_integration_chunks_{uuid4().hex}"
-    dms_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'dms.db'}")
-    metadata_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
+def _create_sqlite_client_factory(
+    tmp_path: Path,
+    *,
+    in_memory: bool,
+) -> Iterator[_HostClientFactoryResources]:
+    storage_prefix = "memory" if in_memory else "file"
+    collection_name = f"{storage_prefix}_integration_chunks_{uuid4().hex}"
+    if in_memory:
+        sqlite_engine_kwargs = {
+            "connect_args": {"check_same_thread": False},
+            "poolclass": StaticPool,
+        }
+        dms_engine = create_engine("sqlite+pysqlite:///:memory:", **sqlite_engine_kwargs)
+        metadata_engine = create_engine("sqlite+pysqlite:///:memory:", **sqlite_engine_kwargs)
+    else:
+        dms_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'dms.db'}")
+        metadata_engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'metadata.db'}")
     ollama_client = OllamaClient(
         host=OLLAMA_HOST,
         timeout=120,
@@ -231,7 +245,7 @@ def test_file_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None
     user = authenticated_user(f"file-backend-user-{uuid4().hex}")
     doc_id: str | None = None
 
-    with _create_file_client_factory(tmp_path) as resources:
+    with _create_sqlite_client_factory(tmp_path, in_memory=False) as resources:
         core = resources.factory.create_rag_core()
         try:
             source_text = "The file-backed integration document contains the color green."
@@ -249,6 +263,39 @@ def test_file_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None
             assert (tmp_path / "dms.db").exists()
             assert (tmp_path / "metadata.db").exists()
             assert (tmp_path / "milvus.db").exists()
+            assert response.answer.strip()
+            assert source_text in response.prompt
+            assert response.context_chunks[0].doc_id == ingested.doc_id
+            assert response.context_chunks[0].content == source_text
+        finally:
+            if doc_id is not None:
+                core.delete_document(doc_id, user=user)
+
+
+@pytest.mark.integration
+def test_memory_clients_run_ingestion_and_query_end_to_end(tmp_path: Path) -> None:
+    """Exercise Milvus Lite and in-memory SQLite with remote Ollama/MinIO."""
+    user = authenticated_user(f"memory-backend-user-{uuid4().hex}")
+    doc_id: str | None = None
+
+    with _create_sqlite_client_factory(tmp_path, in_memory=True) as resources:
+        core = resources.factory.create_rag_core()
+        try:
+            source_text = "The in-memory integration document contains the color purple."
+            question = "Which color does the in-memory document contain?"
+
+            ingested = core.ingest_text(
+                user=user,
+                text=source_text,
+                source="memory-backed-integration.txt",
+            )
+            doc_id = ingested.doc_id
+            response = core.query(user=user, question=question, top_k=1)
+
+            assert resources.metadata_engine.dialect.name == "sqlite"
+            assert resources.metadata_engine.url.database == ":memory:"
+            assert not (tmp_path / "dms.db").exists()
+            assert not (tmp_path / "metadata.db").exists()
             assert response.answer.strip()
             assert source_text in response.prompt
             assert response.context_chunks[0].doc_id == ingested.doc_id
